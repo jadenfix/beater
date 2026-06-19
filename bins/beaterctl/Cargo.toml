@@ -1,0 +1,36 @@
+[package]
+name = "beaterctl"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+beater-alerts = { path = "../../crates/beater-alerts" }
+beater-auth = { path = "../../crates/beater-auth" }
+beater-bus = { path = "../../crates/beater-bus" }
+beater-calibration = { path = "../../crates/beater-calibration" }
+beater-core = { path = "../../crates/beater-core" }
+beater-datasets = { path = "../../crates/beater-datasets" }
+beater-eval = { path = "../../crates/beater-eval" }
+beater-experiments = { path = "../../crates/beater-experiments" }
+beater-gates = { path = "../../crates/beater-gates" }
+beater-human = { path = "../../crates/beater-human" }
+beater-ingest = { path = "../../crates/beater-ingest" }
+beater-judge = { path = "../../crates/beater-judge" }
+beater-replay = { path = "../../crates/beater-replay" }
+beater-schema = { path = "../../crates/beater-schema" }
+beater-security = { path = "../../crates/beater-security" }
+beater-secrets = { path = "../../crates/beater-secrets" }
+beater-store = { path = "../../crates/beater-store" }
+beater-usage = { path = "../../crates/beater-usage" }
+chrono.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

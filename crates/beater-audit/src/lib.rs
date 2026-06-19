@@ -1,0 +1,286 @@
+use anyhow::{anyhow, Context};
+use async_trait::async_trait;
+use beater_core::{
+    ApiKeyId, AuditEventId, EnvironmentId, ProjectId, TenantId, Timestamp, TraceId,
+};
+use chrono::Utc;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::fs;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use uuid::Uuid;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditAction {
+    PiiUnmask,
+}
+
+impl AuditAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PiiUnmask => "pii_unmask",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditOutcome {
+    Allowed,
+    Denied,
+}
+
+impl AuditOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Allowed => "allowed",
+            Self::Denied => "denied",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AuditEventInsert {
+    pub tenant_id: TenantId,
+    pub project_id: ProjectId,
+    pub environment_id: Option<EnvironmentId>,
+    pub actor_api_key_id: Option<ApiKeyId>,
+    pub action: AuditAction,
+    pub resource_type: String,
+    pub resource_id: String,
+    pub outcome: AuditOutcome,
+    pub reason: Option<String>,
+    pub attributes: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AuditEvent {
+    pub audit_event_id: AuditEventId,
+    pub tenant_id: TenantId,
+    pub project_id: ProjectId,
+    pub environment_id: Option<EnvironmentId>,
+    pub actor_api_key_id: Option<ApiKeyId>,
+    pub action: AuditAction,
+    pub resource_type: String,
+    pub resource_id: String,
+    pub outcome: AuditOutcome,
+    pub reason: Option<String>,
+    pub attributes: Value,
+    pub created_at: Timestamp,
+}
+
+#[async_trait]
+pub trait AuditStore: Send + Sync {
+    async fn append_event(&self, insert: AuditEventInsert) -> anyhow::Result<AuditEvent>;
+
+    async fn list_events(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> anyhow::Result<Vec<AuditEvent>>;
+}
+
+#[derive(Clone)]
+pub struct SqliteAuditStore {
+    connection: Arc<Mutex<Connection>>,
+}
+
+impl SqliteAuditStore {
+    pub fn in_memory() -> anyhow::Result<Self> {
+        let connection = Connection::open_in_memory().context("open in-memory audit sqlite")?;
+        let store = Self {
+            connection: Arc::new(Mutex::new(connection)),
+        };
+        store.init()?;
+        Ok(store)
+    }
+
+    pub fn open(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create audit sqlite dir {}", parent.display()))?;
+        }
+        let connection = Connection::open(path)
+            .with_context(|| format!("open sqlite audit store {}", path.display()))?;
+        let store = Self {
+            connection: Arc::new(Mutex::new(connection)),
+        };
+        store.init()?;
+        Ok(store)
+    }
+
+    fn init(&self) -> anyhow::Result<()> {
+        let connection = self.lock()?;
+        connection
+            .execute_batch(
+                r#"
+                PRAGMA journal_mode = WAL;
+                PRAGMA foreign_keys = ON;
+
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    tenant_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    audit_event_id TEXT NOT NULL,
+                    environment_id TEXT,
+                    actor_api_key_id TEXT,
+                    action TEXT NOT NULL,
+                    resource_type TEXT NOT NULL,
+                    resource_id TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    event_json TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, project_id, audit_event_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_audit_events_list
+                  ON audit_events (tenant_id, project_id, created_at, audit_event_id);
+
+                CREATE INDEX IF NOT EXISTS idx_audit_events_resource
+                  ON audit_events (tenant_id, project_id, resource_type, resource_id);
+                "#,
+            )
+            .context("initialize sqlite audit store")?;
+        Ok(())
+    }
+
+    fn lock(&self) -> anyhow::Result<std::sync::MutexGuard<'_, Connection>> {
+        self.connection
+            .lock()
+            .map_err(|err| anyhow!("sqlite audit connection mutex poisoned: {err}"))
+    }
+}
+
+#[async_trait]
+impl AuditStore for SqliteAuditStore {
+    async fn append_event(&self, insert: AuditEventInsert) -> anyhow::Result<AuditEvent> {
+        let event = AuditEvent {
+            audit_event_id: AuditEventId::new(Uuid::new_v4().to_string())?,
+            tenant_id: insert.tenant_id,
+            project_id: insert.project_id,
+            environment_id: insert.environment_id,
+            actor_api_key_id: insert.actor_api_key_id,
+            action: insert.action,
+            resource_type: insert.resource_type,
+            resource_id: insert.resource_id,
+            outcome: insert.outcome,
+            reason: insert.reason,
+            attributes: insert.attributes,
+            created_at: Utc::now(),
+        };
+        let event_json = serde_json::to_string(&event).context("serialize audit event")?;
+        let connection = self.lock()?;
+        connection
+            .execute(
+                r#"
+                INSERT INTO audit_events
+                  (tenant_id, project_id, audit_event_id, environment_id, actor_api_key_id,
+                   action, resource_type, resource_id, outcome, created_at, event_json)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                "#,
+                params![
+                    event.tenant_id.as_str(),
+                    event.project_id.as_str(),
+                    event.audit_event_id.as_str(),
+                    event.environment_id.as_ref().map(|id| id.as_str()),
+                    event.actor_api_key_id.as_ref().map(|id| id.as_str()),
+                    event.action.as_str(),
+                    event.resource_type.as_str(),
+                    event.resource_id.as_str(),
+                    event.outcome.as_str(),
+                    event.created_at.to_rfc3339(),
+                    event_json
+                ],
+            )
+            .context("insert audit event")?;
+        Ok(event)
+    }
+
+    async fn list_events(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> anyhow::Result<Vec<AuditEvent>> {
+        let connection = self.lock()?;
+        let mut statement = connection
+            .prepare(
+                r#"
+                SELECT event_json
+                FROM audit_events
+                WHERE tenant_id = ?1 AND project_id = ?2
+                ORDER BY created_at ASC, audit_event_id ASC
+                "#,
+            )
+            .context("prepare audit event list query")?;
+        let rows = statement
+            .query_map(params![tenant_id.as_str(), project_id.as_str()], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("query audit events")?;
+
+        let mut events = Vec::new();
+        for row in rows {
+            let event_json = row.context("read audit event row")?;
+            events.push(serde_json::from_str(&event_json).context("decode audit event")?);
+        }
+        Ok(events)
+    }
+}
+
+pub fn pii_unmask_event(
+    tenant_id: TenantId,
+    project_id: ProjectId,
+    environment_id: Option<EnvironmentId>,
+    actor_api_key_id: Option<ApiKeyId>,
+    trace_id: TraceId,
+    outcome: AuditOutcome,
+    reason: Option<String>,
+    attributes: Value,
+) -> AuditEventInsert {
+    AuditEventInsert {
+        tenant_id,
+        project_id,
+        environment_id,
+        actor_api_key_id,
+        action: AuditAction::PiiUnmask,
+        resource_type: "trace".to_string(),
+        resource_id: trace_id.as_str().to_string(),
+        outcome,
+        reason,
+        attributes,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn sqlite_audit_store_persists_privileged_unmask_events() -> anyhow::Result<()> {
+        let store = SqliteAuditStore::in_memory()?;
+        let event = store
+            .append_event(pii_unmask_event(
+                TenantId::new("tenant")?,
+                ProjectId::new("project")?,
+                Some(EnvironmentId::new("prod")?),
+                Some(ApiKeyId::new("key")?),
+                TraceId::new("trace")?,
+                AuditOutcome::Allowed,
+                Some("debugging incident".to_string()),
+                json!({"sensitive_refs": 2}),
+            ))
+            .await?;
+        assert_eq!(event.action, AuditAction::PiiUnmask);
+        assert_eq!(event.outcome, AuditOutcome::Allowed);
+
+        let events = store
+            .list_events(TenantId::new("tenant")?, ProjectId::new("project")?)
+            .await?;
+        assert_eq!(events, vec![event]);
+        Ok(())
+    }
+}

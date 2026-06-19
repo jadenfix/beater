@@ -1,0 +1,23 @@
+[package]
+name = "beater-ingest"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+beater-bus = { path = "../beater-bus" }
+beater-core = { path = "../beater-core" }
+beater-schema = { path = "../beater-schema" }
+beater-store = { path = "../beater-store" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

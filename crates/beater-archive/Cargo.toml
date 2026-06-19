@@ -1,0 +1,27 @@
+[package]
+name = "beater-archive"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+arrow-array.workspace = true
+arrow-schema.workspace = true
+beater-core = { path = "../beater-core" }
+beater-schema = { path = "../beater-schema" }
+chrono.workspace = true
+datafusion.workspace = true
+parquet.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+beater-store = { path = "../beater-store" }
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

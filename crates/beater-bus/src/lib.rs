@@ -1,0 +1,574 @@
+use async_trait::async_trait;
+use beater_core::{IdempotencyKey, ProjectId, TenantId, Timestamp};
+use chrono::Utc;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::fs;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+use uuid::Uuid;
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum BusError {
+    #[error("bus is at capacity {capacity}")]
+    Backpressure { capacity: usize },
+    #[error("bus mutex poisoned: {0}")]
+    Poisoned(String),
+    #[error("bus storage error: {0}")]
+    Storage(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BusMessage {
+    pub message_id: String,
+    pub tenant_id: TenantId,
+    pub project_id: ProjectId,
+    pub idempotency_key: IdempotencyKey,
+    pub kind: String,
+    pub payload: Vec<u8>,
+    pub attempts: u32,
+    pub max_attempts: u32,
+    pub enqueued_at: Timestamp,
+}
+
+impl BusMessage {
+    pub fn new(
+        tenant_id: TenantId,
+        project_id: ProjectId,
+        idempotency_key: IdempotencyKey,
+        kind: impl Into<String>,
+        payload: Vec<u8>,
+    ) -> Self {
+        Self {
+            message_id: Uuid::new_v4().to_string(),
+            tenant_id,
+            project_id,
+            idempotency_key,
+            kind: kind.into(),
+            payload,
+            attempts: 0,
+            max_attempts: 3,
+            enqueued_at: Utc::now(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeadLetter {
+    pub message: BusMessage,
+    pub reason: String,
+    pub failed_at: Timestamp,
+}
+
+#[async_trait]
+pub trait DurableBus: Send + Sync {
+    async fn publish(&self, message: BusMessage) -> Result<(), BusError>;
+    async fn consume_batch(&self, limit: usize) -> Result<Vec<BusMessage>, BusError>;
+    async fn retry_or_dlq(&self, message: BusMessage, reason: String) -> Result<(), BusError>;
+    async fn dlq(&self) -> Result<Vec<DeadLetter>, BusError>;
+    async fn depth(&self) -> Result<usize, BusError>;
+}
+
+#[derive(Clone, Debug)]
+pub struct InMemoryBus {
+    state: Arc<Mutex<BusState>>,
+    capacity: usize,
+}
+
+#[derive(Debug, Default)]
+struct BusState {
+    queue: VecDeque<BusMessage>,
+    dlq: Vec<DeadLetter>,
+}
+
+impl InMemoryBus {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(BusState::default())),
+            capacity,
+        }
+    }
+
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, BusState>, BusError> {
+        self.state
+            .lock()
+            .map_err(|err| BusError::Poisoned(err.to_string()))
+    }
+}
+
+#[async_trait]
+impl DurableBus for InMemoryBus {
+    async fn publish(&self, message: BusMessage) -> Result<(), BusError> {
+        let mut state = self.lock()?;
+        if state.queue.len() >= self.capacity {
+            return Err(BusError::Backpressure {
+                capacity: self.capacity,
+            });
+        }
+        state.queue.push_back(message);
+        Ok(())
+    }
+
+    async fn consume_batch(&self, limit: usize) -> Result<Vec<BusMessage>, BusError> {
+        let mut state = self.lock()?;
+        let mut messages = Vec::new();
+        for _ in 0..limit {
+            if let Some(message) = state.queue.pop_front() {
+                messages.push(message);
+            } else {
+                break;
+            }
+        }
+        Ok(messages)
+    }
+
+    async fn retry_or_dlq(&self, mut message: BusMessage, reason: String) -> Result<(), BusError> {
+        let mut state = self.lock()?;
+        message.attempts = message.attempts.saturating_add(1);
+        if message.attempts >= message.max_attempts {
+            state.dlq.push(DeadLetter {
+                message,
+                reason,
+                failed_at: Utc::now(),
+            });
+            return Ok(());
+        }
+        if state.queue.len() >= self.capacity {
+            state.dlq.push(DeadLetter {
+                message,
+                reason: format!("retry queue full after failure: {reason}"),
+                failed_at: Utc::now(),
+            });
+            return Ok(());
+        }
+        state.queue.push_back(message);
+        Ok(())
+    }
+
+    async fn dlq(&self) -> Result<Vec<DeadLetter>, BusError> {
+        let state = self.lock()?;
+        Ok(state.dlq.clone())
+    }
+
+    async fn depth(&self) -> Result<usize, BusError> {
+        let state = self.lock()?;
+        Ok(state.queue.len())
+    }
+}
+
+#[derive(Clone)]
+pub struct SqliteDurableBus {
+    connection: Arc<Mutex<Connection>>,
+    capacity: usize,
+}
+
+impl SqliteDurableBus {
+    pub fn in_memory(capacity: usize) -> Result<Self, BusError> {
+        let connection =
+            Connection::open_in_memory().map_err(|err| BusError::Storage(err.to_string()))?;
+        let bus = Self {
+            connection: Arc::new(Mutex::new(connection)),
+            capacity,
+        };
+        bus.init()?;
+        Ok(bus)
+    }
+
+    pub fn open(path: impl AsRef<Path>, capacity: usize) -> Result<Self, BusError> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|err| BusError::Storage(err.to_string()))?;
+        }
+        let connection =
+            Connection::open(path).map_err(|err| BusError::Storage(err.to_string()))?;
+        let bus = Self {
+            connection: Arc::new(Mutex::new(connection)),
+            capacity,
+        };
+        bus.init()?;
+        Ok(bus)
+    }
+
+    fn init(&self) -> Result<(), BusError> {
+        let connection = self.lock()?;
+        connection
+            .execute_batch(
+                r#"
+                PRAGMA journal_mode = WAL;
+                PRAGMA foreign_keys = ON;
+
+                CREATE TABLE IF NOT EXISTS queue_messages (
+                    message_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    enqueued_at TEXT NOT NULL,
+                    message_json TEXT NOT NULL,
+                    UNIQUE (tenant_id, project_id, kind, idempotency_key)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_queue_order
+                ON queue_messages (enqueued_at, message_id);
+
+                CREATE TABLE IF NOT EXISTS dead_letters (
+                    message_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    failed_at TEXT NOT NULL,
+                    dead_letter_json TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_dead_letters_order
+                ON dead_letters (failed_at, message_id);
+                "#,
+            )
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        Ok(())
+    }
+
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, BusError> {
+        self.connection
+            .lock()
+            .map_err(|err| BusError::Poisoned(err.to_string()))
+    }
+
+    fn queue_depth(connection: &Connection) -> Result<usize, BusError> {
+        connection
+            .query_row("SELECT COUNT(*) FROM queue_messages", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map(|count| count as usize)
+            .map_err(|err| BusError::Storage(err.to_string()))
+    }
+
+    fn insert_message(connection: &Connection, message: &BusMessage) -> Result<(), BusError> {
+        let message_json =
+            serde_json::to_string(message).map_err(|err| BusError::Storage(err.to_string()))?;
+        connection
+            .execute(
+                r#"
+                INSERT OR IGNORE INTO queue_messages
+                  (message_id, tenant_id, project_id, idempotency_key, kind, enqueued_at, message_json)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+                params![
+                    message.message_id.as_str(),
+                    message.tenant_id.as_str(),
+                    message.project_id.as_str(),
+                    message.idempotency_key.as_str(),
+                    message.kind.as_str(),
+                    message.enqueued_at.to_rfc3339(),
+                    message_json,
+                ],
+            )
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        Ok(())
+    }
+
+    fn insert_dead_letter(
+        connection: &Connection,
+        dead_letter: &DeadLetter,
+    ) -> Result<(), BusError> {
+        let json =
+            serde_json::to_string(dead_letter).map_err(|err| BusError::Storage(err.to_string()))?;
+        connection
+            .execute(
+                r#"
+                INSERT OR REPLACE INTO dead_letters
+                  (message_id, tenant_id, project_id, idempotency_key, kind, failed_at, dead_letter_json)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "#,
+                params![
+                    dead_letter.message.message_id.as_str(),
+                    dead_letter.message.tenant_id.as_str(),
+                    dead_letter.message.project_id.as_str(),
+                    dead_letter.message.idempotency_key.as_str(),
+                    dead_letter.message.kind.as_str(),
+                    dead_letter.failed_at.to_rfc3339(),
+                    json,
+                ],
+            )
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl DurableBus for SqliteDurableBus {
+    async fn publish(&self, message: BusMessage) -> Result<(), BusError> {
+        let connection = self.lock()?;
+        let duplicate_exists = connection
+            .query_row(
+                r#"
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM queue_messages
+                    WHERE tenant_id = ?1 AND project_id = ?2 AND kind = ?3 AND idempotency_key = ?4
+                )
+                "#,
+                params![
+                    message.tenant_id.as_str(),
+                    message.project_id.as_str(),
+                    message.kind.as_str(),
+                    message.idempotency_key.as_str()
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|err| BusError::Storage(err.to_string()))?
+            != 0;
+        if duplicate_exists {
+            return Ok(());
+        }
+        if Self::queue_depth(&connection)? >= self.capacity {
+            return Err(BusError::Backpressure {
+                capacity: self.capacity,
+            });
+        }
+        Self::insert_message(&connection, &message)
+    }
+
+    async fn consume_batch(&self, limit: usize) -> Result<Vec<BusMessage>, BusError> {
+        let mut connection = self.lock()?;
+        let tx = connection
+            .transaction()
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        let selected = {
+            let mut statement = tx
+                .prepare(
+                    r#"
+                    SELECT message_id, message_json
+                    FROM queue_messages
+                    ORDER BY enqueued_at ASC, message_id ASC
+                    LIMIT ?1
+                    "#,
+                )
+                .map_err(|err| BusError::Storage(err.to_string()))?;
+            let rows = statement
+                .query_map(params![limit as i64], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|err| BusError::Storage(err.to_string()))?;
+            let mut selected = Vec::new();
+            for row in rows {
+                selected.push(row.map_err(|err| BusError::Storage(err.to_string()))?);
+            }
+            selected
+        };
+
+        let mut messages = Vec::with_capacity(selected.len());
+        for (message_id, message_json) in selected {
+            tx.execute(
+                "DELETE FROM queue_messages WHERE message_id = ?1",
+                params![message_id],
+            )
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+            messages.push(
+                serde_json::from_str::<BusMessage>(&message_json)
+                    .map_err(|err| BusError::Storage(err.to_string()))?,
+            );
+        }
+        tx.commit()
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        Ok(messages)
+    }
+
+    async fn retry_or_dlq(&self, mut message: BusMessage, reason: String) -> Result<(), BusError> {
+        let connection = self.lock()?;
+        message.attempts = message.attempts.saturating_add(1);
+        if message.attempts >= message.max_attempts {
+            let dead_letter = DeadLetter {
+                message,
+                reason,
+                failed_at: Utc::now(),
+            };
+            return Self::insert_dead_letter(&connection, &dead_letter);
+        }
+        if Self::queue_depth(&connection)? >= self.capacity {
+            let dead_letter = DeadLetter {
+                message,
+                reason: format!("retry queue full after failure: {reason}"),
+                failed_at: Utc::now(),
+            };
+            return Self::insert_dead_letter(&connection, &dead_letter);
+        }
+        Self::insert_message(&connection, &message)
+    }
+
+    async fn dlq(&self) -> Result<Vec<DeadLetter>, BusError> {
+        let connection = self.lock()?;
+        let mut statement = connection
+            .prepare(
+                r#"
+                SELECT dead_letter_json
+                FROM dead_letters
+                ORDER BY failed_at ASC, message_id ASC
+                "#,
+            )
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        let mut dead_letters = Vec::new();
+        for row in rows {
+            let json = row.map_err(|err| BusError::Storage(err.to_string()))?;
+            dead_letters.push(
+                serde_json::from_str::<DeadLetter>(&json)
+                    .map_err(|err| BusError::Storage(err.to_string()))?,
+            );
+        }
+        Ok(dead_letters)
+    }
+
+    async fn depth(&self) -> Result<usize, BusError> {
+        let connection = self.lock()?;
+        Self::queue_depth(&connection)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn bounded_bus_applies_backpressure() {
+        let bus = InMemoryBus::new(1);
+        let first = fixture_message("one");
+        let second = fixture_message("two");
+
+        assert_eq!(bus.publish(first).await, Ok(()));
+        assert!(matches!(
+            bus.publish(second).await,
+            Err(BusError::Backpressure { capacity: 1 })
+        ));
+    }
+
+    #[tokio::test]
+    async fn poison_messages_move_to_dlq_without_blocking_queue() {
+        let bus = InMemoryBus::new(8);
+        let mut poison = fixture_message("poison");
+        poison.max_attempts = 2;
+        let healthy = fixture_message("healthy");
+
+        bus.publish(poison)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(healthy)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let mut batch = bus
+            .consume_batch(1)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(batch.len(), 1);
+        let poison = batch.remove(0);
+        bus.retry_or_dlq(poison, "invalid schema".to_string())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let mut batch = bus
+            .consume_batch(1)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        let healthy = batch.remove(0);
+        assert_eq!(healthy.kind, "healthy");
+
+        let mut batch = bus
+            .consume_batch(1)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        let poison = batch.remove(0);
+        bus.retry_or_dlq(poison, "invalid schema".to_string())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let dlq = bus.dlq().await.unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(dlq.len(), 1);
+        assert_eq!(dlq[0].reason, "invalid schema");
+        assert_eq!(bus.depth().await, Ok(0));
+    }
+
+    #[tokio::test]
+    async fn sqlite_bus_persists_queue_across_reopen_and_dedupes_publishes() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("bus.sqlite");
+        let bus = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let first = fixture_message("persisted");
+        let duplicate = first.clone();
+
+        bus.publish(first.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(duplicate)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(bus.depth().await, Ok(1));
+        drop(bus);
+
+        let reopened = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(reopened.depth().await, Ok(1));
+        let batch = reopened
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(batch, vec![first]);
+        assert_eq!(reopened.depth().await, Ok(0));
+    }
+
+    #[tokio::test]
+    async fn sqlite_bus_persists_retry_attempts_and_dlq_across_reopen() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("bus.sqlite");
+        let bus = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let mut poison = fixture_message("poison-sqlite");
+        poison.max_attempts = 2;
+
+        bus.publish(poison)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        let mut batch = bus
+            .consume_batch(1)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        let poison = batch.remove(0);
+        bus.retry_or_dlq(poison, "invalid schema".to_string())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        drop(bus);
+
+        let reopened = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let mut batch = reopened
+            .consume_batch(1)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(batch[0].attempts, 1);
+        let poison = batch.remove(0);
+        reopened
+            .retry_or_dlq(poison, "invalid schema".to_string())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        drop(reopened);
+
+        let reopened = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(reopened.depth().await, Ok(0));
+        let dlq = reopened.dlq().await.unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(dlq.len(), 1);
+        assert_eq!(dlq[0].reason, "invalid schema");
+        assert_eq!(dlq[0].message.attempts, 2);
+        assert_eq!(dlq[0].message.kind, "poison-sqlite");
+    }
+
+    fn fixture_message(kind: &str) -> BusMessage {
+        BusMessage::new(
+            TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}")),
+            ProjectId::new("project").unwrap_or_else(|err| panic!("{err}")),
+            IdempotencyKey::new(format!("key-{kind}")).unwrap_or_else(|err| panic!("{err}")),
+            kind,
+            kind.as_bytes().to_vec(),
+        )
+    }
+}
