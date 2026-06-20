@@ -37,6 +37,8 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
 
   const detail = page.getByLabel("Span detail");
   await expect(detail).toContainText("openai/gpt-demo");
+  await expect(detail).toContainText("Tokens");
+  await expect(detail).toContainText("Latency");
   await expect(detail).toContainText("USD 0.002500");
   await expect(detail).toContainText("Can this order be refunded after 31 days?");
   await expect(detail).toContainText("Escalate because the order is outside the standard window.");

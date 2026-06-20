@@ -11,6 +11,7 @@ type SpanIoOperation = operations["openapi_get_span_io"];
 type TraceListQuery = NonNullable<TraceListOperation["parameters"]["query"]>;
 type TraceListPathParams = TraceListOperation["parameters"]["path"];
 type TracePathParams = TraceOperation["parameters"]["path"];
+type TraceReadQuery = NonNullable<TraceOperation["parameters"]["query"]>;
 type SpanIoPathParams = SpanIoOperation["parameters"]["path"];
 
 export type RunSummary = components["schemas"]["RunSummaryDoc"];
@@ -35,6 +36,8 @@ export type DashboardQuery = {
   maxCostMicros?: TraceListQuery["max_cost_micros"];
   minLatencyMs?: TraceListQuery["min_latency_ms"];
   maxLatencyMs?: TraceListQuery["max_latency_ms"];
+  unmask?: TraceReadQuery["unmask"];
+  unmaskReason?: TraceReadQuery["reason"];
 };
 
 export type DashboardData = {
@@ -99,7 +102,11 @@ export function traceListPath(query: DashboardQuery): string {
 
 export function tracePath(query: DashboardQuery, traceId: string): string {
   const path: TracePathParams = { tenant_id: query.tenantId, trace_id: traceId };
-  return `/v1/traces/${encodeURIComponent(path.tenant_id)}/${encodeURIComponent(path.trace_id)}`;
+  const params = traceReadParams(query);
+  const suffix = params.toString();
+  return `/v1/traces/${encodeURIComponent(path.tenant_id)}/${encodeURIComponent(path.trace_id)}${
+    suffix ? `?${suffix}` : ""
+  }`;
 }
 
 export function spanIoPath(query: DashboardQuery, traceId: string, spanId: string): string {
@@ -108,9 +115,18 @@ export function spanIoPath(query: DashboardQuery, traceId: string, spanId: strin
     trace_id: traceId,
     span_id: spanId
   };
+  const params = traceReadParams(query);
+  const suffix = params.toString();
   return `/v1/spans/${encodeURIComponent(path.tenant_id)}/${encodeURIComponent(
     path.trace_id
-  )}/${encodeURIComponent(path.span_id)}/io`;
+  )}/${encodeURIComponent(path.span_id)}/io${suffix ? `?${suffix}` : ""}`;
+}
+
+function traceReadParams(query: DashboardQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  if (query.unmask) params.set("unmask", "true");
+  if (query.unmaskReason) params.set("reason", query.unmaskReason);
+  return params;
 }
 
 export async function loadDashboardData(query: DashboardQuery): Promise<DashboardData> {

@@ -345,11 +345,47 @@ button {
 
 .metrics div,
 .io,
-.attrs {
+.attrs,
+.redaction-controls {
   background: #fafbfc;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px;
+}
+
+.redaction-controls {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 82px;
+}
+
+.redaction-controls.active {
+  align-items: center;
+  background: #e8f2ee;
+  border-color: #b8d8cc;
+  color: #14513b;
+  grid-template-columns: 74px minmax(0, 1fr) 102px;
+}
+
+.redaction-controls > span,
+.redaction-controls a {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.redaction-controls small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.redaction-controls a {
+  background: #fff;
+  border: 1px solid #b8d8cc;
+  border-radius: 6px;
+  padding: 8px 9px;
+  text-align: center;
 }
 
 dt {

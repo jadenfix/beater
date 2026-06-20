@@ -72,7 +72,7 @@ This repo now contains the first tested Rust vertical slice:
 - API-key hashing/scoping, persisted SQLite API-key metadata, last-used audit timestamp, and HMAC webhook signing primitives
 - optional strict API auth mode on `beaterd` with environment-bound scoped keys
 - API route for native trace ingest and trace readback
-- API routes for trace lists, span detail, and redaction-aware span I/O inspection
+- API routes for trace lists, span detail, redaction-aware span I/O inspection, and audited unmask reads
 - `/openapi.json` documents the dashboard read surface and generates the dashboard TypeScript client
 - Dockerfile and `docker-compose.yml` for the current self-host topology
 - migration contracts for SQLite local runtime plus Postgres and ClickHouse scale/control-plane paths
@@ -109,7 +109,7 @@ This repo now contains the first tested Rust vertical slice:
 - `beaterctl review-fixture` validates human annotation promotion into an eval-ready dataset case
 - `beaterctl calibration-fixture` validates persisted judge/human agreement and kappa reports
 - `beaterctl api-key-create` / `api-key-revoke` bootstrap helpers for local and hosted deployments
-- `web/dashboard` Next.js trace debugger with generated OpenAPI types, status/kind/time/model/cost/latency/release filters, trace table, agent span waterfall, span detail, and I/O inspector
+- `web/dashboard` Next.js trace debugger with generated OpenAPI types, status/kind/time/model/cost/latency/release filters, trace table, agent span waterfall, span detail, and audited I/O unmask controls
 
 ## Verify
 

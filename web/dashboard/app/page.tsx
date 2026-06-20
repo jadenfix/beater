@@ -36,7 +36,9 @@ export default async function DashboardPage({
     minCostMicros: numberValue(params.min_cost_micros),
     maxCostMicros: numberValue(params.max_cost_micros),
     minLatencyMs: numberValue(params.min_latency_ms),
-    maxLatencyMs: numberValue(params.max_latency_ms)
+    maxLatencyMs: numberValue(params.max_latency_ms),
+    unmask: boolValue(params.unmask),
+    unmaskReason: value(params.reason)
   };
   const data = await loadDashboardData(query);
   const spans = data.trace?.spans ?? [];
@@ -235,7 +237,7 @@ export default async function DashboardPage({
             <span>{data.selectedSpan?.kind ?? "none"}</span>
           </div>
           {data.selectedSpan ? (
-            <SpanDetail span={data.selectedSpan} io={data.selectedIo} />
+            <SpanDetail span={data.selectedSpan} io={data.selectedIo} query={data.query} />
           ) : (
             <div className="empty">Select a span in the waterfall.</div>
           )}
@@ -245,7 +247,16 @@ export default async function DashboardPage({
   );
 }
 
-function SpanDetail({ span, io }: { span: CanonicalSpan; io: SpanIoResponse | null }) {
+function SpanDetail({
+  span,
+  io,
+  query
+}: {
+  span: CanonicalSpan;
+  io: SpanIoResponse | null;
+  query: DashboardQuery;
+}) {
+  const hasRedactedIo = io ? isRedactedIo(io.input) || isRedactedIo(io.output) : false;
   return (
     <div className="detail-stack">
       <div>
@@ -269,7 +280,12 @@ function SpanDetail({ span, io }: { span: CanonicalSpan; io: SpanIoResponse | nu
           <dt>Cost</dt>
           <dd>{formatCost(span.cost)}</dd>
         </div>
+        <div>
+          <dt>Latency</dt>
+          <dd>{formatDuration(span.start_time, span.end_time)}</dd>
+        </div>
       </dl>
+      <RedactionControls span={span} query={query} hasRedactedIo={hasRedactedIo} />
       <IoBlock label="Input" value={io?.input} />
       <IoBlock label="Output" value={io?.output} />
       <div className="attrs">
@@ -277,6 +293,77 @@ function SpanDetail({ span, io }: { span: CanonicalSpan; io: SpanIoResponse | nu
         <pre>{JSON.stringify(span.attributes, null, 2)}</pre>
       </div>
     </div>
+  );
+}
+
+function RedactionControls({
+  span,
+  query,
+  hasRedactedIo
+}: {
+  span: CanonicalSpan;
+  query: DashboardQuery;
+  hasRedactedIo: boolean;
+}) {
+  if (query.unmask) {
+    return (
+      <div className="redaction-controls active">
+        <span>Unmasked</span>
+        <small>{query.unmaskReason || "no reason"}</small>
+        <Link href={hrefFor(query, { trace: span.trace_id, span: span.span_id, unmask: false })}>
+          Redacted view
+        </Link>
+      </div>
+    );
+  }
+  if (!hasRedactedIo) return null;
+  return (
+    <form className="redaction-controls" aria-label="Unmask redacted I/O">
+      <HiddenQueryInputs query={query} traceId={span.trace_id} spanId={span.span_id} />
+      <input type="hidden" name="unmask" value="true" />
+      <label>
+        <span>Reason</span>
+        <input name="reason" required minLength={3} placeholder="incident-123" />
+      </label>
+      <button type="submit">Unmask</button>
+    </form>
+  );
+}
+
+function HiddenQueryInputs({
+  query,
+  traceId,
+  spanId
+}: {
+  query: DashboardQuery;
+  traceId: string;
+  spanId: string;
+}) {
+  const entries: [string, string | number | undefined][] = [
+    ["tenant", query.tenantId],
+    ["project", query.projectId],
+    ["environment", query.environmentId],
+    ["trace", traceId],
+    ["span", spanId],
+    ["status", query.status],
+    ["kind", query.kind],
+    ["started_after", query.startedAfter],
+    ["started_before", query.startedBefore],
+    ["model", query.model],
+    ["release", query.release],
+    ["min_cost_micros", query.minCostMicros],
+    ["max_cost_micros", query.maxCostMicros],
+    ["min_latency_ms", query.minLatencyMs],
+    ["max_latency_ms", query.maxLatencyMs]
+  ];
+  return (
+    <>
+      {entries
+        .filter((entry): entry is [string, string | number] => entry[1] !== undefined)
+        .map(([name, fieldValue]) => (
+          <input key={name} type="hidden" name={name} value={String(fieldValue)} />
+        ))}
+    </>
   );
 }
 
@@ -299,6 +386,12 @@ function value(input: string | string[] | undefined): string | undefined {
   return Array.isArray(input) ? input[0] : input;
 }
 
+function boolValue(input: string | string[] | undefined): boolean | undefined {
+  const raw = value(input);
+  if (!raw) return undefined;
+  return raw === "true" || raw === "1";
+}
+
 function numberValue(input: string | string[] | undefined): number | undefined {
   const raw = value(input);
   if (!raw) return undefined;
@@ -312,7 +405,7 @@ function numberInput(input: number | undefined): string | undefined {
 
 function hrefFor(
   query: DashboardQuery,
-  next: { trace?: string; span?: string | undefined }
+  next: { trace?: string; span?: string | undefined; unmask?: boolean | undefined }
 ): string {
   const params = new URLSearchParams();
   params.set("tenant", query.tenantId);
@@ -330,6 +423,9 @@ function hrefFor(
   if (query.maxCostMicros !== undefined) params.set("max_cost_micros", String(query.maxCostMicros));
   if (query.minLatencyMs !== undefined) params.set("min_latency_ms", String(query.minLatencyMs));
   if (query.maxLatencyMs !== undefined) params.set("max_latency_ms", String(query.maxLatencyMs));
+  const unmask = next.unmask ?? query.unmask;
+  if (unmask) params.set("unmask", "true");
+  if (unmask && query.unmaskReason) params.set("reason", query.unmaskReason);
   return `/?${params.toString()}`;
 }
 
@@ -356,4 +452,8 @@ function kindClass(kind: string): string {
   if (kind === "human.review") return "human";
   if (kind === "replay.run") return "replay";
   return "other";
+}
+
+function isRedactedIo(value: SpanIoResponse["input"] | undefined): boolean {
+  return value?.kind === "redacted";
 }

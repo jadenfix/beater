@@ -12,6 +12,10 @@ test("dashboard page exposes the trace inspection surface", () => {
   assert.match(page, /Agent span waterfall/);
   assert.match(page, /SpanDetail/);
   assert.match(page, /IoBlock/);
+  assert.match(page, /RedactionControls/);
+  assert.match(page, /Unmask redacted I\/O/);
+  assert.match(page, /name="unmask"/);
+  assert.match(page, /name="reason"/);
   assert.match(page, /name="status"/);
   assert.match(page, /name="kind"/);
   assert.match(page, /name="started_after"/);
@@ -29,7 +33,11 @@ test("dashboard client uses public beater read endpoints", () => {
   const api = readFileSync(join(root, "lib/api.ts"), "utf8");
   assert.match(api, /generated\/api-types/);
   assert.match(api, /TraceListPathParams/);
+  assert.match(api, /TraceReadQuery/);
   assert.match(api, /encodeURIComponent\(path\.tenant_id\)/);
+  assert.match(api, /traceReadParams/);
+  assert.match(api, /params\.set\("unmask", "true"\)/);
+  assert.match(api, /params\.set\("reason"/);
   assert.match(api, /\/v1\/spans\//);
   assert.match(api, /\/io/);
   assert.match(api, /BEATER_API_TOKEN/);

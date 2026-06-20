@@ -27,6 +27,9 @@ NEXT_PUBLIC_BEATER_API_BASE_URL=http://127.0.0.1:8080 npm run dev
 Open `http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local`.
 The filter bar supports status, canonical span kind, RFC3339 start window,
 model, release, cost micros, and latency milliseconds.
+When selected span I/O is redacted, the span panel exposes an audited unmask
+action that reloads the trace through `?unmask=true&reason=...`; strict-auth
+deployments require a key with `pii_unmask`.
 
 For a clean local clone-to-browser proof from the repository root:
 
