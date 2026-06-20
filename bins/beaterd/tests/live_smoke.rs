@@ -85,6 +85,7 @@ async fn beaterd_quota_is_shared_across_two_replicas_and_resets_on_window() -> a
         per_project_event_quota: Some(1),
         quota_window_seconds: Some(quota_window_seconds),
         quota_db_path: Some(quota_path),
+        ..BeaterdSpawnOptions::default()
     };
     let _replica_a = BeaterdChild::spawn_with_options(
         &tempdir.path().join("replica-a"),
@@ -144,6 +145,71 @@ async fn beaterd_quota_is_shared_across_two_replicas_and_resets_on_window() -> a
     Ok(())
 }
 
+#[tokio::test]
+async fn beaterd_consumer_kill_restart_dlq_replay_recovers_trace_ingested_work(
+) -> anyhow::Result<()> {
+    let _guard = live_smoke_guard().await;
+    let tempdir = tempfile::tempdir()?;
+    let data_dir = tempdir.path().join("beaterd");
+    let marker_path = tempdir.path().join("trace-ingested-leased");
+    let hold_path = tempdir.path().join("trace-ingested-hold");
+    let fail_path = tempdir.path().join("trace-ingested-fail");
+    std::fs::write(&hold_path, b"hold")?;
+    let addrs = free_addrs(4)?;
+    let first_http = addrs[0];
+    let first_grpc = addrs[1];
+    let second_http = addrs[2];
+    let second_grpc = addrs[3];
+
+    let mut first = BeaterdChild::spawn_with_options(
+        &data_dir,
+        first_http,
+        first_grpc,
+        BeaterdSpawnOptions {
+            trace_ingested_lease_marker: Some(marker_path.clone()),
+            trace_ingested_hold_path: Some(hold_path.clone()),
+            ..BeaterdSpawnOptions::default()
+        },
+    )?;
+    let first_url = format!("http://{first_http}");
+    wait_for_health(&first_url).await?;
+    let trace_id = post_buffered_otlp_http(&first_url, "consumer kill restart replay").await?;
+    wait_for_file(&marker_path, Duration::from_secs(5)).await?;
+    first.kill_and_wait();
+    let _ = std::fs::remove_file(&hold_path);
+
+    std::fs::write(&fail_path, b"fail")?;
+    let _second = BeaterdChild::spawn_with_options(
+        &data_dir,
+        second_http,
+        second_grpc,
+        BeaterdSpawnOptions {
+            trace_ingested_fail_while_path: Some(fail_path.clone()),
+            ..BeaterdSpawnOptions::default()
+        },
+    )?;
+    let second_url = format!("http://{second_http}");
+    wait_for_health(&second_url).await?;
+    let dead_letter = wait_for_dead_letter(
+        &second_url,
+        "trace.ingested",
+        "test trace.ingested failure",
+        Duration::from_secs(5),
+    )
+    .await?;
+    assert_search_hit_count(&second_url, &trace_id, 0).await?;
+
+    std::fs::remove_file(&fail_path)?;
+    replay_dead_letter(&second_url, &dead_letter).await?;
+    let trace = wait_for_trace(&second_url, &trace_id).await?;
+    assert_eq!(span_count(&trace), 1);
+    let search = wait_for_search_hit(&second_url, &trace_id).await?;
+    assert_eq!(hit_count(&search), 1);
+    wait_for_queue_empty(&second_url, Duration::from_secs(5)).await?;
+
+    Ok(())
+}
+
 struct BeaterdChild {
     child: Child,
 }
@@ -153,6 +219,9 @@ struct BeaterdSpawnOptions {
     per_project_event_quota: Option<u64>,
     quota_window_seconds: Option<i64>,
     quota_db_path: Option<PathBuf>,
+    trace_ingested_lease_marker: Option<PathBuf>,
+    trace_ingested_hold_path: Option<PathBuf>,
+    trace_ingested_fail_while_path: Option<PathBuf>,
 }
 
 impl BeaterdChild {
@@ -200,11 +269,27 @@ impl BeaterdChild {
         if let Some(path) = options.quota_db_path {
             command.arg("--quota-db-path").arg(path);
         }
+        if let Some(path) = options.trace_ingested_lease_marker {
+            command.arg("--test-trace-ingested-lease-marker").arg(path);
+        }
+        if let Some(path) = options.trace_ingested_hold_path {
+            command.arg("--test-trace-ingested-hold-path").arg(path);
+        }
+        if let Some(path) = options.trace_ingested_fail_while_path {
+            command
+                .arg("--test-trace-ingested-fail-while-path")
+                .arg(path);
+        }
         let child = command
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;
         Ok(Self { child })
+    }
+
+    fn kill_and_wait(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -263,9 +348,7 @@ async fn wait_for_trace(http_url: &str, trace_id: &str) -> anyhow::Result<serde_
 async fn wait_for_search_hit(http_url: &str, trace_id: &str) -> anyhow::Result<serde_json::Value> {
     let client = reqwest::Client::new();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    let url = format!(
-        "{http_url}/v1/search/demo/spans?project_id=demo&environment_id=local&trace_id={trace_id}&kind=llm.call&status=ok"
-    );
+    let url = search_url(http_url, trace_id);
     loop {
         let response = client
             .get(&url)
@@ -282,6 +365,12 @@ async fn wait_for_search_hit(http_url: &str, trace_id: &str) -> anyhow::Result<s
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+}
+
+fn search_url(http_url: &str, trace_id: &str) -> String {
+    format!(
+        "{http_url}/v1/search/demo/spans?project_id=demo&environment_id=local&trace_id={trace_id}&kind=llm.call&status=ok"
+    )
 }
 
 async fn wait_for_quota_window_margin(
@@ -323,6 +412,138 @@ async fn post_otlp_http(http_url: &str, name: &str) -> anyhow::Result<reqwest::R
         .send()
         .await?;
     Ok(response)
+}
+
+async fn post_buffered_otlp_http(http_url: &str, name: &str) -> anyhow::Result<String> {
+    let (trace, span) = smoke_ids();
+    let export = otlp_smoke_export(trace, span, name);
+    reqwest::Client::new()
+        .post(format!(
+            "{http_url}/v1/otlp/demo/demo/local/v1/traces?durability=buffered"
+        ))
+        .header("content-type", "application/x-protobuf")
+        .body(encode_export_trace_request(&export))
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(hex(&trace))
+}
+
+async fn wait_for_file(path: &Path, timeout: Duration) -> anyhow::Result<()> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if path.exists() {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            anyhow::bail!("file did not appear: {}", path.display());
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+async fn queue_status(http_url: &str) -> anyhow::Result<serde_json::Value> {
+    Ok(reqwest::Client::new()
+        .get(format!("{http_url}/v1/ingest/demo/demo/queue"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<serde_json::Value>()
+        .await?)
+}
+
+async fn wait_for_dead_letter(
+    http_url: &str,
+    kind: &str,
+    reason_contains: &str,
+    timeout: Duration,
+) -> anyhow::Result<String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let status = queue_status(http_url).await?;
+        if let Some(dead_letters) = status
+            .get("dead_letters")
+            .and_then(serde_json::Value::as_array)
+        {
+            for dead_letter in dead_letters {
+                let message = dead_letter
+                    .get("message")
+                    .ok_or_else(|| anyhow::anyhow!("dead letter missing message"))?;
+                let message_kind = message
+                    .get("kind")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                let reason = dead_letter
+                    .get("reason")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                if message_kind == kind && reason.contains(reason_contains) {
+                    return message
+                        .get("message_id")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToString::to_string)
+                        .ok_or_else(|| anyhow::anyhow!("dead letter missing message_id"));
+                }
+            }
+        }
+        if tokio::time::Instant::now() >= deadline {
+            anyhow::bail!("dead letter {kind} with reason {reason_contains:?} did not appear");
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn replay_dead_letter(http_url: &str, message_id: &str) -> anyhow::Result<()> {
+    reqwest::Client::new()
+        .post(format!(
+            "{http_url}/v1/ingest/demo/demo/dead-letters/{message_id}/replay"
+        ))
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
+}
+
+async fn assert_search_hit_count(
+    http_url: &str,
+    trace_id: &str,
+    expected: usize,
+) -> anyhow::Result<()> {
+    let response = reqwest::Client::new()
+        .get(search_url(http_url, trace_id))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<serde_json::Value>()
+        .await?;
+    let actual = hit_count(&response);
+    if actual != expected {
+        anyhow::bail!("expected {expected} search hits for {trace_id}, got {actual}");
+    }
+    Ok(())
+}
+
+async fn wait_for_queue_empty(http_url: &str, timeout: Duration) -> anyhow::Result<()> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let status = queue_status(http_url).await?;
+        let trace_ingested_depth = status
+            .get("trace_ingested_depth")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default();
+        let dead_letters = status
+            .get("dead_letters")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len)
+            .unwrap_or_default();
+        if trace_ingested_depth == 0 && dead_letters == 0 {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            anyhow::bail!("queue did not become empty: {status}");
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
 fn span_count(trace: &serde_json::Value) -> usize {

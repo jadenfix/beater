@@ -23,8 +23,9 @@ use beater_store_obj::FsArtifactStore;
 use beater_store_sql::{SqliteMetadataStore, SqliteQuotaLimiter, SqliteTraceStore};
 use beater_usage::SqliteUsageLedger;
 use clap::{Parser, ValueEnum};
+use std::fs;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tonic::transport::Server;
@@ -77,6 +78,12 @@ struct Args {
         default_value_t = 1000
     )]
     trace_ingested_drain_interval_ms: u64,
+    #[arg(long, hide = true, env = "BEATER_TEST_TRACE_INGESTED_LEASE_MARKER")]
+    test_trace_ingested_lease_marker: Option<PathBuf>,
+    #[arg(long, hide = true, env = "BEATER_TEST_TRACE_INGESTED_HOLD_PATH")]
+    test_trace_ingested_hold_path: Option<PathBuf>,
+    #[arg(long, hide = true, env = "BEATER_TEST_TRACE_INGESTED_FAIL_WHILE_PATH")]
+    test_trace_ingested_fail_while_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -172,11 +179,17 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     if args.trace_ingested_drain_interval_ms > 0 {
+        let trace_ingested_hooks = TraceIngestedWorkerHooks {
+            lease_marker_path: args.test_trace_ingested_lease_marker.clone(),
+            hold_path: args.test_trace_ingested_hold_path.clone(),
+            fail_while_path: args.test_trace_ingested_fail_while_path.clone(),
+        };
         spawn_trace_ingested_worker(
             ingest.clone(),
             traces.clone(),
             search.clone(),
             Duration::from_millis(args.trace_ingested_drain_interval_ms),
+            trace_ingested_hooks,
         );
     }
     let otlp_default_scope = beater_core::TenantScope::new(
@@ -248,11 +261,19 @@ fn spawn_trace_write_worker(ingest: IngestService, interval: Duration) {
     });
 }
 
+#[derive(Clone, Debug, Default)]
+struct TraceIngestedWorkerHooks {
+    lease_marker_path: Option<PathBuf>,
+    hold_path: Option<PathBuf>,
+    fail_while_path: Option<PathBuf>,
+}
+
 fn spawn_trace_ingested_worker(
     ingest: IngestService,
     traces: Arc<SqliteTraceStore>,
     search: Arc<TantivySearchIndex>,
     interval: Duration,
+    hooks: TraceIngestedWorkerHooks,
 ) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -260,11 +281,16 @@ fn spawn_trace_ingested_worker(
             ticker.tick().await;
             let traces = traces.clone();
             let search = search.clone();
+            let hooks = hooks.clone();
             let report = match ingest
                 .drain_trace_ingested(100, move |trace_ref| {
                     let traces = traces.clone();
                     let search = search.clone();
-                    async move { index_trace_ref(traces, search, trace_ref).await }
+                    let hooks = hooks.clone();
+                    async move {
+                        apply_trace_ingested_test_hooks(&hooks).await?;
+                        index_trace_ref(traces, search, trace_ref).await
+                    }
                 })
                 .await
             {
@@ -282,6 +308,34 @@ fn spawn_trace_ingested_worker(
             }
         }
     });
+}
+
+async fn apply_trace_ingested_test_hooks(hooks: &TraceIngestedWorkerHooks) -> Result<(), String> {
+    if let Some(marker_path) = &hooks.lease_marker_path {
+        write_hook_marker(marker_path)?;
+    }
+    if let Some(hold_path) = &hooks.hold_path {
+        while hold_path.exists() {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+    if let Some(fail_while_path) = &hooks.fail_while_path {
+        if fail_while_path.exists() {
+            return Err(format!(
+                "test trace.ingested failure while {} exists",
+                fail_while_path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn write_hook_marker(path: &Path) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("create trace.ingested marker dir failed: {err}"))?;
+    }
+    fs::write(path, b"leased").map_err(|err| format!("write trace.ingested marker failed: {err}"))
 }
 
 async fn index_trace_ref(
