@@ -138,11 +138,11 @@ impl IngestService {
             Ok(published) => published > 0,
             Err(_) => {
                 // The trace is already durable; queue a write retry so the worker can
-                // idempotently re-write and publish downstream without returning a 500.
-                self.publish_trace_write(&prepared)
-                    .await
-                    .map(|publish| publish.accepted || publish.duplicate)
-                    .unwrap_or(false)
+                // idempotently re-write and publish downstream. If that fallback
+                // cannot be durably queued, surface the error instead of returning a
+                // misleading success with vanished downstream work.
+                let publish = self.publish_trace_write(&prepared).await?;
+                publish.accepted || publish.duplicate
             }
         };
 
@@ -1552,7 +1552,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_ingest_does_not_error_after_durable_write_when_downstream_queue_is_full() {
+    async fn direct_ingest_reports_backpressure_after_durable_write_when_downstream_retry_is_full()
+    {
         let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
         let artifacts = Arc::new(
             FsArtifactStore::new(tempdir.path().join("artifacts"))
@@ -1568,14 +1569,13 @@ mod tests {
         );
         let request = fixture_request();
 
-        let outcome = service
+        let error = service
             .ingest_native(request.clone())
             .await
-            .unwrap_or_else(|err| panic!("{err}"));
+            .err()
+            .unwrap_or_else(|| panic!("downstream retry backpressure should fail"));
 
-        assert_eq!(outcome.ack.accepted_raw, 1);
-        assert_eq!(outcome.ack.accepted_spans, 1);
-        assert!(!outcome.downstream_queued);
+        assert!(matches!(error, IngestError::Backpressure { capacity: 0 }));
         assert_eq!(bus.depth().await, Ok(0));
 
         let trace = traces

@@ -772,6 +772,7 @@ async fn ingest_otlp_http(
         accepted_spans: outcome.ack.accepted_spans,
         duplicate_raw: outcome.ack.duplicate_raw,
         duplicate_spans: outcome.ack.duplicate_spans,
+        downstream_queued: outcome.downstream_queued,
     }))
 }
 
@@ -1913,6 +1914,7 @@ struct OtlpIngestOutcome {
     accepted_spans: usize,
     duplicate_raw: usize,
     duplicate_spans: usize,
+    downstream_queued: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
