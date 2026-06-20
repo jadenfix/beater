@@ -33,6 +33,11 @@ if not proof_path.exists():
 text = proof_path.read_text()
 DEFAULT_DASHBOARD_BASE = "http://127.0.0.1:3000"
 DEFAULT_OTLP_ENDPOINT = "http://127.0.0.1:4317"
+OUTSIDE_RUN_ATTESTATION = (
+    "I attest that I am not a Beater project maintainer, I received no "
+    "step-by-step help beyond public repository instructions, I used a fresh "
+    "clone, and I completed the Gate 2 flow unaided."
+)
 FORBIDDEN_EVIDENCE = [
     "http://127.0.0.1:13003",
     "http://127.0.0.1:13008",
@@ -173,6 +178,7 @@ for field in [
     "Docker Compose version",
     "Browser",
     "Preflight status",
+    "Outside-run attestation",
     "Commit SHA",
     "Branch",
     "OS/arch",
@@ -198,6 +204,10 @@ for field in [
         unresolved_fields.append(field)
 if unresolved_fields:
     fail("unresolved required fields: " + ", ".join(unresolved_fields))
+
+outside_run_attestation = field_value("Outside-run attestation")
+if outside_run_attestation != OUTSIDE_RUN_ATTESTATION:
+    fail("Outside-run attestation must match the required unaided outside-run statement")
 
 if "- [ ]" in text:
     fail("all pass-checklist boxes must be checked")

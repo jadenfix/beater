@@ -228,7 +228,8 @@ scripts/generate-gate2-outside-proof.py \
   --prior-exposure "none" \
   --machine-os "..." \
   --browser "..." \
-  --preflight-status "passed"
+  --preflight-status "passed" \
+  --attest-outside-run
 ```
 
 Then validate it with:

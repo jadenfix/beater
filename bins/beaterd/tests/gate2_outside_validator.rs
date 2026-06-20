@@ -13,6 +13,7 @@ const BEATER_IMAGE_DIGEST: &str =
     "ghcr.io/jadenfix/beater/beaterd@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const DASHBOARD_IMAGE_DIGEST: &str =
     "ghcr.io/jadenfix/beater/dashboard@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const OUTSIDE_RUN_ATTESTATION: &str = "I attest that I am not a Beater project maintainer, I received no step-by-step help beyond public repository instructions, I used a fresh clone, and I completed the Gate 2 flow unaided.";
 
 #[test]
 fn gate2_outside_validator_allows_pending_template_with_allow_pending() {
@@ -48,6 +49,7 @@ fn gate2_outside_generator_builds_valid_completed_proof() {
     let generated_text = fs::read_to_string(&generated)
         .unwrap_or_else(|err| panic!("read {}: {err}", generated.display()));
     assert!(generated_text.contains("- Name: Validator Fixture Runner"));
+    assert!(generated_text.contains(OUTSIDE_RUN_ATTESTATION));
     assert!(generated_text.contains("- Beater image digest: ghcr.io/jadenfix/beater/beaterd@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
     assert!(generated_text.contains(
         "- [x] The runner completed the flow using only public repository instructions."
@@ -77,6 +79,23 @@ fn gate2_outside_generator_does_not_write_invalid_completed_proof() {
 }
 
 #[test]
+fn gate2_outside_generator_requires_explicit_attestation() {
+    let fixture = ValidatorFixture::new();
+    let generated = fixture
+        .dir
+        .path()
+        .join("missing-attestation-generated-proof.md");
+
+    let output = run_generator_with_attestation(&fixture.stopwatch_path, &generated, false);
+
+    assert_failure(output, "--attest-outside-run is required");
+    assert!(
+        !generated.exists(),
+        "generator must not write completed proof without explicit attestation"
+    );
+}
+
+#[test]
 fn gate2_outside_validator_rejects_missing_stopwatch_proof() {
     let fixture = ValidatorFixture::new();
     replace(
@@ -93,6 +112,20 @@ fn gate2_outside_validator_rejects_missing_stopwatch_proof() {
     let output = run_validator(&fixture.proof_path);
 
     assert_failure(output, "stopwatch proof file does not exist");
+}
+
+#[test]
+fn gate2_outside_validator_rejects_missing_outside_run_attestation() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        &format!("- Outside-run attestation: {OUTSIDE_RUN_ATTESTATION}"),
+        "- Outside-run attestation:",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(output, "Outside-run attestation must match");
 }
 
 #[test]
@@ -234,6 +267,7 @@ Status: completed.
 - Browser: Chromium
 - Network notes: public docs only
 - Preflight status: passed
+- Outside-run attestation: {OUTSIDE_RUN_ATTESTATION}
 
 ## Repository
 
@@ -373,8 +407,17 @@ fn run_default_validator(args: &[&str]) -> Output {
 }
 
 fn run_generator(stopwatch_path: &Path, output_path: &Path) -> Output {
+    run_generator_with_attestation(stopwatch_path, output_path, true)
+}
+
+fn run_generator_with_attestation(
+    stopwatch_path: &Path,
+    output_path: &Path,
+    attest: bool,
+) -> Output {
     let root = repo_root();
-    Command::new("python3")
+    let mut command = Command::new("python3");
+    command
         .arg(root.join("scripts/generate-gate2-outside-proof.py"))
         .arg("--stopwatch-proof")
         .arg(stopwatch_path)
@@ -406,7 +449,11 @@ fn run_generator(stopwatch_path: &Path, output_path: &Path) -> Output {
         .arg("none")
         .arg("--runner-notes")
         .arg("No extra runner notes.")
-        .current_dir(root)
+        .current_dir(root);
+    if attest {
+        command.arg("--attest-outside-run");
+    }
+    command
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside proof generator: {err}"))
 }

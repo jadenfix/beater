@@ -17,6 +17,7 @@ outside the project who runs the flow unaided from a fresh clone.
 - Browser:
 - Network notes:
 - Preflight status:
+- Outside-run attestation:
 
 ## Repository
 
@@ -64,7 +65,8 @@ scripts/generate-gate2-outside-proof.py \
   --prior-exposure "none" \
   --machine-os "..." \
   --browser "..." \
-  --preflight-status "passed"
+  --preflight-status "passed" \
+  --attest-outside-run
 ```
 
 After replacing this template with completed evidence, run:

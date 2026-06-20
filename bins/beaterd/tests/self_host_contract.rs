@@ -224,11 +224,19 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_validator.contains("tenant"));
     assert!(outside_validator.contains("screen recording notes dashboard base"));
     assert!(outside_validator.contains("must be the concrete dashboard URL"));
+    assert!(outside_validator.contains("OUTSIDE_RUN_ATTESTATION"));
+    assert!(outside_validator.contains("\"Outside-run attestation\""));
+    assert!(outside_validator
+        .contains("Outside-run attestation must match the required unaided outside-run statement"));
 
     let outside_generator = read(root.join("scripts/generate-gate2-outside-proof.py"));
     assert!(outside_generator.contains("CANONICAL_COMMAND"));
+    assert!(outside_generator.contains("OUTSIDE_RUN_ATTESTATION"));
     assert!(outside_generator.contains("--runner-name"));
     assert!(outside_generator.contains("--prior-exposure"));
+    assert!(outside_generator.contains("--attest-outside-run"));
+    assert!(outside_generator
+        .contains("--attest-outside-run is required for completed Gate 2 proof generation"));
     assert!(outside_generator.contains("valid only when the named runner is outside"));
     assert!(outside_generator.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(outside_generator.contains("require_pending_or_force"));
@@ -244,6 +252,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("Python, curl, and npm were available"));
     assert!(outside_proof.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(outside_proof.contains("scripts/generate-gate2-outside-proof.py"));
+    assert!(outside_proof.contains("--attest-outside-run"));
     assert!(outside_proof.contains("Docker Compose version"));
     assert!(outside_proof.contains("Beater image digest"));
     assert!(outside_proof.contains("Screen recording SHA256"));
@@ -255,6 +264,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("Time-to-quickstart-click was 300 seconds or less"));
     assert!(outside_proof.contains("run -> turn -> step -> tool -> MCP"));
     assert!(outside_proof.contains("using only public repository instructions"));
+    assert!(outside_proof.contains("Outside-run attestation"));
     assert!(outside_proof.contains("cross-checks default"));
     assert!(outside_proof.contains("image digests"));
     assert!(outside_proof.contains("screen-recording notes"));
@@ -263,6 +273,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     let readme = read(root.join("README.md"));
     assert!(readme.contains("docs/demos/gate2-outside-person-proof.md"));
     assert!(readme.contains("scripts/generate-gate2-outside-proof.py"));
+    assert!(readme.contains("--attest-outside-run"));
     assert!(readme.contains("BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 BEATER_GATE2_RECORD_DEMO=1 scripts/gate2-compose-stopwatch.sh"));
     assert!(readme.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(readme.contains("removes any previous Beater stopwatch project"));
@@ -279,6 +290,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(requirements.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(requirements.contains("image-digest"));
     assert!(requirements.contains("recording-notes"));
+    assert!(requirements.contains("outside-run attestation"));
     assert!(requirements.contains("recording-hash cross-checks"));
     assert!(requirements.contains("CI-enforced"));
 

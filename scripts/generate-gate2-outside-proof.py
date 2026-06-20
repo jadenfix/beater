@@ -13,6 +13,11 @@ CANONICAL_COMMAND = (
     "BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 "
     "BEATER_GATE2_RECORD_DEMO=1 scripts/gate2-compose-stopwatch.sh"
 )
+OUTSIDE_RUN_ATTESTATION = (
+    "I attest that I am not a Beater project maintainer, I received no "
+    "step-by-step help beyond public repository instructions, I used a fresh "
+    "clone, and I completed the Gate 2 flow unaided."
+)
 
 
 def clean_value(value):
@@ -109,6 +114,7 @@ unaided using public repository instructions.
 - Browser: {args.browser}
 - Network notes: {network_notes}
 - Preflight status: {args.preflight_status}
+- Outside-run attestation: {OUTSIDE_RUN_ATTESTATION}
 
 ## Repository
 
@@ -193,6 +199,11 @@ def parse_args():
     parser.add_argument("--machine-os", required=True)
     parser.add_argument("--browser", required=True)
     parser.add_argument("--preflight-status", required=True)
+    parser.add_argument(
+        "--attest-outside-run",
+        action="store_true",
+        help="Required attestation that the runner is outside the project and unaided.",
+    )
     parser.add_argument("--network-notes", default="")
     parser.add_argument("--terminal-output-excerpt", default="")
     parser.add_argument("--compose-logs-saved", default="")
@@ -202,7 +213,10 @@ def parse_args():
     parser.add_argument("--branch", default=git_branch())
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--no-validate", action="store_true")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.attest_outside_run:
+        parser.error("--attest-outside-run is required for completed Gate 2 proof generation")
+    return args
 
 
 def main():
