@@ -106,6 +106,9 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   const quickstart = readFileSync(join(root, "tests/e2e/quickstart.spec.ts"), "utf8");
   assert.match(quickstart, /five-line-llm-call/);
   assert.match(quickstart, /gpt-quickstart/);
+  assert.match(quickstart, /page\.goto\("\/\?tenant=demo&project=demo&environment=local&kind=llm\.call&model=gpt-quickstart"\)/);
+  assert.match(quickstart, /traceRow\.click\(\)/);
+  assert.match(quickstart, /toHaveURL/);
   assert.match(quickstart, /hello from stock OpenTelemetry/);
   assert.match(quickstart, /hello from Beater/);
   assert.match(quickstart, /data-icon/);

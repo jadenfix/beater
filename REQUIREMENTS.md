@@ -9,7 +9,7 @@ system, test output, or runtime behavior.
 | ID | Requirement | Evidence required |
 | --- | --- | --- |
 | R0.1 | A user can send agent telemetry without a Beater-specific SDK. | OTLP HTTP/gRPC endpoint docs, `beaterctl smoke` local test, live `beaterctl smoke --http-url` tests for HTTP and gRPC against `beaterd` with `trace_query_lag_ms <= 15s`, live `beaterd` OTLP HTTP/gRPC test, initial `web/dashboard` trace table; recorded UI demo still required |
-| R0.2 | A user can inspect a trace as an agent-native span tree. | Initial `web/dashboard` color/icon waterfall/detail/I/O surface with audited redacted-I/O unmask controls, generated read-client types that use trace, selected-span, and span-I/O read endpoints, status/kind/time/model/cost/latency/release filter bar, dashboard static test, Playwright browser check over a stock OTLP Python all-kind agent trace including run -> turn -> step -> tool -> MCP depth assertions, GHCR prebuilt-image workflow plus compose stopwatch script for a literal five-line OTEL snippet; outside-person stopwatch proof still required |
+| R0.2 | A user can inspect a trace as an agent-native span tree. | Initial `web/dashboard` color/icon waterfall/detail/I/O surface with audited redacted-I/O unmask controls, generated read-client types that use trace, selected-span, and span-I/O read endpoints, status/kind/time/model/cost/latency/release filter bar, dashboard static test, Playwright browser check over a stock OTLP Python all-kind agent trace including run -> turn -> step -> tool -> MCP depth assertions, GHCR prebuilt-image workflow plus compose stopwatch script for a literal five-line OTEL snippet and optional all-kind browser proof; outside-person stopwatch proof in `docs/demos/gate2-outside-person-proof.md` still required |
 | R0.3 | A failure can be promoted to a dataset case. | Trace-to-dataset API test, human-review annotation promotion API test, and `beaterctl review-fixture` |
 | R0.4 | Offline evals run over a dataset version. | Deterministic and judge-backed dataset eval integration tests plus `beaterctl judge-dataset-fixture` |
 | R0.5 | Candidate and baseline releases can be compared. | Experiment output with per-case scores, aggregate deltas, stored gate policy, deterministic/judge experiment API tests |
@@ -131,7 +131,7 @@ system, test output, or runtime behavior.
 
 | ID | Requirement | Evidence required |
 | --- | --- | --- |
-| R11.1 | Time-to-first-trace is under 5 minutes. | Fresh-machine quickstart runbook and timed smoke test |
+| R11.1 | Time-to-first-trace is under 5 minutes. | Fresh-machine quickstart runbook, timed smoke test, and completed unaided outside-person evidence in `docs/demos/gate2-outside-person-proof.md` |
 | R11.2 | Zero-SDK OTLP onboarding works. | Live `beaterd` OTLP HTTP/gRPC smoke test uses stock OpenTelemetry protobuf service types; OpenInference/OpenLLMetry/OTel fixture apps still required |
 | R11.3 | Rust SDK is first-class. | `tracing`, OTLP, reqwest, axum, tonic, MCP examples |
 | R11.4 | Python/TS adoption is supported through standards on day one. | OTLP examples for common Python/TS frameworks |

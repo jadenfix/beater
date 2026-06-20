@@ -1,14 +1,20 @@
 import { expect, test } from "@playwright/test";
 
 test("renders the five-line stock OTLP quickstart trace in a browser", async ({ page }) => {
-  const traceParam = process.env.BEATER_E2E_TRACE_ID
-    ? `&trace=${encodeURIComponent(process.env.BEATER_E2E_TRACE_ID)}`
-    : "&kind=llm.call&model=gpt-quickstart";
-  await page.goto(`/?tenant=demo&project=demo&environment=local${traceParam}`);
+  const traceId = process.env.BEATER_E2E_TRACE_ID;
+  await page.goto("/?tenant=demo&project=demo&environment=local&kind=llm.call&model=gpt-quickstart");
 
   await expect(page.getByRole("heading", { name: "Agent Trace Debugger" })).toBeVisible();
-  await expect(page.getByLabel("Traces")).toContainText("five-line-llm-call");
-  await expect(page.getByLabel("Traces")).toContainText("openai/gpt-quickstart");
+  const traceList = page.getByLabel("Traces");
+  await expect(traceList).toContainText("five-line-llm-call");
+  await expect(traceList).toContainText("openai/gpt-quickstart");
+
+  const traceRow = traceId
+    ? traceList.locator(`a.run-row[href*="trace=${encodeURIComponent(traceId)}"]`)
+    : traceList.getByRole("link").filter({ hasText: "five-line-llm-call" }).first();
+  await expect(traceRow).toContainText("five-line-llm-call");
+  await traceRow.click();
+  await expect(page).toHaveURL(traceId ? new RegExp(`trace=${traceId}`) : /trace=/);
 
   const waterfall = page.getByLabel("Agent span waterfall");
   await expect(waterfall).toContainText("five-line-llm-call");

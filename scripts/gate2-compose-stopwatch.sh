@@ -19,7 +19,31 @@ dashboard_base_url="http://127.0.0.1:$host_dashboard_port"
 start_epoch="$(date +%s)"
 deadline_epoch=$((start_epoch + 300))
 started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-browser_proof_status="not requested"
+quickstart_browser_proof_status="not requested"
+waterfall_browser_proof_status="not requested"
+time_to_quickstart_click_seconds=""
+all_kind_trace_id=""
+all_kind_dashboard_url=""
+git_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+os_arch="$(uname -sm 2>/dev/null || echo unknown)"
+docker_version="$(docker --version 2>/dev/null || echo unknown)"
+compose_version="$(docker compose version 2>/dev/null || echo unknown)"
+all_kinds=(
+  agent.run
+  agent.turn
+  agent.plan
+  agent.step
+  retrieval.query
+  memory.read
+  guardrail.check
+  llm.call
+  tool.call
+  mcp.request
+  memory.write
+  evaluator.run
+  human.review
+  replay.run
+)
 if [[ "$local_build" == "1" ]]; then
   compose_files=(-f docker-compose.yml)
   startup_mode="local-build"
@@ -148,23 +172,49 @@ wait_text "$dashboard_url" "Agent Trace Debugger" "dashboard"
 wait_text "$dashboard_url" "five-line-llm-call" "dashboard quickstart trace"
 wait_text "$dashboard_url" "gpt-quickstart" "dashboard model detail"
 wait_text "$dashboard_url" "hello from stock OpenTelemetry" "dashboard prompt detail"
+time_to_first_trace_seconds=$(($(date +%s) - start_epoch))
 
 if [[ "$browser_proof" == "1" ]]; then
   (
     cd web/dashboard
     run_before_deadline "dashboard browser proof npm install" npm ci
     run_before_deadline "dashboard browser proof chromium install" npx playwright install chromium
-    export BEATER_E2E_TRACE_ID="$trace_id"
-    export PLAYWRIGHT_BASE_URL="$dashboard_base_url"
-    run_before_deadline "five-line dashboard browser proof" npm run test:e2e:quickstart
+    run_before_deadline "five-line dashboard browser proof" env BEATER_E2E_TRACE_ID="$trace_id" PLAYWRIGHT_BASE_URL="$dashboard_base_url" npm run test:e2e:quickstart
   )
-  browser_proof_status="passed"
+  quickstart_browser_proof_status="passed"
+  time_to_quickstart_click_seconds=$(($(date +%s) - start_epoch))
+  if (( time_to_quickstart_click_seconds > 300 )); then
+    echo "Time-to-quickstart-click exceeded 300s: ${time_to_quickstart_click_seconds}s" >&2
+    exit 1
+  fi
+
+  run_before_deadline "stock Python all-kind OTEL fixture" env OTEL_EXPORTER_OTLP_ENDPOINT="$otlp_url" "$venv_dir/bin/python" examples/python/otel_smoke.py
+
+  all_kind_query="$api_url/v1/traces/demo?project_id=demo&environment_id=local&kind=llm.call&model=gpt-demo&release=compose-demo"
+  wait_text "$all_kind_query" "gpt-demo" "stock Python all-kind OTEL trace"
+  all_kind_trace_id="$(curl -fsS "$all_kind_query" | first_trace_id)"
+  all_kind_dashboard_url="$dashboard_base_url/?tenant=demo&project=demo&environment=local&trace=$all_kind_trace_id"
+  wait_text "$all_kind_dashboard_url" "call-policy-model" "dashboard all-kind llm.call"
+  for kind in "${all_kinds[@]}"; do
+    wait_text "$all_kind_dashboard_url" "$kind" "dashboard all-kind waterfall"
+  done
+
+  (
+    cd web/dashboard
+    run_before_deadline "all-kind waterfall browser proof" env BEATER_E2E_TRACE_ID="$all_kind_trace_id" PLAYWRIGHT_BASE_URL="$dashboard_base_url" npx playwright test tests/e2e/dashboard.spec.ts
+  )
+  waterfall_browser_proof_status="passed"
 fi
 
 ended_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 duration_seconds=$(($(date +%s) - start_epoch))
+image_summary="$(compose images 2>/dev/null || true)"
+if (( time_to_first_trace_seconds > 300 )); then
+  echo "Time-to-first-trace exceeded 300s: ${time_to_first_trace_seconds}s" >&2
+  exit 1
+fi
 if (( duration_seconds > 300 )); then
-  echo "Time-to-first-trace exceeded 300s: ${duration_seconds}s" >&2
+  echo "Total proof duration exceeded 300s: ${duration_seconds}s" >&2
   exit 1
 fi
 
@@ -175,18 +225,33 @@ if [[ "$write_proof" == "1" ]]; then
 
 - Started: $started_at
 - Ended: $ended_at
-- Duration: ${duration_seconds}s
+- Time-to-first-trace: ${time_to_first_trace_seconds}s
+- Time-to-quickstart-click: ${time_to_quickstart_click_seconds:-not requested}
+- Total duration: ${duration_seconds}s
 - Limit: 300s
+- Git SHA: \`$git_sha\`
+- OS/arch: \`$os_arch\`
+- Docker: \`$docker_version\`
+- Docker Compose: \`$compose_version\`
 - Startup mode: $startup_mode
 - Clean start: $([[ "$reuse" == "1" ]] && echo "no" || echo "yes")
 - Reuse override: \`BEATER_GATE2_REUSE=$reuse\`
 - Prebuilt pull policy: \`$prebuilt_pull_policy\`
 - Compose project: $project
-- Snippet: \`examples/python/five_line_otel.py\`
+- Quickstart snippet: \`examples/python/five_line_otel.py\`
 - OTLP endpoint: \`$otlp_url\`
-- Trace: \`$trace_id\`
-- Dashboard: $dashboard_url
-- Browser proof: $browser_proof_status
+- Quickstart trace: \`$trace_id\`
+- Quickstart dashboard: $dashboard_url
+- Quickstart browser proof: $quickstart_browser_proof_status
+- All-kind nested trace: \`${all_kind_trace_id:-not requested}\`
+- All-kind dashboard: ${all_kind_dashboard_url:-not requested}
+- All-kind waterfall browser proof: $waterfall_browser_proof_status
+
+## Compose Images
+
+\`\`\`text
+$image_summary
+\`\`\`
 
 This is an automated local stopwatch proof. The mandate still requires an
 outside-person run to fully close Gate 2.
@@ -194,16 +259,22 @@ outside-person run to fully close Gate 2.
 Regenerate:
 
 \`\`\`bash
-BEATER_GATE2_WRITE_PROOF=1 scripts/gate2-compose-stopwatch.sh
+BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 KEEP_BEATER_COMPOSE=0 scripts/gate2-compose-stopwatch.sh
 \`\`\`
 EOF
 fi
 
 cat <<EOF
-Gate 2 compose stopwatch passed in ${duration_seconds}s.
+Gate 2 compose stopwatch passed in ${time_to_first_trace_seconds}s to first trace (${duration_seconds}s total).
+
+Time to quickstart browser click:
+  ${time_to_quickstart_click_seconds:-not requested}
 
 Open the dashboard:
   $dashboard_url
+
+All-kind waterfall dashboard:
+  ${all_kind_dashboard_url:-not requested}
 
 Five-line snippet:
   examples/python/five_line_otel.py
@@ -223,5 +294,6 @@ pulling prebuilt GHCR images.
 Set BEATER_GATE2_REUSE=1 to skip the pre-run Compose down/volume removal and
 Python virtualenv deletion for local warm-loop debugging only.
 Set BEATER_GATE2_BROWSER_PROOF=1 to run the Playwright browser proof for the
-five-line quickstart trace inside the same 300s stopwatch window.
+five-line quickstart trace and all-kind nested agent waterfall inside the same
+300s stopwatch window.
 EOF

@@ -139,21 +139,22 @@ Exact Docker Compose stopwatch proof for the mandate's clean-machine path:
 ```bash
 git clone https://github.com/jadenfix/beater.git
 cd beater
-scripts/gate2-compose-stopwatch.sh
+BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 scripts/gate2-compose-stopwatch.sh
 ```
 
 The script first removes any previous Compose project/volumes and deletes the
 quickstart virtualenv, then runs `docker compose up`, sends
 `examples/python/five_line_otel.py`, waits until the trace is visible in
 `localhost:3000`, and fails if time-to-first-trace exceeds 300 seconds. It
-leaves the dashboard running by default so a human can click through the trace.
+also records time-to-quickstart-click when browser proof is enabled. It leaves
+the dashboard running by default so a human can click through the trace.
 By default it uses `docker-compose.prebuilt.yml` and pulls current GHCR images
 published by `.github/workflows/container-images.yml`; set
 `BEATER_GATE2_LOCAL_BUILD=1` when you intentionally want to build the server and
 dashboard images from source. Set `BEATER_GATE2_REUSE=1` only for local
 warm-loop debugging. Set `BEATER_GATE2_BROWSER_PROOF=1` to also run the
-Playwright browser proof for the five-line trace inside the same stopwatch
-window.
+Playwright browser proof for both the five-line trace and the all-kind nested
+agent waterfall inside the same stopwatch window.
 
 The five-line snippet is intentionally plain OpenTelemetry. To run the exact
 manual step after `docker compose up -d --build`, install stock OTEL packages
@@ -206,8 +207,12 @@ BEATER_GATE2_RECORD_DEMO=1 scripts/gate2-proof.sh
 To write the automated compose stopwatch artifact under `docs/demos/`:
 
 ```bash
-BEATER_GATE2_WRITE_PROOF=1 KEEP_BEATER_COMPOSE=0 scripts/gate2-compose-stopwatch.sh
+BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 KEEP_BEATER_COMPOSE=0 scripts/gate2-compose-stopwatch.sh
 ```
+
+Gate 2 still requires an unaided outside-person run before it can be called
+passed. Use [docs/demos/gate2-outside-person-proof.md](docs/demos/gate2-outside-person-proof.md)
+as the required evidence template for that run.
 
 Warm-loop debugging can skip the pre-run cleanup, but this is not acceptable
 evidence for Gate 2:

@@ -46,14 +46,17 @@ scripts/smoke-compose.sh
 For the clean-machine stopwatch path with the literal five-line OTEL snippet:
 
 ```bash
-scripts/gate2-compose-stopwatch.sh
+BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 scripts/gate2-compose-stopwatch.sh
 ```
 
 That script runs the five-line snippet from the host through a temporary Python
 venv against `localhost:4317`, then waits for the trace to be visible in the
-dashboard. It pulls prebuilt GHCR images through `docker-compose.prebuilt.yml`
-by default; set `BEATER_GATE2_LOCAL_BUILD=1` to build images from source for
-development checks.
+dashboard. With `BEATER_GATE2_BROWSER_PROOF=1`, it also sends the all-kind stock
+OTEL fixture and runs the browser assertions for both the quickstart trace and
+the nested run -> turn -> step -> tool -> MCP waterfall. It pulls prebuilt GHCR
+images through `docker-compose.prebuilt.yml` by default; set
+`BEATER_GATE2_LOCAL_BUILD=1` to build images from source for development
+checks.
 
 For a strict-auth `beaterd`, set one server-only credential before starting the
 dashboard:
@@ -103,6 +106,9 @@ To also record the browser demo artifact under `docs/demos/`:
 ```bash
 BEATER_GATE2_RECORD_DEMO=1 scripts/gate2-proof.sh
 ```
+
+The remaining Gate 2 blocker is an unaided outside-person run of the stopwatch
+flow. Record it with `docs/demos/gate2-outside-person-proof.md`.
 
 ## Vercel
 

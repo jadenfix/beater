@@ -123,11 +123,20 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("docker compose"));
     assert!(stopwatch_script.contains("python3 -m venv"));
     assert!(stopwatch_script.contains("examples/python/five_line_otel.py"));
+    assert!(stopwatch_script.contains("examples/python/otel_smoke.py"));
     assert!(stopwatch_script.contains("OTEL_EXPORTER_OTLP_ENDPOINT"));
     assert!(stopwatch_script.contains("duration_seconds > 300"));
+    assert!(stopwatch_script.contains("time_to_first_trace_seconds > 300"));
+    assert!(stopwatch_script.contains("time_to_quickstart_click_seconds > 300"));
+    assert!(stopwatch_script.contains("git rev-parse HEAD"));
+    assert!(stopwatch_script.contains("docker compose version"));
+    assert!(stopwatch_script.contains("compose images"));
     assert!(stopwatch_script.contains("BEATER_GATE2_WRITE_PROOF"));
     assert!(stopwatch_script.contains("BEATER_GATE2_BROWSER_PROOF"));
     assert!(stopwatch_script.contains("npm run test:e2e:quickstart"));
+    assert!(stopwatch_script.contains("npx playwright test tests/e2e/dashboard.spec.ts"));
+    assert!(stopwatch_script.contains("all_kind_trace_id"));
+    assert!(stopwatch_script.contains("all-kind nested agent waterfall"));
     assert!(stopwatch_script.contains("PLAYWRIGHT_BASE_URL"));
     assert!(stopwatch_script.contains("BEATER_GATE2_REUSE"));
     assert!(stopwatch_script.contains("clean_start"));
@@ -137,6 +146,26 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("BEATER_GATE2_PULL_POLICY"));
     assert!(stopwatch_script.contains("--pull \"$prebuilt_pull_policy\""));
     assert!(stopwatch_script.contains("BEATER_GATE2_LOCAL_BUILD"));
+
+    let outside_proof = read(root.join("docs/demos/gate2-outside-person-proof.md"));
+    assert!(outside_proof.contains("Status: not yet completed"));
+    assert!(outside_proof.contains("BEATER_GATE2_BROWSER_PROOF=1"));
+    assert!(outside_proof.contains("Docker Compose version"));
+    assert!(outside_proof.contains("Beater image digest"));
+    assert!(outside_proof.contains("Screen recording SHA256"));
+    assert!(outside_proof.contains("Terminal output excerpt"));
+    assert!(outside_proof.contains("http://127.0.0.1:3000/"));
+    assert!(outside_proof.contains("Time-to-first-trace was 300 seconds or less"));
+    assert!(outside_proof.contains("Time-to-quickstart-click was 300 seconds or less"));
+    assert!(outside_proof.contains("run -> turn -> step -> tool -> MCP"));
+    assert!(outside_proof.contains("using only public repository instructions"));
+
+    let readme = read(root.join("README.md"));
+    assert!(readme.contains("docs/demos/gate2-outside-person-proof.md"));
+    assert!(readme.contains("BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 scripts/gate2-compose-stopwatch.sh"));
+
+    let requirements = read(root.join("REQUIREMENTS.md"));
+    assert!(requirements.contains("docs/demos/gate2-outside-person-proof.md"));
 
     let compose = read(root.join("docker-compose.yml"));
     assert!(compose.contains("otel-python-quickstart"));
@@ -190,6 +219,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     let quickstart_e2e = read(root.join("web/dashboard/tests/e2e/quickstart.spec.ts"));
     assert!(quickstart_e2e.contains("five-line-llm-call"));
     assert!(quickstart_e2e.contains("gpt-quickstart"));
+    assert!(quickstart_e2e.contains("kind=llm.call&model=gpt-quickstart"));
+    assert!(quickstart_e2e.contains("traceRow.click()"));
+    assert!(quickstart_e2e.contains("toHaveURL"));
     assert!(quickstart_e2e.contains("hello from stock OpenTelemetry"));
     assert!(quickstart_e2e.contains("hello from Beater"));
     assert!(quickstart_e2e.contains("data-icon"));

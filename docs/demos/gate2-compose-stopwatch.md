@@ -1,5 +1,9 @@
 # Gate 2 Compose Stopwatch Proof
 
+Status: historical automated local proof. Regenerate with
+`BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 KEEP_BEATER_COMPOSE=0 scripts/gate2-compose-stopwatch.sh`
+before using this as current Gate 2 evidence.
+
 - Started: 2026-06-20T09:58:54Z
 - Ended: 2026-06-20T09:59:20Z
 - Duration: 26s
