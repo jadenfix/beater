@@ -8,16 +8,16 @@ use beater_alerts::{
     OnlineSamplingPolicy, SamplingDecision,
 };
 use beater_archive::{ArchiveManifest, ArchiveQuery, ArchivedSpanRow, ParquetTraceArchive};
-use beater_audit::{pii_unmask_event, AuditEvent, AuditOutcome, AuditStore};
+use beater_audit::{pii_unmask_event, AuditEvent, AuditOutcome, AuditStore, PiiUnmaskAuditInput};
 use beater_auth::{ApiKeyStore, CreateApiKeyRequest, RevokedApiKey};
 use beater_calibration::{
     calibrate_eval_report, CalibrationPolicy, CalibrationReport, CalibrationStore,
 };
 use beater_core::{
-    AgentReleaseId, AnnotationId, ApiKeyId, ArtifactId, DatasetCaseId, DatasetId,
-    DatasetVersionId, EnvironmentId, EvaluatorVersionId, ExperimentRunId, GateId, ProjectId,
-    PromptVersionId, ProviderSecretId, ReviewQueueId, ReviewTaskId, Sha256Hash, SpanId, TenantId,
-    TenantScope, TraceId,
+    AgentReleaseId, AnnotationId, ApiKeyId, ArtifactId, DatasetCaseId, DatasetId, DatasetVersionId,
+    EnvironmentId, EvaluatorVersionId, ExperimentRunId, GateId, ProjectId, PromptVersionId,
+    ProviderSecretId, ReviewQueueId, ReviewTaskId, Sha256Hash, SpanId, TenantId, TenantScope,
+    TraceId,
 };
 use beater_datasets::{
     evaluate_dataset_version, evaluate_dataset_version_with_judge, promote_trace_span_to_case,
@@ -37,13 +37,16 @@ use beater_human::{
     SubmitAnnotationRequest,
 };
 use beater_ingest::{
-    anonymous_auth_context, IngestError, IngestOutcome, IngestService, NativeIngestRequest,
+    anonymous_auth_context, IngestError, IngestOutcome, IngestQueueStatus, IngestService,
+    NativeIngestRequest, QueuedTraceWork, TraceWriteDrainReport,
 };
 use beater_judge::{
     JudgeBroker, JudgeBrokerError, JudgeBrokerOutcome, JudgeBrokerRequest, JudgeLedgerStore,
 };
 use beater_otlp::{decode_export_trace_request, export_to_raw_trace_ingest_request};
-use beater_schema::{AgentSpanKind, ArtifactRef, AuthContext, RedactionClass, SpanStatus, TraceView};
+use beater_schema::{
+    AgentSpanKind, ArtifactRef, AuthContext, RedactionClass, SpanStatus, TraceView,
+};
 use beater_search::{NoopSearchIndex, SearchIndex, SearchRequest, SearchResponse};
 use beater_secrets::{
     ProviderSecretMetadata, ProviderSecretStore, PutProviderSecretRequest, RevokedProviderSecret,
@@ -51,7 +54,7 @@ use beater_secrets::{
 use beater_security::{
     api_key_id_from_secret, verify_api_key, ApiScope, CreatedApiKey, SecurityError,
 };
-use beater_store::TraceStore;
+use beater_store::{StoreError, TraceStore};
 use beater_usage::{
     judge_usage_from_dataset_eval_report, judge_usage_from_experiment_report,
     judge_usage_from_outcome, record_usage_batch, UsageLedgerStore, UsageRecordInsert,
@@ -277,6 +280,14 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/v1/usage/:tenant_id/:project_id", get(get_usage_summary_route))
         .route("/v1/audit/:tenant_id/:project_id", get(list_audit_events_route))
+        .route(
+            "/v1/ingest/:tenant_id/:project_id/queue",
+            get(get_ingest_queue_status_route),
+        )
+        .route(
+            "/v1/ingest/:tenant_id/:project_id/trace-writes/drain",
+            post(drain_trace_writes_route),
+        )
         .route("/v1/search/:tenant_id/spans", get(search_spans))
         .route(
             "/v1/archive/:tenant_id/:project_id/:trace_id",
@@ -363,6 +374,7 @@ async fn health() -> Json<HealthResponse> {
 async fn ingest_native(
     State(state): State<ApiState>,
     headers: HeaderMap,
+    Query(params): Query<IngestDurabilityQuery>,
     Json(mut request): Json<NativeIngestRequest>,
 ) -> Result<Json<IngestOutcome>, ApiError> {
     let auth = authorize(
@@ -375,7 +387,11 @@ async fn ingest_native(
     )
     .await?;
     request.auth_context = Some(auth.context);
-    let outcome = ingest_and_index(&state, request).await?;
+    let outcome = if ingest_buffered(&params)? {
+        state.ingest.buffer_native(request).await?
+    } else {
+        ingest_and_index(&state, request).await?
+    };
     Ok(Json(outcome))
 }
 
@@ -580,10 +596,46 @@ async fn list_judge_ledger_route(
     Ok(Json(records))
 }
 
+async fn get_ingest_queue_status_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id)): Path<(String, String)>,
+) -> Result<Json<IngestQueueStatus>, ApiError> {
+    let tenant_id =
+        TenantId::new(tenant_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let project_id =
+        ProjectId::new(project_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    authorize_project_route(&state, &headers, &tenant_id, &project_id, ApiScope::Admin).await?;
+    Ok(Json(
+        state.ingest.queue_status(tenant_id, project_id).await?,
+    ))
+}
+
+async fn drain_trace_writes_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id)): Path<(String, String)>,
+    Query(params): Query<DrainTraceWritesQuery>,
+) -> Result<Json<TraceWriteDrainReport>, ApiError> {
+    let tenant_id =
+        TenantId::new(tenant_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let project_id =
+        ProjectId::new(project_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    authorize_project_route(&state, &headers, &tenant_id, &project_id, ApiScope::Admin).await?;
+    let limit = params.limit.unwrap_or(100).min(1000);
+    let report = state
+        .ingest
+        .drain_trace_writes_for(&tenant_id, &project_id, limit)
+        .await?;
+    index_trace_refs(&state, &report.trace_refs).await?;
+    Ok(Json(report))
+}
+
 async fn ingest_otlp_http(
     State(state): State<ApiState>,
     headers: HeaderMap,
     Path((tenant_id, project_id, environment_id)): Path<(String, String, String)>,
+    Query(params): Query<IngestDurabilityQuery>,
     body: Bytes,
 ) -> Result<Json<OtlpIngestOutcome>, ApiError> {
     let scope = TenantScope::new(
@@ -608,16 +660,17 @@ async fn ingest_otlp_http(
         .iter()
         .map(|span| span.trace_id.clone())
         .collect::<BTreeSet<_>>();
-    let outcome = state.ingest.ingest_raw_trace_batch(raw_request).await?;
-    if outcome.ack.accepted_spans > 0 {
-        for trace_id in trace_ids {
-            let trace = state
-                .traces
-                .get_trace(scope.tenant_id.clone(), trace_id)
-                .await?;
-            state.search.index_spans(&trace.spans).await?;
+    let buffered = ingest_buffered(&params)?;
+    let outcome = if buffered {
+        state.ingest.buffer_raw_trace_batch(raw_request).await?
+    } else {
+        let outcome = state.ingest.ingest_raw_trace_batch(raw_request).await?;
+        if outcome.ack.accepted_spans > 0 {
+            let trace_ids = trace_ids.into_iter().collect::<Vec<_>>();
+            index_trace_ids(&state, &scope.tenant_id, &trace_ids).await?;
         }
-    }
+        outcome
+    };
     Ok(Json(OtlpIngestOutcome {
         accepted_raw: outcome.ack.accepted_raw,
         accepted_spans: outcome.ack.accepted_spans,
@@ -692,8 +745,8 @@ async fn get_trace(
     let trace = state.traces.get_trace(tenant_id, trace_id).await?;
     ensure_trace_auth_scope(&trace, &auth)?;
     if params.unmask.unwrap_or(false) {
-        let trace = authorize_and_audit_trace_unmask(&state, &headers, trace, auth, params.reason)
-            .await?;
+        let trace =
+            authorize_and_audit_trace_unmask(&state, &headers, trace, auth, params.reason).await?;
         return Ok(Json(trace));
     }
     Ok(Json(redact_trace_view(trace)))
@@ -1592,6 +1645,35 @@ async fn ingest_and_index(
     Ok(outcome)
 }
 
+async fn index_trace_ids(
+    state: &ApiState,
+    tenant_id: &TenantId,
+    trace_ids: &[TraceId],
+) -> Result<(), ApiError> {
+    for trace_id in trace_ids {
+        let trace = state
+            .traces
+            .get_trace(tenant_id.clone(), trace_id.clone())
+            .await?;
+        state.search.index_spans(&trace.spans).await?;
+    }
+    Ok(())
+}
+
+async fn index_trace_refs(
+    state: &ApiState,
+    trace_refs: &[QueuedTraceWork],
+) -> Result<(), ApiError> {
+    for trace_ref in trace_refs {
+        let trace = state
+            .traces
+            .get_trace(trace_ref.tenant_id.clone(), trace_ref.trace_id.clone())
+            .await?;
+        state.search.index_spans(&trace.spans).await?;
+    }
+    Ok(())
+}
+
 fn dataset_store(state: &ApiState) -> Result<Arc<dyn DatasetStore>, ApiError> {
     state
         .datasets
@@ -1904,6 +1986,16 @@ struct TraceReadQuery {
     reason: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+struct IngestDurabilityQuery {
+    durability: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct DrainTraceWritesQuery {
+    limit: Option<usize>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 struct ArchiveQueryParams {
     environment_id: Option<String>,
@@ -2152,38 +2244,38 @@ async fn authorize_and_audit_trace_unmask(
         Ok(pii_auth) => {
             ensure_trace_auth_scope(&trace, &pii_auth)?;
             audit
-                .append_event(pii_unmask_event(
-                    trace.tenant_id.clone(),
+                .append_event(pii_unmask_event(PiiUnmaskAuditInput {
+                    tenant_id: trace.tenant_id.clone(),
                     project_id,
                     environment_id,
-                    pii_auth.context.api_key_id.clone(),
-                    trace.trace_id.clone(),
-                    AuditOutcome::Allowed,
+                    actor_api_key_id: pii_auth.context.api_key_id.clone(),
+                    trace_id: trace.trace_id.clone(),
+                    outcome: AuditOutcome::Allowed,
                     reason,
-                    serde_json::json!({
+                    attributes: serde_json::json!({
                         "sensitive_ref_count": sensitive_refs,
                         "unmasked": true
                     }),
-                ))
+                }))
                 .await?;
             Ok(trace)
         }
         Err(error) => {
             let error_message = error.message.clone();
             audit
-                .append_event(pii_unmask_event(
-                    trace.tenant_id.clone(),
+                .append_event(pii_unmask_event(PiiUnmaskAuditInput {
+                    tenant_id: trace.tenant_id.clone(),
                     project_id,
                     environment_id,
-                    trace_auth.context.api_key_id.clone(),
-                    trace.trace_id.clone(),
-                    AuditOutcome::Denied,
+                    actor_api_key_id: trace_auth.context.api_key_id.clone(),
+                    trace_id: trace.trace_id.clone(),
+                    outcome: AuditOutcome::Denied,
                     reason,
-                    serde_json::json!({
+                    attributes: serde_json::json!({
                         "sensitive_ref_count": sensitive_refs,
                         "error": error_message
                     }),
-                ))
+                }))
                 .await?;
             Err(error)
         }
@@ -2195,7 +2287,9 @@ fn trace_project_id(trace: &TraceView) -> Result<ProjectId, ApiError> {
         .spans
         .first()
         .map(|span| span.project_id.clone())
-        .ok_or_else(|| ApiError::not_found(format!("trace {} has no spans", trace.trace_id.as_str())))
+        .ok_or_else(|| {
+            ApiError::not_found(format!("trace {} has no spans", trace.trace_id.as_str()))
+        })
 }
 
 fn redact_trace_view(mut trace: TraceView) -> TraceView {
@@ -2267,7 +2361,10 @@ fn count_sensitive_refs(trace: &TraceView) -> usize {
 }
 
 fn is_sensitive_redaction(redaction_class: &RedactionClass) -> bool {
-    matches!(redaction_class, RedactionClass::Sensitive | RedactionClass::Secret)
+    matches!(
+        redaction_class,
+        RedactionClass::Sensitive | RedactionClass::Secret
+    )
 }
 
 fn auth_failure(error: SecurityError) -> ApiError {
@@ -2383,6 +2480,16 @@ fn parse_span_status(value: String) -> Result<SpanStatus, ApiError> {
     }
 }
 
+fn ingest_buffered(params: &IngestDurabilityQuery) -> Result<bool, ApiError> {
+    match params.durability.as_deref() {
+        None | Some("direct") | Some("sync") => Ok(false),
+        Some("buffered") | Some("durable") => Ok(true),
+        Some(value) => Err(ApiError::bad_request(format!(
+            "unsupported ingest durability: {value}"
+        ))),
+    }
+}
+
 impl From<anyhow::Error> for ApiError {
     fn from(error: anyhow::Error) -> Self {
         Self::internal(error.to_string())
@@ -2392,7 +2499,7 @@ impl From<anyhow::Error> for ApiError {
 impl From<IngestError> for ApiError {
     fn from(error: IngestError) -> Self {
         match error {
-            IngestError::QuotaExceeded { .. } => Self {
+            IngestError::QuotaExceeded { .. } | IngestError::Backpressure { .. } => Self {
                 status: StatusCode::TOO_MANY_REQUESTS,
                 message: error.to_string(),
             },
@@ -2400,7 +2507,28 @@ impl From<IngestError> for ApiError {
                 status: StatusCode::PAYLOAD_TOO_LARGE,
                 message: error.to_string(),
             },
+            IngestError::Store(error) => error.into(),
             IngestError::Other(error) => Self::internal(error.to_string()),
+        }
+    }
+}
+
+impl From<StoreError> for ApiError {
+    fn from(error: StoreError) -> Self {
+        match error {
+            StoreError::NotFound(_) => Self {
+                status: StatusCode::NOT_FOUND,
+                message: error.to_string(),
+            },
+            StoreError::Conflict(_) => Self {
+                status: StatusCode::CONFLICT,
+                message: error.to_string(),
+            },
+            StoreError::Backpressure(_) => Self {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                message: error.to_string(),
+            },
+            StoreError::Integrity(_) | StoreError::Backend(_) => Self::internal(error.to_string()),
         }
     }
 }
@@ -2420,12 +2548,15 @@ mod tests {
     use super::*;
     use axum::body::{to_bytes, Body};
     use beater_bus::InMemoryBus;
+    use beater_core::sha256_hex;
     use beater_core::{EnvironmentId, IdempotencyKey, ProjectId, SpanId, TenantScope};
     use beater_ingest::IngestPolicy;
     use beater_otlp::encode_export_trace_request;
     use beater_schema::{AgentSpanKind, RedactionClass, SourceDialect, SpanStatus, TraceView};
     use beater_search::{SearchResponse, TantivySearchIndex};
-    use beater_store::{sha256_hex, ArtifactStore, FsArtifactStore, SqliteTraceStore};
+    use beater_store::ArtifactStore;
+    use beater_store_obj::FsArtifactStore;
+    use beater_store_sql::SqliteTraceStore;
     use http::{Request, StatusCode};
     use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
     use opentelemetry_proto::tonic::common::v1::{

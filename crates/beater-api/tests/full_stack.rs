@@ -3,6 +3,7 @@ use axum::Router;
 use beater_alerts::{AlertDecision, SamplingDecision, SamplingReason};
 use beater_api::{router, ApiState};
 use beater_archive::{ArchiveManifest, ParquetTraceArchive};
+use beater_audit::SqliteAuditStore;
 use beater_auth::{ApiKeyStore, CreateApiKeyRequest, SqliteApiKeyStore};
 use beater_bus::InMemoryBus;
 use beater_calibration::{CalibrationReport, SqliteCalibrationStore};
@@ -21,7 +22,9 @@ use beater_gates::{GateDefinition, GateRunReport, SqliteGateStore};
 use beater_human::{
     ReviewAnnotation, ReviewQueue, ReviewTask, ReviewTaskState, SqliteHumanReviewStore,
 };
-use beater_ingest::{IngestPolicy, IngestService, NativeIngestRequest};
+use beater_ingest::{
+    IngestPolicy, IngestQueueStatus, IngestService, NativeIngestRequest, TraceWriteDrainReport,
+};
 use beater_judge::{JudgeBrokerService, KeywordJudgeProvider, SqliteJudgeLedger};
 use beater_replay::{plan_replay, ReplayMode};
 use beater_sandbox::WasmEvaluatorRuntime;
@@ -32,7 +35,9 @@ use beater_schema::{
 use beater_search::{SearchResponse, TantivySearchIndex};
 use beater_secrets::{EncryptedSqliteProviderSecretStore, SecretKeyring};
 use beater_security::{api_key_id_from_secret, verify_webhook, ApiScope};
-use beater_store::{ArtifactStore, FsArtifactStore, SqliteTraceStore, TraceStore};
+use beater_store::{ArtifactStore, TraceStore};
+use beater_store_obj::FsArtifactStore;
+use beater_store_sql::SqliteTraceStore;
 use beater_usage::{SqliteUsageLedger, UsageMeter, UsageSummary};
 use chrono::{Duration, Utc};
 use http::{Request, StatusCode};
@@ -978,6 +983,195 @@ async fn api_ingest_store_eval_gate_and_replay_are_integrated() {
 }
 
 #[tokio::test]
+async fn buffered_ingest_drains_scoped_trace_writes_through_api() {
+    let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+    let artifacts = Arc::new(
+        FsArtifactStore::new(tempdir.path().join("artifacts"))
+            .unwrap_or_else(|err| panic!("{err}")),
+    );
+    let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+    let search = Arc::new(TantivySearchIndex::in_memory().unwrap_or_else(|err| panic!("{err}")));
+    let bus = Arc::new(InMemoryBus::new(32));
+    let ingest = IngestService::new(artifacts, traces.clone(), bus, IngestPolicy::default());
+    let app = router(ApiState::with_search(ingest, traces.clone(), search));
+
+    let request = native_request();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/traces/native?durability=buffered")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&request).unwrap_or_else(|err| panic!("{err}")),
+                ))
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let outcome: beater_ingest::IngestOutcome =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(outcome.ack.accepted_raw, 1);
+    assert_eq!(outcome.ack.accepted_spans, 1);
+
+    let cold_trace = traces
+        .get_trace(request.scope.tenant_id.clone(), request.trace_id.clone())
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert!(cold_trace.spans.is_empty());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/ingest/tenant/project/queue")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let status: IngestQueueStatus =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(status.total_depth, 1);
+    assert_eq!(status.trace_write_depth, 1);
+    assert_eq!(status.trace_ingested_depth, 0);
+    assert!(status.dead_letters.is_empty());
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/ingest/tenant/project/trace-writes/drain?limit=10")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let report: TraceWriteDrainReport =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(report.consumed, 1);
+    assert_eq!(report.written_raw, 1);
+    assert_eq!(report.written_spans, 1);
+    assert_eq!(report.downstream_published, 1);
+    assert_eq!(
+        report.trace_ids,
+        vec![TraceId::new("trace").unwrap_or_else(|err| panic!("{err}"))]
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/traces/tenant/trace")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let trace: TraceView = serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(trace.spans.len(), 1);
+    assert_eq!(trace.spans[0].name, "full-stack agent run");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/search/tenant/spans?q=answer&kind=agent.run&status=ok")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let search: SearchResponse =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(search.hits.len(), 1);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/ingest/tenant/project/queue")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let status: IngestQueueStatus =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(status.trace_write_depth, 0);
+    assert_eq!(status.trace_ingested_depth, 1);
+}
+
+#[tokio::test]
+async fn buffered_ingest_backpressure_returns_429() {
+    let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+    let artifacts = Arc::new(
+        FsArtifactStore::new(tempdir.path().join("artifacts"))
+            .unwrap_or_else(|err| panic!("{err}")),
+    );
+    let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+    let bus = Arc::new(InMemoryBus::new(0));
+    let ingest = IngestService::new(artifacts, traces.clone(), bus, IngestPolicy::default());
+    let app = router(ApiState::new(ingest, traces));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/traces/native?durability=buffered")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&native_request()).unwrap_or_else(|err| panic!("{err}")),
+                ))
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let error: serde_json::Value =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(error["status"], json!(429));
+    assert!(error["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("capacity 0"));
+}
+
+#[tokio::test]
 async fn hosted_judge_api_uses_byok_refs_cache_and_never_returns_secret() {
     let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
     let artifacts = Arc::new(
@@ -1144,6 +1338,7 @@ async fn strict_auth_enforces_scoped_keys_and_overwrites_ingest_auth_context() {
     let archive = ParquetTraceArchive::new(tempdir.path().join("strict-archive"))
         .unwrap_or_else(|err| panic!("{err}"));
     let api_keys = Arc::new(SqliteApiKeyStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+    let audit = Arc::new(SqliteAuditStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
     let bus = Arc::new(InMemoryBus::new(16));
     let ingest = IngestService::new(
         artifacts.clone(),
@@ -1153,6 +1348,7 @@ async fn strict_auth_enforces_scoped_keys_and_overwrites_ingest_auth_context() {
     );
     let app = router(
         ApiState::with_search_and_archive(ingest, traces.clone(), search, archive)
+            .with_audit(audit)
             .require_auth(api_keys.clone()),
     );
 
@@ -1216,6 +1412,7 @@ async fn strict_auth_enforces_scoped_keys_and_overwrites_ingest_auth_context() {
     let trace_key_id = api_key_id_from_secret(&trace_secret).unwrap_or_else(|err| panic!("{err}"));
 
     let mut request = native_request();
+    request.redaction_class = RedactionClass::Sensitive;
     let mut forged_scopes = BTreeSet::new();
     forged_scopes.insert("admin".to_string());
     request.auth_context = Some(AuthContext {
@@ -1268,6 +1465,125 @@ async fn strict_auth_enforces_scoped_keys_and_overwrites_ingest_auth_context() {
         .await
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let redacted_trace: TraceView =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(redacted_trace.spans[0].raw_ref.uri, "artifact://redacted");
+    assert_eq!(
+        redacted_trace.spans[0].attributes["input.value"],
+        json!("[redacted]")
+    );
+    assert_eq!(
+        redacted_trace.spans[0].attributes["output.value"],
+        json!("[redacted]")
+    );
+
+    let denied_unmask = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/traces/tenant/trace?unmask=true&reason=incident-123")
+                .header("authorization", format!("Bearer {trace_secret}"))
+                .header("x-beater-project-id", "project")
+                .header("x-beater-environment-id", "prod")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(denied_unmask.status(), StatusCode::FORBIDDEN);
+
+    let create_unmask_key_body = json!({
+        "scopes": ["trace_read", "pii_unmask"]
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/api-keys/tenant/project/prod")
+                .header("authorization", format!("Bearer {}", admin_key.secret))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&create_unmask_key_body)
+                        .unwrap_or_else(|err| panic!("{err}")),
+                ))
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let unmask_key: serde_json::Value =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    let unmask_secret = unmask_key["secret"]
+        .as_str()
+        .unwrap_or_else(|| panic!("unmask key must include one-time secret"))
+        .to_string();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/traces/tenant/trace?unmask=true&reason=incident-123")
+                .header("authorization", format!("Bearer {unmask_secret}"))
+                .header("x-beater-project-id", "project")
+                .header("x-beater-environment-id", "prod")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let unmasked_trace: TraceView =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    assert_ne!(unmasked_trace.spans[0].raw_ref.uri, "artifact://redacted");
+    assert_eq!(
+        unmasked_trace.spans[0].attributes["input.value"],
+        json!("question")
+    );
+    assert_eq!(
+        unmasked_trace.spans[0].attributes["output.value"],
+        json!("answer")
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/audit/tenant/project")
+                .header("authorization", format!("Bearer {}", admin_key.secret))
+                .header("x-beater-environment-id", "prod")
+                .body(Body::empty())
+                .unwrap_or_else(|err| panic!("{err}")),
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    let audit_events: serde_json::Value =
+        serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
+    let audit_events = audit_events
+        .as_array()
+        .unwrap_or_else(|| panic!("audit events response must be an array"));
+    assert_eq!(audit_events.len(), 2);
+    assert_eq!(audit_events[0]["action"], "pii_unmask");
+    assert_eq!(audit_events[0]["outcome"], "denied");
+    assert_eq!(audit_events[1]["outcome"], "allowed");
+    assert_eq!(audit_events[1]["reason"], "incident-123");
+    assert_eq!(audit_events[1]["attributes"]["sensitive_ref_count"], 1);
 
     let response = app
         .clone()

@@ -32,13 +32,18 @@ This repo now contains the first tested Rust vertical slice:
 - immutable raw envelope creation
 - raw-envelope lookup by tenant/project/idempotency key
 - filesystem artifact storage with hash verification
-- SQLite `TraceStore`
+- trait-only `beater-store` boundary with `TraceStore`/`ArtifactStore`
+- SQLite `TraceStore` implementation in `beater-store-sql`
+- filesystem artifact store implementation in `beater-store-obj`
 - bounded in-memory bus plus SQLite durable bus with persisted retry and DLQ behavior
+- buffered ingest mode that durably queues canonical trace writes before hot-store persistence
+- scoped trace-write drain/status API with typed 429 backpressure responses
 - native ingest pipeline with payload/attribute governance and quotas
 - deterministic evaluator lane and judge-broker budget model
 - encrypted-at-rest BYOK provider-secret store for judge/model providers
 - judge broker with preflight budget reservation, request-hash cache hits, and SQLite audit ledger
 - persisted usage ledger that meters judge charged cost idempotently by judge call
+- persisted audit event store for privileged PII unmask attempts
 - OpenAI-compatible and Anthropic HTTP judge providers with retry/backoff behavior and structured-score parsing
 - trace-to-dataset promotion, immutable dataset versions, and offline deterministic plus judge-backed dataset evals
 - baseline-vs-candidate experiment runs with per-case scores, judge-backed scoring, and confidence-bound gates
@@ -58,6 +63,7 @@ This repo now contains the first tested Rust vertical slice:
 - API routes for admin key creation/revocation and strict trace/search/dataset/eval/alert authorization
 - API routes for provider-secret create/list/revoke, judge evaluation, and judge ledger readback
 - API route for tenant/project usage summaries over metered judge spend
+- API route for tenant/project audit event readback and audited trace unmasking
 - API routes for archiving hot traces and querying cold spans
 - API routes for dataset creation, trace promotion, versioning, deterministic eval runs, and judge-backed eval runs
 - API route and CLI fixtures for deterministic and judge-backed experiment comparison plus local agent harness runs
@@ -66,10 +72,13 @@ This repo now contains the first tested Rust vertical slice:
 - API route for calibration over persisted dataset eval reports and human-labeled dataset cases
 - API routes and CLI fixture for online sampling and signed alert webhooks
 - `beaterd` defaults to a persistent SQLite bus backend, with an in-memory backend still available
+- `beaterd` runs a configurable background trace-write drain worker for buffered ingest
 - `beaterctl bus-fixture` validates durable queue reopen, retry, and DLQ behavior
+- `beaterctl ingest-outage-fixture` validates accepted buffered ingest, retry during TraceStore outage, and recovery drain
 - `beaterctl replay-fixture` validates persisted cassette replay without live provider/tool calls
 - `beaterctl judge-fixture` validates encrypted BYOK secret persistence, cached judge calls, budget metering, and ledger redaction
 - `beaterctl usage-fixture` validates idempotent judge usage records and cached zero-cost audit records
+- `beaterctl audit-fixture` validates persisted allowed/denied PII-unmask audit events
 - `beaterctl judge-dataset-fixture` validates judge broker evaluation over a persisted dataset version
 - `beaterctl judge-experiment-fixture` validates judge-backed candidate-vs-baseline gates
 - `beaterctl gate-policy-create`, `gate-run`, and `gate-run-fixture` validate CI blocking on persisted latest experiment regressions
@@ -86,6 +95,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -q -p beaterctl -- smoke --data-dir /tmp/beater-smoke
 cargo run -q -p beaterctl -- judge-fixture --data-dir /tmp/beater-judge
 cargo run -q -p beaterctl -- usage-fixture --data-dir /tmp/beater-usage
+cargo run -q -p beaterctl -- audit-fixture --data-dir /tmp/beater-audit
+cargo run -q -p beaterctl -- ingest-outage-fixture --data-dir /tmp/beater-ingest-outage
 cargo run -q -p beaterctl -- judge-dataset-fixture --data-dir /tmp/beater-judge-dataset
 cargo run -q -p beaterctl -- judge-experiment-fixture --data-dir /tmp/beater-judge-experiment
 cargo run -q -p beaterctl -- gate-run-fixture --data-dir /tmp/beater-gate

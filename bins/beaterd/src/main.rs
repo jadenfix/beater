@@ -15,14 +15,17 @@ use beater_judge::{
     HttpRoutingJudgeProvider, JudgeBrokerService, JudgeProvider, KeywordJudgeProvider,
     SqliteJudgeLedger,
 };
-use beater_search::TantivySearchIndex;
+use beater_search::{SearchIndex, TantivySearchIndex};
 use beater_secrets::{EncryptedSqliteProviderSecretStore, SecretKeyring};
-use beater_store::{FsArtifactStore, SqliteTraceStore};
+use beater_store::TraceStore;
+use beater_store_obj::FsArtifactStore;
+use beater_store_sql::SqliteTraceStore;
 use beater_usage::SqliteUsageLedger;
 use clap::{Parser, ValueEnum};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -46,6 +49,12 @@ struct Args {
     judge_provider: JudgeProviderArg,
     #[arg(long, env = "BEATER_JUDGE_BUDGET_MICROS", default_value_t = 1_000_000)]
     judge_budget_micros: i64,
+    #[arg(
+        long,
+        env = "BEATER_TRACE_WRITE_DRAIN_INTERVAL_MS",
+        default_value_t = 1000
+    )]
+    trace_write_drain_interval_ms: u64,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -120,6 +129,14 @@ async fn main() -> anyhow::Result<()> {
         BusBackendArg::Memory => Arc::new(InMemoryBus::new(args.bus_capacity)),
     };
     let ingest = IngestService::new(artifacts, traces.clone(), bus, IngestPolicy::default());
+    if args.trace_write_drain_interval_ms > 0 {
+        spawn_trace_write_worker(
+            ingest.clone(),
+            traces.clone(),
+            search.clone(),
+            Duration::from_millis(args.trace_write_drain_interval_ms),
+        );
+    }
     let mut state =
         ApiState::with_integrations(ingest, traces, search, archive, datasets, experiments)
             .with_gates(gates)
@@ -140,4 +157,46 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("bind {}", args.addr))?;
     axum::serve(listener, app).await.context("serve beaterd")?;
     Ok(())
+}
+
+fn spawn_trace_write_worker(
+    ingest: IngestService,
+    traces: Arc<SqliteTraceStore>,
+    search: Arc<TantivySearchIndex>,
+    interval: Duration,
+) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        loop {
+            ticker.tick().await;
+            let report = match ingest.drain_trace_writes(100).await {
+                Ok(report) => report,
+                Err(error) => {
+                    eprintln!("trace write drain failed: {error}");
+                    continue;
+                }
+            };
+            for trace_ref in report.trace_refs {
+                match traces
+                    .get_trace(trace_ref.tenant_id.clone(), trace_ref.trace_id.clone())
+                    .await
+                {
+                    Ok(trace) => {
+                        if let Err(error) = search.index_spans(&trace.spans).await {
+                            eprintln!(
+                                "trace write indexing failed for tenant={} trace={}: {error}",
+                                trace_ref.tenant_id, trace_ref.trace_id
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "trace write readback failed for tenant={} trace={}: {error}",
+                            trace_ref.tenant_id, trace_ref.trace_id
+                        );
+                    }
+                }
+            }
+        }
+    });
 }

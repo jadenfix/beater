@@ -1,8 +1,6 @@
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use beater_core::{
-    ApiKeyId, AuditEventId, EnvironmentId, ProjectId, TenantId, Timestamp, TraceId,
-};
+use beater_core::{ApiKeyId, AuditEventId, EnvironmentId, ProjectId, TenantId, Timestamp, TraceId};
 use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -70,6 +68,18 @@ pub struct AuditEvent {
     pub reason: Option<String>,
     pub attributes: Value,
     pub created_at: Timestamp,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PiiUnmaskAuditInput {
+    pub tenant_id: TenantId,
+    pub project_id: ProjectId,
+    pub environment_id: Option<EnvironmentId>,
+    pub actor_api_key_id: Option<ApiKeyId>,
+    pub trace_id: TraceId,
+    pub outcome: AuditOutcome,
+    pub reason: Option<String>,
+    pub attributes: Value,
 }
 
 #[async_trait]
@@ -230,27 +240,18 @@ impl AuditStore for SqliteAuditStore {
     }
 }
 
-pub fn pii_unmask_event(
-    tenant_id: TenantId,
-    project_id: ProjectId,
-    environment_id: Option<EnvironmentId>,
-    actor_api_key_id: Option<ApiKeyId>,
-    trace_id: TraceId,
-    outcome: AuditOutcome,
-    reason: Option<String>,
-    attributes: Value,
-) -> AuditEventInsert {
+pub fn pii_unmask_event(input: PiiUnmaskAuditInput) -> AuditEventInsert {
     AuditEventInsert {
-        tenant_id,
-        project_id,
-        environment_id,
-        actor_api_key_id,
+        tenant_id: input.tenant_id,
+        project_id: input.project_id,
+        environment_id: input.environment_id,
+        actor_api_key_id: input.actor_api_key_id,
         action: AuditAction::PiiUnmask,
         resource_type: "trace".to_string(),
-        resource_id: trace_id.as_str().to_string(),
-        outcome,
-        reason,
-        attributes,
+        resource_id: input.trace_id.as_str().to_string(),
+        outcome: input.outcome,
+        reason: input.reason,
+        attributes: input.attributes,
     }
 }
 
@@ -263,16 +264,16 @@ mod tests {
     async fn sqlite_audit_store_persists_privileged_unmask_events() -> anyhow::Result<()> {
         let store = SqliteAuditStore::in_memory()?;
         let event = store
-            .append_event(pii_unmask_event(
-                TenantId::new("tenant")?,
-                ProjectId::new("project")?,
-                Some(EnvironmentId::new("prod")?),
-                Some(ApiKeyId::new("key")?),
-                TraceId::new("trace")?,
-                AuditOutcome::Allowed,
-                Some("debugging incident".to_string()),
-                json!({"sensitive_refs": 2}),
-            ))
+            .append_event(pii_unmask_event(PiiUnmaskAuditInput {
+                tenant_id: TenantId::new("tenant")?,
+                project_id: ProjectId::new("project")?,
+                environment_id: Some(EnvironmentId::new("prod")?),
+                actor_api_key_id: Some(ApiKeyId::new("key")?),
+                trace_id: TraceId::new("trace")?,
+                outcome: AuditOutcome::Allowed,
+                reason: Some("debugging incident".to_string()),
+                attributes: json!({"sensitive_refs": 2}),
+            }))
             .await?;
         assert_eq!(event.action, AuditAction::PiiUnmask);
         assert_eq!(event.outcome, AuditOutcome::Allowed);

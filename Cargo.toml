@@ -3,6 +3,8 @@ members = [
   "crates/beater-core",
   "crates/beater-schema",
   "crates/beater-store",
+  "crates/beater-store-obj",
+  "crates/beater-store-sql",
   "crates/beater-bus",
   "crates/beater-ingest",
   "crates/beater-otlp",

@@ -1,19 +1,22 @@
-use beater_bus::{BusMessage, DurableBus};
+use beater_bus::{BusError, BusMessage, DeadLetter, DurableBus, PublishAck};
 use beater_core::{
-    EnvironmentId, IdempotencyKey, ProjectId, Sha256Hash, SpanId, TenantId, TenantScope, Timestamp,
-    TokenCounts, TraceId,
+    sha256_hex, EnvironmentId, IdempotencyKey, ProjectId, Sha256Hash, SpanId, TenantId,
+    TenantScope, Timestamp, TokenCounts, TraceId,
 };
 use beater_schema::{
     make_idempotency_key, AgentSpanKind, ArtifactRef, AuthContext, CanonicalAttrs, CanonicalSpan,
     CanonicalTraceBatch, ModelRef, RawEnvelope, RedactionClass, SourceDialect, SpanStatus,
     TraceCompletionState, WriteAck, CANONICAL_SCHEMA_VERSION, RAW_SCHEMA_VERSION,
 };
-use beater_store::{sha256_hex, ArtifactStore, TraceStore};
+use beater_store::{ArtifactStore, StoreError, TraceStore};
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
+
+pub const TRACE_INGESTED_KIND: &str = "trace.ingested";
+pub const TRACE_WRITE_BATCH_KIND: &str = "trace.write_batch";
 
 #[derive(Debug, thiserror::Error)]
 pub enum IngestError {
@@ -30,6 +33,10 @@ pub enum IngestError {
         size_bytes: usize,
         limit_bytes: usize,
     },
+    #[error("ingest bus is at capacity {capacity}")]
+    Backpressure { capacity: usize },
+    #[error(transparent)]
+    Store(#[from] StoreError),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -64,6 +71,167 @@ impl IngestService {
         request: NativeIngestRequest,
     ) -> Result<IngestOutcome, IngestError> {
         self.enforce_quota_events(&request.scope, 1)?;
+        let prepared = self.prepare_native_batch(request).await?;
+        let ack = self
+            .traces
+            .write_batch(prepared.batch.clone())
+            .await
+            .map_err(IngestError::Store)?;
+        self.publish_trace_ingested(
+            &prepared.tenant_id,
+            &prepared.project_id,
+            &prepared.queue_key,
+            &prepared.trace_ids,
+        )
+        .await
+        .map(|_| ())?;
+
+        Ok(IngestOutcome {
+            ack,
+            downstream_queued: true,
+        })
+    }
+
+    pub async fn buffer_native(
+        &self,
+        request: NativeIngestRequest,
+    ) -> Result<IngestOutcome, IngestError> {
+        self.enforce_quota_events(&request.scope, 1)?;
+        let prepared = self.prepare_native_batch(request).await?;
+        let publish = self.publish_trace_write(&prepared).await?;
+        Ok(IngestOutcome {
+            ack: batch_publish_ack(&prepared.batch, &publish),
+            downstream_queued: publish.accepted,
+        })
+    }
+
+    pub async fn ingest_raw_trace_batch(
+        &self,
+        request: RawTraceIngestRequest,
+    ) -> Result<IngestOutcome, IngestError> {
+        let event_count = request.spans.len() as u64;
+        self.enforce_quota_events(&request.scope, event_count)?;
+        let prepared = self.prepare_raw_batch(request).await?;
+        let ack = self
+            .traces
+            .write_batch(prepared.batch.clone())
+            .await
+            .map_err(IngestError::Store)?;
+        self.publish_trace_ingested(
+            &prepared.tenant_id,
+            &prepared.project_id,
+            &prepared.queue_key,
+            &prepared.trace_ids,
+        )
+        .await
+        .map(|_| ())?;
+
+        Ok(IngestOutcome {
+            ack,
+            downstream_queued: !prepared.trace_ids.is_empty(),
+        })
+    }
+
+    pub async fn buffer_raw_trace_batch(
+        &self,
+        request: RawTraceIngestRequest,
+    ) -> Result<IngestOutcome, IngestError> {
+        let event_count = request.spans.len() as u64;
+        self.enforce_quota_events(&request.scope, event_count)?;
+        let prepared = self.prepare_raw_batch(request).await?;
+        let publish = self.publish_trace_write(&prepared).await?;
+        Ok(IngestOutcome {
+            ack: batch_publish_ack(&prepared.batch, &publish),
+            downstream_queued: publish.accepted,
+        })
+    }
+
+    pub async fn drain_trace_writes(
+        &self,
+        limit: usize,
+    ) -> Result<TraceWriteDrainReport, IngestError> {
+        let messages = self
+            .bus
+            .consume_kind_batch(TRACE_WRITE_BATCH_KIND, limit)
+            .await
+            .map_err(map_bus_error)?;
+        self.drain_trace_write_messages(messages).await
+    }
+
+    pub async fn drain_trace_writes_for(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        limit: usize,
+    ) -> Result<TraceWriteDrainReport, IngestError> {
+        let messages = self
+            .bus
+            .consume_scoped_kind_batch(tenant_id, project_id, TRACE_WRITE_BATCH_KIND, limit)
+            .await
+            .map_err(map_bus_error)?;
+        self.drain_trace_write_messages(messages).await
+    }
+
+    async fn drain_trace_write_messages(
+        &self,
+        messages: Vec<BusMessage>,
+    ) -> Result<TraceWriteDrainReport, IngestError> {
+        let mut report = TraceWriteDrainReport {
+            consumed: messages.len(),
+            ..TraceWriteDrainReport::default()
+        };
+        for message in messages {
+            self.process_trace_write_message(message, &mut report)
+                .await?;
+        }
+        report.trace_ids.sort();
+        report.trace_ids.dedup();
+        report.trace_refs.sort();
+        report.trace_refs.dedup();
+        Ok(report)
+    }
+
+    pub async fn queue_status(
+        &self,
+        tenant_id: TenantId,
+        project_id: ProjectId,
+    ) -> Result<IngestQueueStatus, IngestError> {
+        let total_depth = self.bus.depth().await.map_err(map_bus_error)?;
+        let trace_write_depth = self
+            .bus
+            .depth_for_kind(TRACE_WRITE_BATCH_KIND)
+            .await
+            .map_err(map_bus_error)?;
+        let trace_ingested_depth = self
+            .bus
+            .depth_for_kind(TRACE_INGESTED_KIND)
+            .await
+            .map_err(map_bus_error)?;
+        let dead_letters = self
+            .bus
+            .dlq()
+            .await
+            .map_err(map_bus_error)?
+            .into_iter()
+            .filter(|dead_letter| {
+                dead_letter.message.tenant_id == tenant_id
+                    && dead_letter.message.project_id == project_id
+            })
+            .collect();
+        Ok(IngestQueueStatus {
+            tenant_id,
+            project_id,
+            total_depth,
+            trace_write_depth,
+            trace_ingested_depth,
+            dead_letters,
+        })
+    }
+
+    async fn prepare_native_batch(
+        &self,
+        request: NativeIngestRequest,
+    ) -> Result<PreparedTraceBatch, IngestError> {
         let raw_bytes = serde_json::to_vec(&request).map_err(anyhow::Error::from)?;
         if raw_bytes.len() > self.policy.max_raw_payload_bytes {
             return Err(IngestError::PayloadTooLarge {
@@ -82,7 +250,7 @@ impl IngestService {
                 &raw_bytes,
             )
             .await
-            .map_err(IngestError::Other)?;
+            .map_err(IngestError::Store)?;
         let payload_hash = Sha256Hash::new(sha256_hex(&raw_bytes)).map_err(anyhow::Error::from)?;
         let idempotency_key = request
             .idempotency_key
@@ -171,44 +339,21 @@ impl IngestService {
             unmapped_attrs,
             raw_ref,
         };
-
-        let trace_id = span.trace_id.clone();
-        let batch = CanonicalTraceBatch::one(raw, span);
-        let ack = self
-            .traces
-            .write_batch(batch)
-            .await
-            .map_err(IngestError::Other)?;
-
-        let queue_payload = serde_json::to_vec(&QueuedTraceWork {
-            tenant_id: request.scope.tenant_id.clone(),
-            project_id: request.scope.project_id.clone(),
-            trace_id,
-        })
-        .map_err(anyhow::Error::from)?;
-        self.bus
-            .publish(BusMessage::new(
-                request.scope.tenant_id,
-                request.scope.project_id,
-                idempotency_key,
-                "trace.ingested",
-                queue_payload,
-            ))
-            .await
-            .map_err(|err| IngestError::Other(anyhow::Error::new(err)))?;
-
-        Ok(IngestOutcome {
-            ack,
-            downstream_queued: true,
+        let trace_ids = BTreeSet::from([span.trace_id.clone()]);
+        Ok(PreparedTraceBatch {
+            tenant_id: request.scope.tenant_id,
+            project_id: request.scope.project_id,
+            queue_key: idempotency_key,
+            trace_ids,
+            batch: CanonicalTraceBatch::one(raw, span),
         })
     }
 
-    pub async fn ingest_raw_trace_batch(
+    async fn prepare_raw_batch(
         &self,
         request: RawTraceIngestRequest,
-    ) -> Result<IngestOutcome, IngestError> {
+    ) -> Result<PreparedTraceBatch, IngestError> {
         let scope = request.scope.clone();
-        self.enforce_quota_events(&scope, request.spans.len() as u64)?;
         if request.raw_bytes.len() > self.policy.max_raw_payload_bytes {
             return Err(IngestError::PayloadTooLarge {
                 size_bytes: request.raw_bytes.len(),
@@ -226,7 +371,7 @@ impl IngestService {
                 &request.raw_bytes,
             )
             .await
-            .map_err(IngestError::Other)?;
+            .map_err(IngestError::Store)?;
         let payload_hash =
             Sha256Hash::new(sha256_hex(&request.raw_bytes)).map_err(anyhow::Error::from)?;
         let raw_idempotency_key = request
@@ -319,44 +464,176 @@ impl IngestService {
             spans.push(span);
         }
 
-        let ack = self
-            .traces
-            .write_batch(CanonicalTraceBatch {
+        Ok(PreparedTraceBatch {
+            tenant_id: scope.tenant_id,
+            project_id: scope.project_id,
+            queue_key: raw_idempotency_key,
+            trace_ids,
+            batch: CanonicalTraceBatch {
                 raw_envelopes: vec![raw],
                 spans,
-            })
-            .await
-            .map_err(IngestError::Other)?;
+            },
+        })
+    }
 
-        for trace_id in &trace_ids {
+    async fn publish_trace_write(
+        &self,
+        prepared: &PreparedTraceBatch,
+    ) -> Result<PublishAck, IngestError> {
+        let payload = serde_json::to_vec(&QueuedTraceWrite {
+            batch: prepared.batch.clone(),
+        })
+        .map_err(anyhow::Error::from)?;
+        let mut message = BusMessage::new(
+            prepared.tenant_id.clone(),
+            prepared.project_id.clone(),
+            prepared.queue_key.clone(),
+            TRACE_WRITE_BATCH_KIND,
+            payload,
+        );
+        message.max_attempts = self.policy.trace_write_max_attempts;
+        self.bus.publish(message).await.map_err(map_bus_error)
+    }
+
+    async fn publish_trace_ingested(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        base_key: &IdempotencyKey,
+        trace_ids: &BTreeSet<TraceId>,
+    ) -> Result<usize, IngestError> {
+        let mut published = 0;
+        for trace_id in trace_ids {
             let queue_payload = serde_json::to_vec(&QueuedTraceWork {
-                tenant_id: scope.tenant_id.clone(),
-                project_id: scope.project_id.clone(),
+                tenant_id: tenant_id.clone(),
+                project_id: project_id.clone(),
                 trace_id: trace_id.clone(),
             })
             .map_err(anyhow::Error::from)?;
             let queue_key = IdempotencyKey::new(format!(
-                "{}:{}",
-                raw_idempotency_key.as_str(),
+                "{}:{}:{}",
+                base_key.as_str(),
+                TRACE_INGESTED_KIND,
                 trace_id.as_str()
             ))
             .map_err(anyhow::Error::from)?;
-            self.bus
+            let ack = self
+                .bus
                 .publish(BusMessage::new(
-                    scope.tenant_id.clone(),
-                    scope.project_id.clone(),
+                    tenant_id.clone(),
+                    project_id.clone(),
                     queue_key,
-                    "trace.ingested",
+                    TRACE_INGESTED_KIND,
                     queue_payload,
                 ))
                 .await
-                .map_err(|err| IngestError::Other(anyhow::Error::new(err)))?;
+                .map_err(map_bus_error)?;
+            if ack.accepted {
+                published += 1;
+            }
+        }
+        Ok(published)
+    }
+
+    async fn process_trace_write_message(
+        &self,
+        message: BusMessage,
+        report: &mut TraceWriteDrainReport,
+    ) -> Result<(), IngestError> {
+        let will_dead_letter = message.attempts.saturating_add(1) >= message.max_attempts;
+        let queued = match serde_json::from_slice::<QueuedTraceWrite>(&message.payload) {
+            Ok(queued) => queued,
+            Err(err) => {
+                report.invalid_messages += 1;
+                self.retry_or_dlq_counted(
+                    message,
+                    format!("invalid trace.write_batch payload: {err}"),
+                    will_dead_letter,
+                    report,
+                )
+                .await?;
+                return Ok(());
+            }
+        };
+
+        if let Err(reason) = validate_trace_write_scope(&message, &queued.batch) {
+            report.invalid_messages += 1;
+            self.retry_or_dlq_counted(message, reason, will_dead_letter, report)
+                .await?;
+            return Ok(());
         }
 
-        Ok(IngestOutcome {
-            ack,
-            downstream_queued: !trace_ids.is_empty(),
-        })
+        let trace_ids = trace_ids_for_batch(&queued.batch);
+        let write_ack = match self.traces.write_batch(queued.batch.clone()).await {
+            Ok(write_ack) => write_ack,
+            Err(err) => {
+                report.failed_writes += 1;
+                self.retry_or_dlq_counted(
+                    message,
+                    format!("trace store write failed: {err}"),
+                    will_dead_letter,
+                    report,
+                )
+                .await?;
+                return Ok(());
+            }
+        };
+
+        match self
+            .publish_trace_ingested(
+                &message.tenant_id,
+                &message.project_id,
+                &message.idempotency_key,
+                &trace_ids,
+            )
+            .await
+        {
+            Ok(published) => {
+                report.written_raw += write_ack.accepted_raw;
+                report.written_spans += write_ack.accepted_spans;
+                report.duplicate_raw += write_ack.duplicate_raw;
+                report.duplicate_spans += write_ack.duplicate_spans;
+                report.downstream_published += published;
+                report
+                    .trace_refs
+                    .extend(trace_ids.iter().map(|trace_id| QueuedTraceWork {
+                        tenant_id: message.tenant_id.clone(),
+                        project_id: message.project_id.clone(),
+                        trace_id: trace_id.clone(),
+                    }));
+                report.trace_ids.extend(trace_ids);
+                Ok(())
+            }
+            Err(err) => {
+                report.failed_writes += 1;
+                self.retry_or_dlq_counted(
+                    message,
+                    format!("downstream publish failed after trace write: {err}"),
+                    will_dead_letter,
+                    report,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn retry_or_dlq_counted(
+        &self,
+        message: BusMessage,
+        reason: String,
+        will_dead_letter: bool,
+        report: &mut TraceWriteDrainReport,
+    ) -> Result<(), IngestError> {
+        self.bus
+            .retry_or_dlq(message, reason)
+            .await
+            .map_err(map_bus_error)?;
+        if will_dead_letter {
+            report.dead_lettered += 1;
+        } else {
+            report.retried += 1;
+        }
+        Ok(())
     }
 
     fn enforce_quota_events(
@@ -439,7 +716,7 @@ impl IngestService {
             )
             .await
             .map(Some)
-            .map_err(IngestError::Other)
+            .map_err(IngestError::Store)
     }
 }
 
@@ -451,6 +728,7 @@ pub struct IngestPolicy {
     pub allowed_attributes: Option<BTreeSet<String>>,
     pub denied_attributes: BTreeSet<String>,
     pub per_project_event_quota: Option<u64>,
+    pub trace_write_max_attempts: u32,
 }
 
 impl Default for IngestPolicy {
@@ -462,6 +740,7 @@ impl Default for IngestPolicy {
             allowed_attributes: None,
             denied_attributes: BTreeSet::new(),
             per_project_event_quota: None,
+            trace_write_max_attempts: 3,
         }
     }
 }
@@ -523,11 +802,16 @@ pub struct CanonicalSpanDraft {
     pub attributes: CanonicalAttrs,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct QueuedTraceWork {
     pub tenant_id: TenantId,
     pub project_id: ProjectId,
     pub trace_id: TraceId,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct QueuedTraceWrite {
+    pub batch: CanonicalTraceBatch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -536,10 +820,103 @@ pub struct IngestOutcome {
     pub downstream_queued: bool,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraceWriteDrainReport {
+    pub consumed: usize,
+    pub written_raw: usize,
+    pub written_spans: usize,
+    pub duplicate_raw: usize,
+    pub duplicate_spans: usize,
+    pub downstream_published: usize,
+    pub retried: usize,
+    pub dead_lettered: usize,
+    pub invalid_messages: usize,
+    pub failed_writes: usize,
+    pub trace_refs: Vec<QueuedTraceWork>,
+    pub trace_ids: Vec<TraceId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IngestQueueStatus {
+    pub tenant_id: TenantId,
+    pub project_id: ProjectId,
+    pub total_depth: usize,
+    pub trace_write_depth: usize,
+    pub trace_ingested_depth: usize,
+    pub dead_letters: Vec<DeadLetter>,
+}
+
+#[derive(Clone, Debug)]
+struct PreparedTraceBatch {
+    tenant_id: TenantId,
+    project_id: ProjectId,
+    queue_key: IdempotencyKey,
+    trace_ids: BTreeSet<TraceId>,
+    batch: CanonicalTraceBatch,
+}
+
 pub fn anonymous_auth_context() -> AuthContext {
     AuthContext {
         api_key_id: None,
         scopes: BTreeSet::new(),
+    }
+}
+
+fn batch_publish_ack(batch: &CanonicalTraceBatch, publish: &PublishAck) -> WriteAck {
+    if publish.duplicate {
+        return WriteAck {
+            accepted_raw: 0,
+            accepted_spans: 0,
+            duplicate_raw: batch.raw_envelopes.len(),
+            duplicate_spans: batch.spans.len(),
+        };
+    }
+    WriteAck {
+        accepted_raw: batch.raw_envelopes.len(),
+        accepted_spans: batch.spans.len(),
+        duplicate_raw: 0,
+        duplicate_spans: 0,
+    }
+}
+
+fn validate_trace_write_scope(
+    message: &BusMessage,
+    batch: &CanonicalTraceBatch,
+) -> Result<(), String> {
+    if batch.raw_envelopes.is_empty() && batch.spans.is_empty() {
+        return Err("trace.write_batch payload is empty".to_string());
+    }
+    for raw in &batch.raw_envelopes {
+        if raw.tenant_id != message.tenant_id || raw.project_id != message.project_id {
+            return Err(format!(
+                "trace.write_batch raw scope mismatch: message={}/{} raw={}/{}",
+                message.tenant_id, message.project_id, raw.tenant_id, raw.project_id
+            ));
+        }
+    }
+    for span in &batch.spans {
+        if span.tenant_id != message.tenant_id || span.project_id != message.project_id {
+            return Err(format!(
+                "trace.write_batch span scope mismatch: message={}/{} span={}/{}",
+                message.tenant_id, message.project_id, span.tenant_id, span.project_id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn trace_ids_for_batch(batch: &CanonicalTraceBatch) -> BTreeSet<TraceId> {
+    batch
+        .spans
+        .iter()
+        .map(|span| span.trace_id.clone())
+        .collect()
+}
+
+fn map_bus_error(error: BusError) -> IngestError {
+    match error {
+        BusError::Backpressure { capacity } => IngestError::Backpressure { capacity },
+        other => IngestError::Other(anyhow::Error::new(other)),
     }
 }
 
@@ -603,7 +980,10 @@ pub async fn smoke_trace(service: &IngestService) -> Result<IngestOutcome, Inges
 mod tests {
     use super::*;
     use beater_bus::InMemoryBus;
-    use beater_store::{FsArtifactStore, SqliteTraceStore};
+    use beater_core::{Page, PageRequest};
+    use beater_schema::{RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView};
+    use beater_store_obj::FsArtifactStore;
+    use beater_store_sql::SqliteTraceStore;
 
     #[tokio::test]
     async fn native_ingest_preserves_raw_and_canonical_span() {
@@ -815,6 +1195,143 @@ mod tests {
         assert!(matches!(error, IngestError::QuotaExceeded { limit: 1, .. }));
     }
 
+    #[tokio::test]
+    async fn buffered_ingest_survives_trace_store_outage_and_drains_after_recovery() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let bus = Arc::new(InMemoryBus::new(16));
+        let unavailable = Arc::new(UnavailableTraceStore);
+        let outage_service = IngestService::new(
+            artifacts.clone(),
+            unavailable,
+            bus.clone(),
+            IngestPolicy::default(),
+        );
+        let request = fixture_request();
+
+        let outcome = outage_service
+            .buffer_native(request.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.ack.accepted_raw, 1);
+        assert_eq!(outcome.ack.accepted_spans, 1);
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+
+        let retry_report = outage_service
+            .drain_trace_writes(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(retry_report.consumed, 1);
+        assert_eq!(retry_report.failed_writes, 1);
+        assert_eq!(retry_report.retried, 1);
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let recovered = IngestService::new(
+            artifacts,
+            traces.clone(),
+            bus.clone(),
+            IngestPolicy::default(),
+        );
+        let report = recovered
+            .drain_trace_writes(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(report.consumed, 1);
+        assert_eq!(report.written_raw, 1);
+        assert_eq!(report.written_spans, 1);
+        assert_eq!(report.downstream_published, 1);
+        assert_eq!(report.trace_ids, vec![request.trace_id.clone()]);
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(0));
+        assert_eq!(bus.depth_for_kind(TRACE_INGESTED_KIND).await, Ok(1));
+
+        let trace = traces
+            .get_trace(request.scope.tenant_id, request.trace_id)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(trace.spans.len(), 1);
+        assert_eq!(trace.spans[0].name, "agent run");
+    }
+
+    #[tokio::test]
+    async fn trace_write_worker_dlqs_invalid_payload_without_consuming_other_lanes() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+        let mut poison = BusMessage::new(
+            tenant.clone(),
+            project.clone(),
+            IdempotencyKey::new("poison").unwrap_or_else(|err| panic!("{err}")),
+            TRACE_WRITE_BATCH_KIND,
+            b"not-json".to_vec(),
+        );
+        poison.max_attempts = 2;
+        bus.publish(poison)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(BusMessage::new(
+            tenant,
+            project,
+            IdempotencyKey::new("downstream").unwrap_or_else(|err| panic!("{err}")),
+            TRACE_INGESTED_KIND,
+            b"downstream".to_vec(),
+        ))
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+
+        let service = IngestService::new(artifacts, traces, bus.clone(), IngestPolicy::default());
+        let first = service
+            .drain_trace_writes(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(first.invalid_messages, 1);
+        assert_eq!(first.retried, 1);
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+        assert_eq!(bus.depth_for_kind(TRACE_INGESTED_KIND).await, Ok(1));
+
+        let second = service
+            .drain_trace_writes(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(second.invalid_messages, 1);
+        assert_eq!(second.dead_lettered, 1);
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(0));
+        assert_eq!(bus.depth_for_kind(TRACE_INGESTED_KIND).await, Ok(1));
+        let dlq = bus.dlq().await.unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(dlq.len(), 1);
+        assert!(dlq[0].reason.contains("invalid trace.write_batch payload"));
+    }
+
+    #[tokio::test]
+    async fn buffered_ingest_maps_bus_backpressure_to_typed_error() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(0));
+        let service = IngestService::new(artifacts, traces, bus, IngestPolicy::default());
+
+        let error = service
+            .buffer_native(fixture_request())
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("backpressure should fail"));
+
+        assert!(matches!(error, IngestError::Backpressure { capacity: 0 }));
+    }
+
     #[test]
     fn trace_completion_is_state_machine() {
         assert_eq!(
@@ -877,6 +1394,53 @@ mod tests {
             redaction_class: RedactionClass::Sensitive,
             idempotency_key: None,
             auth_context: None,
+        }
+    }
+
+    struct UnavailableTraceStore;
+
+    #[async_trait::async_trait]
+    impl TraceStore for UnavailableTraceStore {
+        async fn write_batch(
+            &self,
+            _batch: CanonicalTraceBatch,
+        ) -> beater_store::StoreResult<WriteAck> {
+            Err(StoreError::Backend("trace store unavailable".to_string()))
+        }
+
+        async fn get_trace(
+            &self,
+            _tenant: TenantId,
+            _trace: TraceId,
+        ) -> beater_store::StoreResult<TraceView> {
+            Err(StoreError::Backend("trace store unavailable".to_string()))
+        }
+
+        async fn get_raw_envelope(
+            &self,
+            _tenant: TenantId,
+            _project: ProjectId,
+            _idempotency_key: IdempotencyKey,
+        ) -> beater_store::StoreResult<Option<RawEnvelope>> {
+            Err(StoreError::Backend("trace store unavailable".to_string()))
+        }
+
+        async fn query_runs(
+            &self,
+            _tenant: TenantId,
+            _filter: RunFilter,
+            _page: PageRequest,
+        ) -> beater_store::StoreResult<Page<RunSummary>> {
+            Err(StoreError::Backend("trace store unavailable".to_string()))
+        }
+
+        async fn query_spans(
+            &self,
+            _tenant: TenantId,
+            _filter: SpanFilter,
+            _page: PageRequest,
+        ) -> beater_store::StoreResult<Page<SpanSummary>> {
+            Err(StoreError::Backend("trace store unavailable".to_string()))
         }
     }
 }

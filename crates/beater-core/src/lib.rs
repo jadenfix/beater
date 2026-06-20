@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fmt::{Display, Formatter};
 
 pub type Timestamp = DateTime<Utc>;
@@ -138,6 +139,11 @@ impl TokenCounts {
     pub fn total(&self) -> u64 {
         self.input + self.output + self.reasoning
     }
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

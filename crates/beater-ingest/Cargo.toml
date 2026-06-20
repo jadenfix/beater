@@ -16,6 +16,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
+beater-store-obj = { path = "../beater-store-obj" }
+beater-store-sql = { path = "../beater-store-sql" }
 tempfile.workspace = true
 tokio.workspace = true
 

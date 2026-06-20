@@ -171,6 +171,7 @@ beater/
     beater-eval/          # evaluator catalog, scoring contracts, aggregation
     beater-calibration/   # judge-vs-human agreement and kappa reports
     beater-usage/         # usage ledger, billing meters, spend summaries
+    beater-audit/         # privileged access audit events and readback
     beater-sandbox/       # Wasmtime/WASI Component Model evaluator runtime
     beater-secrets/       # opaque provider-secret refs, BYOK metadata, revocation
     beater-judge/         # LLM/embedding judge broker, BYOK, calibration
@@ -405,18 +406,18 @@ pub trait TraceStore: Send + Sync {
         tenant: TenantId,
         filter: SpanFilter,
         page: PageRequest,
-    ) -> anyhow::Result<Page<SpanSummary>>;
+    ) -> StoreResult<Page<SpanSummary>>;
 }
 ```
 
 Backends:
 
-- `SqlTraceStore`: SQLite for tiny local installs, Postgres for small teams and
+- `SqliteTraceStore` in `beater-store-sql`: SQLite for tiny local installs and
   tests.
 - `ClickHouseTraceStore`: hot analytical trace store for production scale.
 - `ParquetTraceArchive`: cold tier queried through DataFusion.
 
-Product code depends on `TraceStore`, not ClickHouse tables.
+Product code depends on `TraceStore`, not concrete backend crates.
 
 ### 7.2 Data Planes
 
@@ -455,6 +456,15 @@ lanes with different guarantees:
 | cache/pubsub | optional Redis or in-process | Redis/managed cache where needed | never source of durability |
 | enterprise bus | Kafka adapter | Kafka adapter | large customer integration and audit needs |
 
+The current OSS all-in-one slice uses the same lane model on the SQLite durable
+bus. `?durability=buffered` on native or OTLP ingest writes a canonical
+`trace.write_batch` message before hot trace persistence. A scoped drain API and
+the `beaterd` background worker consume only that lane, write through
+`TraceStore`, publish downstream `trace.ingested` work, and move invalid or
+exhausted messages to DLQ without consuming other tenants' queued work. Hosted
+deployments replace the SQLite bus implementation with Vercel Queues at the edge
+and NATS/Kafka in worker cells without changing the ingest contract.
+
 Poison messages are messages that repeatedly fail for deterministic reasons.
 They must be moved to DLQ with a reason, source envelope ref, attempt history,
 and replay command. They must not block a partition or consumer group forever.
@@ -466,11 +476,11 @@ receive OTLP/native request
   -> authenticate API key and project/environment
   -> enforce per-project quotas and payload limits
   -> create RawEnvelope and artifact refs
-  -> append raw envelope durably
   -> normalize with pinned normalizer version
   -> enforce cardinality/payload governance
   -> buffer for tail-sampling and trace completion
-  -> write canonical projection through TraceStore
+  -> direct mode: write canonical projection through TraceStore
+  -> buffered mode: enqueue canonical trace.write_batch for the drain worker
   -> enqueue online eval/replay/alert jobs
   -> acknowledge or DLQ
 ```

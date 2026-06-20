@@ -1,5 +1,5 @@
 [package]
-name = "beater-store"
+name = "beater-store-obj"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -8,9 +8,11 @@ license.workspace = true
 async-trait.workspace = true
 beater-core = { path = "../beater-core" }
 beater-schema = { path = "../beater-schema" }
-thiserror.workspace = true
+beater-store = { path = "../beater-store" }
+uuid.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 tokio.workspace = true
 
 [lints]

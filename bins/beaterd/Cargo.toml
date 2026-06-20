@@ -22,6 +22,8 @@ beater-judge = { path = "../../crates/beater-judge" }
 beater-search = { path = "../../crates/beater-search" }
 beater-secrets = { path = "../../crates/beater-secrets" }
 beater-store = { path = "../../crates/beater-store" }
+beater-store-obj = { path = "../../crates/beater-store-obj" }
+beater-store-sql = { path = "../../crates/beater-store-sql" }
 beater-core = { path = "../../crates/beater-core" }
 beater-usage = { path = "../../crates/beater-usage" }
 clap.workspace = true

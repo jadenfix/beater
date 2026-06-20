@@ -3,6 +3,9 @@ use beater_alerts::{
     decide_trace_sampling, AlertEngine, AlertInput, AlertLinks, AlertPolicy, AlertSeverity,
     OnlineSamplingPolicy,
 };
+use beater_audit::{
+    pii_unmask_event, AuditOutcome, AuditStore, PiiUnmaskAuditInput, SqliteAuditStore,
+};
 use beater_auth::{ApiKeyStore, CreateApiKeyRequest, SqliteApiKeyStore};
 use beater_bus::{BusMessage, DurableBus, SqliteDurableBus};
 use beater_calibration::{
@@ -10,8 +13,9 @@ use beater_calibration::{
 };
 use beater_core::{
     AgentReleaseId, AnnotationId, ApiKeyId, DatasetId, DatasetVersionId, EnvironmentId,
-    EvaluatorVersionId, ExperimentRunId, GateId, IdempotencyKey, Money, ProjectId,
-    ProviderSecretId, ReviewQueueId, ReviewTaskId, SpanId, TenantId, TraceId,
+    EvaluatorVersionId, ExperimentRunId, GateId, IdempotencyKey, Money, Page, PageRequest,
+    ProjectId, ProviderSecretId, ReviewQueueId, ReviewTaskId, SpanId, TenantId, TenantScope,
+    TraceId,
 };
 use beater_datasets::{
     evaluate_dataset_version, evaluate_dataset_version_with_judge, promote_trace_span_to_case,
@@ -31,7 +35,7 @@ use beater_human::{
     promote_review_annotation_to_dataset_case, CreateReviewQueueRequest, EnqueueReviewTaskRequest,
     HumanReviewStore, ReviewVerdict, SqliteHumanReviewStore, SubmitAnnotationRequest,
 };
-use beater_ingest::{smoke_trace, IngestPolicy, IngestService};
+use beater_ingest::{smoke_trace, IngestPolicy, IngestService, NativeIngestRequest};
 use beater_judge::{
     JudgeBrokerRequest, JudgeBrokerService, JudgeLedgerStore, KeywordJudgeProvider,
     SqliteJudgeLedger,
@@ -40,20 +44,25 @@ use beater_replay::{
     execute_replay, ReplayEvent, ReplayEventKind, ReplayScenario, ReplayStep, ReplayStore,
     SqliteReplayStore,
 };
-use beater_schema::EvaluatorLane;
+use beater_schema::{
+    AgentSpanKind, CanonicalTraceBatch, EvaluatorLane, RawEnvelope, RedactionClass, RunFilter,
+    RunSummary, SpanFilter, SpanStatus, SpanSummary, TraceView, WriteAck,
+};
 use beater_secrets::{
     EncryptedSqliteProviderSecretStore, ProviderSecretStore, PutProviderSecretRequest,
     SecretKeyring,
 };
 use beater_security::ApiScope;
-use beater_store::{FsArtifactStore, SqliteTraceStore, TraceStore};
+use beater_store::{StoreError, TraceStore};
+use beater_store_obj::FsArtifactStore;
+use beater_store_sql::SqliteTraceStore;
 use beater_usage::{
     judge_usage_from_outcome, record_usage_batch, SqliteUsageLedger, UsageLedgerStore, UsageMeter,
 };
 use chrono::Utc;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -89,6 +98,10 @@ enum Command {
         data_dir: PathBuf,
     },
     BusFixture {
+        #[arg(long, default_value = ".beater")]
+        data_dir: PathBuf,
+    },
+    IngestOutageFixture {
         #[arg(long, default_value = ".beater")]
         data_dir: PathBuf,
     },
@@ -155,6 +168,10 @@ enum Command {
         data_dir: PathBuf,
     },
     UsageFixture {
+        #[arg(long, default_value = ".beater")]
+        data_dir: PathBuf,
+    },
+    AuditFixture {
         #[arg(long, default_value = ".beater")]
         data_dir: PathBuf,
     },
@@ -372,6 +389,99 @@ async fn main() -> anyhow::Result<()> {
                     "depth": bus.depth().await?,
                     "dlq_len": dlq.len(),
                     "dlq": dlq
+                }))?
+            );
+        }
+        Command::IngestOutageFixture { data_dir } => {
+            let tenant = TenantId::new("demo")?;
+            let project = ProjectId::new("demo")?;
+            let environment = EnvironmentId::new("prod")?;
+            let trace_id = TraceId::new("ingest-outage-trace")?;
+            let artifacts = Arc::new(FsArtifactStore::new(data_dir.join("artifacts"))?);
+            let bus_path = data_dir.join("bus.sqlite");
+            let request = NativeIngestRequest {
+                scope: TenantScope::new(tenant.clone(), project.clone(), environment),
+                trace_id: trace_id.clone(),
+                span_id: SpanId::new("root")?,
+                parent_span_id: None,
+                seq: 1,
+                kind: AgentSpanKind::AgentRun,
+                name: "ingest outage fixture".to_string(),
+                status: SpanStatus::Ok,
+                start_time: Some(Utc::now()),
+                end_time: Some(Utc::now()),
+                model: None,
+                cost: None,
+                tokens: None,
+                input: Some(json!("accepted during trace store outage")),
+                output: Some(json!("recovered from durable queue")),
+                attributes: BTreeMap::new(),
+                redaction_class: RedactionClass::Internal,
+                idempotency_key: Some(IdempotencyKey::new("ingest-outage-fixture")?),
+                auth_context: None,
+            };
+
+            let outage_bus = Arc::new(SqliteDurableBus::open(&bus_path, 128)?);
+            let outage_service = IngestService::new(
+                artifacts.clone(),
+                Arc::new(UnavailableTraceStore),
+                outage_bus.clone(),
+                IngestPolicy::default(),
+            );
+            let buffered = outage_service
+                .buffer_native(request)
+                .await
+                .context("buffer native trace while trace store is unavailable")?;
+            let retry_report = outage_service
+                .drain_trace_writes_for(&tenant, &project, 10)
+                .await
+                .context("drain trace writes during simulated outage")?;
+            if retry_report.retried != 1 {
+                anyhow::bail!("expected one retried trace write during outage");
+            }
+            drop(outage_service);
+            drop(outage_bus);
+
+            let traces = Arc::new(SqliteTraceStore::open(data_dir.join("traces.sqlite"))?);
+            let before_recovery = traces
+                .get_trace(tenant.clone(), trace_id.clone())
+                .await
+                .context("read trace before recovery")?;
+            if !before_recovery.spans.is_empty() {
+                anyhow::bail!("trace store should be empty before recovery drain");
+            }
+
+            let recovery_bus = Arc::new(SqliteDurableBus::open(&bus_path, 128)?);
+            let recovered = IngestService::new(
+                artifacts,
+                traces.clone(),
+                recovery_bus,
+                IngestPolicy::default(),
+            );
+            let recovery_report = recovered
+                .drain_trace_writes_for(&tenant, &project, 10)
+                .await
+                .context("drain trace writes after store recovery")?;
+            let trace = traces
+                .get_trace(tenant.clone(), trace_id.clone())
+                .await
+                .context("read recovered trace")?;
+            if trace.spans.len() != 1 {
+                anyhow::bail!("expected one recovered span, got {}", trace.spans.len());
+            }
+            let queue_status = recovered
+                .queue_status(tenant.clone(), project.clone())
+                .await
+                .context("read ingest queue status")?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "buffered": buffered,
+                    "retry_report": retry_report,
+                    "recovery_report": recovery_report,
+                    "trace_span_count": trace.spans.len(),
+                    "trace_name": trace.spans[0].name,
+                    "queue_status": queue_status
                 }))?
             );
         }
@@ -1239,6 +1349,61 @@ async fn main() -> anyhow::Result<()> {
             assert_secret_not_in_judge_fixture_files(&data_dir, fixture_secret)?;
             println!("{output}");
         }
+        Command::AuditFixture { data_dir } => {
+            let audit = SqliteAuditStore::open(data_dir.join("audit.sqlite"))?;
+            let run_id = Utc::now().timestamp_micros();
+            let tenant = TenantId::new(format!("demo-{run_id}"))?;
+            let project = ProjectId::new("demo")?;
+            let environment = EnvironmentId::new("prod")?;
+            let trace = TraceId::new("audit-fixture-trace")?;
+            let denied = audit
+                .append_event(pii_unmask_event(PiiUnmaskAuditInput {
+                    tenant_id: tenant.clone(),
+                    project_id: project.clone(),
+                    environment_id: Some(environment.clone()),
+                    actor_api_key_id: Some(ApiKeyId::new("trace-read-key")?),
+                    trace_id: trace.clone(),
+                    outcome: AuditOutcome::Denied,
+                    reason: Some("incident-123".to_string()),
+                    attributes: json!({
+                        "sensitive_ref_count": 1,
+                        "error": "api key scope pii:unmask is missing"
+                    }),
+                }))
+                .await
+                .context("write denied unmask audit event")?;
+            let allowed = audit
+                .append_event(pii_unmask_event(PiiUnmaskAuditInput {
+                    tenant_id: tenant.clone(),
+                    project_id: project.clone(),
+                    environment_id: Some(environment),
+                    actor_api_key_id: Some(ApiKeyId::new("pii-unmask-key")?),
+                    trace_id: trace,
+                    outcome: AuditOutcome::Allowed,
+                    reason: Some("incident-123".to_string()),
+                    attributes: json!({
+                        "sensitive_ref_count": 1,
+                        "unmasked": true
+                    }),
+                }))
+                .await
+                .context("write allowed unmask audit event")?;
+            let events = audit
+                .list_events(tenant.clone(), project.clone())
+                .await
+                .context("list audit fixture events")?;
+            if events.len() != 2 {
+                anyhow::bail!("expected two audit events, got {}", events.len());
+            }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "denied": denied,
+                    "allowed": allowed,
+                    "events": events
+                }))?
+            );
+        }
         Command::AgentFixture { data_dir } => {
             let artifacts = Arc::new(FsArtifactStore::new(data_dir.join("artifacts"))?);
             let traces = Arc::new(SqliteTraceStore::open(data_dir.join("traces.sqlite"))?);
@@ -1631,4 +1796,51 @@ fn replay_fixture_event(
         json!({ "request": label }),
         json!({ label: "ok" }),
     )
+}
+
+struct UnavailableTraceStore;
+
+#[async_trait::async_trait]
+impl TraceStore for UnavailableTraceStore {
+    async fn write_batch(
+        &self,
+        _batch: CanonicalTraceBatch,
+    ) -> beater_store::StoreResult<WriteAck> {
+        Err(StoreError::Backend("trace store unavailable".to_string()))
+    }
+
+    async fn get_trace(
+        &self,
+        _tenant: TenantId,
+        _trace: TraceId,
+    ) -> beater_store::StoreResult<TraceView> {
+        Err(StoreError::Backend("trace store unavailable".to_string()))
+    }
+
+    async fn get_raw_envelope(
+        &self,
+        _tenant: TenantId,
+        _project: ProjectId,
+        _idempotency_key: IdempotencyKey,
+    ) -> beater_store::StoreResult<Option<RawEnvelope>> {
+        Err(StoreError::Backend("trace store unavailable".to_string()))
+    }
+
+    async fn query_runs(
+        &self,
+        _tenant: TenantId,
+        _filter: RunFilter,
+        _page: PageRequest,
+    ) -> beater_store::StoreResult<Page<RunSummary>> {
+        Err(StoreError::Backend("trace store unavailable".to_string()))
+    }
+
+    async fn query_spans(
+        &self,
+        _tenant: TenantId,
+        _filter: SpanFilter,
+        _page: PageRequest,
+    ) -> beater_store::StoreResult<Page<SpanSummary>> {
+        Err(StoreError::Backend("trace store unavailable".to_string()))
+    }
 }

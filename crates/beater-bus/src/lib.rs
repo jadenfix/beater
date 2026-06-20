@@ -61,13 +61,48 @@ pub struct DeadLetter {
     pub failed_at: Timestamp,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublishAck {
+    pub accepted: bool,
+    pub duplicate: bool,
+}
+
+impl PublishAck {
+    pub fn accepted() -> Self {
+        Self {
+            accepted: true,
+            duplicate: false,
+        }
+    }
+
+    pub fn duplicate() -> Self {
+        Self {
+            accepted: false,
+            duplicate: true,
+        }
+    }
+}
+
 #[async_trait]
 pub trait DurableBus: Send + Sync {
-    async fn publish(&self, message: BusMessage) -> Result<(), BusError>;
+    async fn publish(&self, message: BusMessage) -> Result<PublishAck, BusError>;
     async fn consume_batch(&self, limit: usize) -> Result<Vec<BusMessage>, BusError>;
+    async fn consume_kind_batch(
+        &self,
+        kind: &str,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError>;
+    async fn consume_scoped_kind_batch(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        kind: &str,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError>;
     async fn retry_or_dlq(&self, message: BusMessage, reason: String) -> Result<(), BusError>;
     async fn dlq(&self) -> Result<Vec<DeadLetter>, BusError>;
     async fn depth(&self) -> Result<usize, BusError>;
+    async fn depth_for_kind(&self, kind: &str) -> Result<usize, BusError>;
 }
 
 #[derive(Clone, Debug)]
@@ -99,15 +134,23 @@ impl InMemoryBus {
 
 #[async_trait]
 impl DurableBus for InMemoryBus {
-    async fn publish(&self, message: BusMessage) -> Result<(), BusError> {
+    async fn publish(&self, message: BusMessage) -> Result<PublishAck, BusError> {
         let mut state = self.lock()?;
+        if state.queue.iter().any(|queued| {
+            queued.tenant_id == message.tenant_id
+                && queued.project_id == message.project_id
+                && queued.kind == message.kind
+                && queued.idempotency_key == message.idempotency_key
+        }) {
+            return Ok(PublishAck::duplicate());
+        }
         if state.queue.len() >= self.capacity {
             return Err(BusError::Backpressure {
                 capacity: self.capacity,
             });
         }
         state.queue.push_back(message);
-        Ok(())
+        Ok(PublishAck::accepted())
     }
 
     async fn consume_batch(&self, limit: usize) -> Result<Vec<BusMessage>, BusError> {
@@ -118,6 +161,52 @@ impl DurableBus for InMemoryBus {
                 messages.push(message);
             } else {
                 break;
+            }
+        }
+        Ok(messages)
+    }
+
+    async fn consume_kind_batch(
+        &self,
+        kind: &str,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError> {
+        let mut state = self.lock()?;
+        let mut messages = Vec::new();
+        let mut index = 0;
+        while messages.len() < limit && index < state.queue.len() {
+            if state.queue[index].kind == kind {
+                if let Some(message) = state.queue.remove(index) {
+                    messages.push(message);
+                }
+            } else {
+                index += 1;
+            }
+        }
+        Ok(messages)
+    }
+
+    async fn consume_scoped_kind_batch(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        kind: &str,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError> {
+        let mut state = self.lock()?;
+        let mut messages = Vec::new();
+        let mut index = 0;
+        while messages.len() < limit && index < state.queue.len() {
+            let queued = &state.queue[index];
+            if queued.tenant_id == *tenant_id
+                && queued.project_id == *project_id
+                && queued.kind == kind
+            {
+                if let Some(message) = state.queue.remove(index) {
+                    messages.push(message);
+                }
+            } else {
+                index += 1;
             }
         }
         Ok(messages)
@@ -154,6 +243,15 @@ impl DurableBus for InMemoryBus {
     async fn depth(&self) -> Result<usize, BusError> {
         let state = self.lock()?;
         Ok(state.queue.len())
+    }
+
+    async fn depth_for_kind(&self, kind: &str) -> Result<usize, BusError> {
+        let state = self.lock()?;
+        Ok(state
+            .queue
+            .iter()
+            .filter(|message| message.kind == kind)
+            .count())
     }
 }
 
@@ -245,10 +343,24 @@ impl SqliteDurableBus {
             .map_err(|err| BusError::Storage(err.to_string()))
     }
 
-    fn insert_message(connection: &Connection, message: &BusMessage) -> Result<(), BusError> {
+    fn queue_depth_for_kind(connection: &Connection, kind: &str) -> Result<usize, BusError> {
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM queue_messages WHERE kind = ?1",
+                params![kind],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|count| count as usize)
+            .map_err(|err| BusError::Storage(err.to_string()))
+    }
+
+    fn insert_message(
+        connection: &Connection,
+        message: &BusMessage,
+    ) -> Result<PublishAck, BusError> {
         let message_json =
             serde_json::to_string(message).map_err(|err| BusError::Storage(err.to_string()))?;
-        connection
+        let changed = connection
             .execute(
                 r#"
                 INSERT OR IGNORE INTO queue_messages
@@ -266,7 +378,11 @@ impl SqliteDurableBus {
                 ],
             )
             .map_err(|err| BusError::Storage(err.to_string()))?;
-        Ok(())
+        if changed == 0 {
+            Ok(PublishAck::duplicate())
+        } else {
+            Ok(PublishAck::accepted())
+        }
     }
 
     fn insert_dead_letter(
@@ -299,7 +415,7 @@ impl SqliteDurableBus {
 
 #[async_trait]
 impl DurableBus for SqliteDurableBus {
-    async fn publish(&self, message: BusMessage) -> Result<(), BusError> {
+    async fn publish(&self, message: BusMessage) -> Result<PublishAck, BusError> {
         let connection = self.lock()?;
         let duplicate_exists = connection
             .query_row(
@@ -321,7 +437,7 @@ impl DurableBus for SqliteDurableBus {
             .map_err(|err| BusError::Storage(err.to_string()))?
             != 0;
         if duplicate_exists {
-            return Ok(());
+            return Ok(PublishAck::duplicate());
         }
         if Self::queue_depth(&connection)? >= self.capacity {
             return Err(BusError::Backpressure {
@@ -332,48 +448,34 @@ impl DurableBus for SqliteDurableBus {
     }
 
     async fn consume_batch(&self, limit: usize) -> Result<Vec<BusMessage>, BusError> {
-        let mut connection = self.lock()?;
-        let tx = connection
-            .transaction()
-            .map_err(|err| BusError::Storage(err.to_string()))?;
-        let selected = {
-            let mut statement = tx
-                .prepare(
-                    r#"
-                    SELECT message_id, message_json
-                    FROM queue_messages
-                    ORDER BY enqueued_at ASC, message_id ASC
-                    LIMIT ?1
-                    "#,
-                )
-                .map_err(|err| BusError::Storage(err.to_string()))?;
-            let rows = statement
-                .query_map(params![limit as i64], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                })
-                .map_err(|err| BusError::Storage(err.to_string()))?;
-            let mut selected = Vec::new();
-            for row in rows {
-                selected.push(row.map_err(|err| BusError::Storage(err.to_string()))?);
-            }
-            selected
-        };
+        self.consume_batch_inner(ConsumeFilter::All, limit).await
+    }
 
-        let mut messages = Vec::with_capacity(selected.len());
-        for (message_id, message_json) in selected {
-            tx.execute(
-                "DELETE FROM queue_messages WHERE message_id = ?1",
-                params![message_id],
-            )
-            .map_err(|err| BusError::Storage(err.to_string()))?;
-            messages.push(
-                serde_json::from_str::<BusMessage>(&message_json)
-                    .map_err(|err| BusError::Storage(err.to_string()))?,
-            );
-        }
-        tx.commit()
-            .map_err(|err| BusError::Storage(err.to_string()))?;
-        Ok(messages)
+    async fn consume_kind_batch(
+        &self,
+        kind: &str,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError> {
+        self.consume_batch_inner(ConsumeFilter::Kind { kind }, limit)
+            .await
+    }
+
+    async fn consume_scoped_kind_batch(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        kind: &str,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError> {
+        self.consume_batch_inner(
+            ConsumeFilter::ScopedKind {
+                tenant_id,
+                project_id,
+                kind,
+            },
+            limit,
+        )
+        .await
     }
 
     async fn retry_or_dlq(&self, mut message: BusMessage, reason: String) -> Result<(), BusError> {
@@ -395,7 +497,7 @@ impl DurableBus for SqliteDurableBus {
             };
             return Self::insert_dead_letter(&connection, &dead_letter);
         }
-        Self::insert_message(&connection, &message)
+        Self::insert_message(&connection, &message).map(|_| ())
     }
 
     async fn dlq(&self) -> Result<Vec<DeadLetter>, BusError> {
@@ -427,6 +529,126 @@ impl DurableBus for SqliteDurableBus {
         let connection = self.lock()?;
         Self::queue_depth(&connection)
     }
+
+    async fn depth_for_kind(&self, kind: &str) -> Result<usize, BusError> {
+        let connection = self.lock()?;
+        Self::queue_depth_for_kind(&connection, kind)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ConsumeFilter<'a> {
+    All,
+    Kind {
+        kind: &'a str,
+    },
+    ScopedKind {
+        tenant_id: &'a TenantId,
+        project_id: &'a ProjectId,
+        kind: &'a str,
+    },
+}
+
+impl SqliteDurableBus {
+    async fn consume_batch_inner(
+        &self,
+        filter: ConsumeFilter<'_>,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError> {
+        let mut connection = self.lock()?;
+        let tx = connection
+            .transaction()
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        let selected = {
+            let mut statement = match filter {
+                ConsumeFilter::Kind { .. } => tx.prepare(
+                    r#"
+                    SELECT message_id, message_json
+                    FROM queue_messages
+                    WHERE kind = ?2
+                    ORDER BY enqueued_at ASC, message_id ASC
+                    LIMIT ?1
+                    "#,
+                ),
+                ConsumeFilter::ScopedKind { .. } => tx.prepare(
+                    r#"
+                    SELECT message_id, message_json
+                    FROM queue_messages
+                    WHERE tenant_id = ?2 AND project_id = ?3 AND kind = ?4
+                    ORDER BY enqueued_at ASC, message_id ASC
+                    LIMIT ?1
+                    "#,
+                ),
+                ConsumeFilter::All => tx.prepare(
+                    r#"
+                    SELECT message_id, message_json
+                    FROM queue_messages
+                    ORDER BY enqueued_at ASC, message_id ASC
+                    LIMIT ?1
+                    "#,
+                ),
+            }
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+            let mut selected = Vec::new();
+            match filter {
+                ConsumeFilter::Kind { kind } => {
+                    let rows = statement
+                        .query_map(params![limit as i64, kind], |row| {
+                            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                        })
+                        .map_err(|err| BusError::Storage(err.to_string()))?;
+                    for row in rows {
+                        selected.push(row.map_err(|err| BusError::Storage(err.to_string()))?);
+                    }
+                }
+                ConsumeFilter::ScopedKind {
+                    tenant_id,
+                    project_id,
+                    kind,
+                } => {
+                    let rows = statement
+                        .query_map(
+                            params![limit as i64, tenant_id.as_str(), project_id.as_str(), kind],
+                            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                        )
+                        .map_err(|err| BusError::Storage(err.to_string()))?;
+                    for row in rows {
+                        selected.push(row.map_err(|err| BusError::Storage(err.to_string()))?);
+                    }
+                }
+                ConsumeFilter::All => {
+                    let rows = statement
+                        .query_map(params![limit as i64], |row| {
+                            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                        })
+                        .map_err(|err| BusError::Storage(err.to_string()))?;
+                    for row in rows {
+                        selected.push(row.map_err(|err| BusError::Storage(err.to_string()))?);
+                    }
+                }
+            }
+            Ok::<_, BusError>(selected)
+        }?;
+
+        for (message_id, _) in &selected {
+            tx.execute(
+                "DELETE FROM queue_messages WHERE message_id = ?1",
+                params![message_id],
+            )
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        }
+
+        let mut messages = Vec::with_capacity(selected.len());
+        for (_, message_json) in selected {
+            messages.push(
+                serde_json::from_str::<BusMessage>(&message_json)
+                    .map_err(|err| BusError::Storage(err.to_string()))?,
+            );
+        }
+        tx.commit()
+            .map_err(|err| BusError::Storage(err.to_string()))?;
+        Ok(messages)
+    }
 }
 
 #[cfg(test)]
@@ -439,11 +661,42 @@ mod tests {
         let first = fixture_message("one");
         let second = fixture_message("two");
 
-        assert_eq!(bus.publish(first).await, Ok(()));
+        assert_eq!(bus.publish(first).await, Ok(PublishAck::accepted()));
         assert!(matches!(
             bus.publish(second).await,
             Err(BusError::Backpressure { capacity: 1 })
         ));
+    }
+
+    #[tokio::test]
+    async fn in_memory_bus_dedupes_publishes_and_consumes_one_kind() {
+        let bus = InMemoryBus::new(8);
+        let trace_write = fixture_message("trace.write_batch");
+        let duplicate = trace_write.clone();
+        let downstream = fixture_message("trace.ingested");
+
+        assert_eq!(
+            bus.publish(trace_write.clone()).await,
+            Ok(PublishAck::accepted())
+        );
+        assert_eq!(bus.publish(duplicate).await, Ok(PublishAck::duplicate()));
+        assert_eq!(
+            bus.publish(downstream.clone()).await,
+            Ok(PublishAck::accepted())
+        );
+
+        let consumed = bus
+            .consume_kind_batch("trace.write_batch", 10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(consumed, vec![trace_write]);
+        assert_eq!(bus.depth_for_kind("trace.write_batch").await, Ok(0));
+        assert_eq!(bus.depth_for_kind("trace.ingested").await, Ok(1));
+        let remaining = bus
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(remaining, vec![downstream]);
     }
 
     #[tokio::test]
@@ -503,9 +756,11 @@ mod tests {
         bus.publish(first.clone())
             .await
             .unwrap_or_else(|err| panic!("{err}"));
-        bus.publish(duplicate)
+        let duplicate_ack = bus
+            .publish(duplicate)
             .await
             .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(duplicate_ack, PublishAck::duplicate());
         assert_eq!(bus.depth().await, Ok(1));
         drop(bus);
 
@@ -517,6 +772,67 @@ mod tests {
             .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(batch, vec![first]);
         assert_eq!(reopened.depth().await, Ok(0));
+    }
+
+    #[tokio::test]
+    async fn sqlite_bus_consumes_one_kind_without_stealing_other_lanes() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("bus.sqlite");
+        let bus = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let trace_write = fixture_message("trace.write_batch");
+        let downstream = fixture_message("trace.ingested");
+
+        bus.publish(downstream.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(trace_write.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let consumed = bus
+            .consume_kind_batch("trace.write_batch", 10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(consumed, vec![trace_write]);
+        assert_eq!(bus.depth_for_kind("trace.write_batch").await, Ok(0));
+        assert_eq!(bus.depth_for_kind("trace.ingested").await, Ok(1));
+
+        drop(bus);
+        let reopened = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let remaining = reopened
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(remaining, vec![downstream]);
+    }
+
+    #[tokio::test]
+    async fn scoped_kind_consumption_preserves_other_tenants() {
+        let bus = InMemoryBus::new(8);
+        let tenant_a = TenantId::new("tenant-a").unwrap_or_else(|err| panic!("{err}"));
+        let tenant_b = TenantId::new("tenant-b").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+        let a_message = scoped_fixture_message(&tenant_a, &project, "trace.write_batch", "a");
+        let b_message = scoped_fixture_message(&tenant_b, &project, "trace.write_batch", "b");
+
+        bus.publish(a_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(b_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let consumed = bus
+            .consume_scoped_kind_batch(&tenant_a, &project, "trace.write_batch", 10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(consumed, vec![a_message]);
+        assert_eq!(bus.depth_for_kind("trace.write_batch").await, Ok(1));
+        let remaining = bus
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(remaining, vec![b_message]);
     }
 
     #[tokio::test]
@@ -569,6 +885,21 @@ mod tests {
             IdempotencyKey::new(format!("key-{kind}")).unwrap_or_else(|err| panic!("{err}")),
             kind,
             kind.as_bytes().to_vec(),
+        )
+    }
+
+    fn scoped_fixture_message(
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        kind: &str,
+        key: &str,
+    ) -> BusMessage {
+        BusMessage::new(
+            tenant_id.clone(),
+            project_id.clone(),
+            IdempotencyKey::new(format!("key-{key}")).unwrap_or_else(|err| panic!("{err}")),
+            kind,
+            key.as_bytes().to_vec(),
         )
     }
 }

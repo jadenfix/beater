@@ -611,7 +611,8 @@ mod tests {
         ArtifactRef, AuthContext, CanonicalTraceBatch, RawEnvelope, RedactionClass, SourceDialect,
         CANONICAL_SCHEMA_VERSION, RAW_SCHEMA_VERSION,
     };
-    use beater_store::{SqliteTraceStore, TraceStore};
+    use beater_store::TraceStore;
+    use beater_store_sql::SqliteTraceStore;
     use serde_json::json;
     use std::collections::{BTreeMap, BTreeSet};
 

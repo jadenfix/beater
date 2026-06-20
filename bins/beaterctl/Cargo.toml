@@ -6,7 +6,9 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 beater-alerts = { path = "../../crates/beater-alerts" }
+beater-audit = { path = "../../crates/beater-audit" }
 beater-auth = { path = "../../crates/beater-auth" }
 beater-bus = { path = "../../crates/beater-bus" }
 beater-calibration = { path = "../../crates/beater-calibration" }
@@ -23,6 +25,8 @@ beater-schema = { path = "../../crates/beater-schema" }
 beater-security = { path = "../../crates/beater-security" }
 beater-secrets = { path = "../../crates/beater-secrets" }
 beater-store = { path = "../../crates/beater-store" }
+beater-store-obj = { path = "../../crates/beater-store-obj" }
+beater-store-sql = { path = "../../crates/beater-store-sql" }
 beater-usage = { path = "../../crates/beater-usage" }
 chrono.workspace = true
 clap.workspace = true

@@ -37,6 +37,8 @@ beater-bus = { path = "../beater-bus" }
 beater-eval = { path = "../beater-eval" }
 beater-replay = { path = "../beater-replay" }
 beater-sandbox = { path = "../beater-sandbox" }
+beater-store-obj = { path = "../beater-store-obj" }
+beater-store-sql = { path = "../beater-store-sql" }
 opentelemetry-proto.workspace = true
 tempfile.workspace = true
 tokio.workspace = true

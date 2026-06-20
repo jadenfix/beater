@@ -542,6 +542,7 @@ dependencies = [
  "axum",
  "beater-alerts",
  "beater-archive",
+ "beater-audit",
  "beater-auth",
  "beater-bus",
  "beater-calibration",
@@ -561,6 +562,8 @@ dependencies = [
  "beater-secrets",
  "beater-security",
  "beater-store",
+ "beater-store-obj",
+ "beater-store-sql",
  "beater-usage",
  "chrono",
  "http",
@@ -583,12 +586,28 @@ dependencies = [
  "beater-core",
  "beater-schema",
  "beater-store",
+ "beater-store-sql",
  "chrono",
  "datafusion",
  "parquet",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "beater-audit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "beater-core",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tokio",
  "uuid",
 ]
@@ -648,6 +667,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
 ]
 
@@ -745,10 +765,13 @@ name = "beater-ingest"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "beater-bus",
  "beater-core",
  "beater-schema",
  "beater-store",
+ "beater-store-obj",
+ "beater-store-sql",
  "chrono",
  "serde",
  "serde_json",
@@ -889,17 +912,39 @@ dependencies = [
 name = "beater-store"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "beater-core",
  "beater-schema",
- "chrono",
- "rusqlite",
- "serde_json",
- "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
+name = "beater-store-obj"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "beater-core",
+ "beater-schema",
+ "beater-store",
  "tempfile",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "beater-store-sql"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "beater-core",
+ "beater-schema",
+ "beater-store",
+ "beater-store-obj",
+ "chrono",
+ "rusqlite",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -926,7 +971,9 @@ name = "beaterctl"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "beater-alerts",
+ "beater-audit",
  "beater-auth",
  "beater-bus",
  "beater-calibration",
@@ -943,6 +990,8 @@ dependencies = [
  "beater-secrets",
  "beater-security",
  "beater-store",
+ "beater-store-obj",
+ "beater-store-sql",
  "beater-usage",
  "chrono",
  "clap",
@@ -959,6 +1008,7 @@ dependencies = [
  "axum",
  "beater-api",
  "beater-archive",
+ "beater-audit",
  "beater-auth",
  "beater-bus",
  "beater-calibration",
@@ -972,6 +1022,8 @@ dependencies = [
  "beater-search",
  "beater-secrets",
  "beater-store",
+ "beater-store-obj",
+ "beater-store-sql",
  "beater-usage",
  "clap",
  "tokio",

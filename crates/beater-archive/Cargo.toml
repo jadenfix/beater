@@ -20,6 +20,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 beater-store = { path = "../beater-store" }
+beater-store-sql = { path = "../beater-store-sql" }
 tempfile.workspace = true
 tokio.workspace = true
 

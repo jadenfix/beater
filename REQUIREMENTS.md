@@ -29,7 +29,7 @@ system, test output, or runtime behavior.
 
 | ID | Requirement | Evidence required |
 | --- | --- | --- |
-| R2.1 | Canonical entities exist: Run, Span, Event, Artifact, DatasetVersion, Experiment, EvaluatorVersion, EvalResult, Gate, GateRun, ReviewQueue, ReviewTask, Annotation, CalibrationReport, UsageRecord. | Schema definitions and migrations |
+| R2.1 | Canonical entities exist: Run, Span, Event, Artifact, DatasetVersion, Experiment, EvaluatorVersion, EvalResult, Gate, GateRun, ReviewQueue, ReviewTask, Annotation, CalibrationReport, UsageRecord, AuditEvent. | Schema definitions and migrations |
 | R2.2 | Every raw event has `schema_version`, source dialect, source schema version/URL, payload hash, and raw artifact ref. | Unit tests and sample stored raw envelopes |
 | R2.3 | Normalized spans store `normalizer_version`, canonical attrs, unmapped attrs, and raw ref. | Golden normalizer tests |
 | R2.4 | Old raw traces can be re-normalized after schema changes. | Migration/replay test that reprojects an old fixture into a new canonical version |
@@ -39,8 +39,8 @@ system, test output, or runtime behavior.
 
 | ID | Requirement | Evidence required |
 | --- | --- | --- |
-| R3.1 | Product code depends on a `TraceStore` trait. | Trait exists; API/eval/query crates compile against trait |
-| R3.2 | Local backend exists before ClickHouse assumptions leak. | SQLite or Postgres `TraceStore` tests |
+| R3.1 | Product code depends on a `TraceStore` trait. | `beater-store` is trait/error/fake only; concrete SQLite/filesystem implementations live in `beater-store-sql` and `beater-store-obj`; `cargo tree -p beater-store` has no `rusqlite` |
+| R3.2 | Local backend exists before ClickHouse assumptions leak. | `beater-store-sql` TraceStore conformance suite runs identical cases against SQLite and `InMemoryTraceStore`; filesystem artifact store has its own round-trip/hash test |
 | R3.3 | ClickHouse backend exists for scale. | ClickHouse migrations and testcontainers integration test |
 | R3.4 | Large payloads are artifact refs, not hot-row blobs. | Size-cap tests and object-store fixture |
 | R3.5 | Cold retention uses Parquet plus DataFusion. | Export/archive test and query fixture |
@@ -49,16 +49,16 @@ system, test output, or runtime behavior.
 
 | ID | Requirement | Evidence required |
 | --- | --- | --- |
-| R4.1 | Backpressure is bounded and observable. | Load test showing bounded memory and 429/queue behavior |
-| R4.2 | Durable buffer exists. | NATS JetStream integration test; Vercel Queues adapter test or mocked contract |
-| R4.3 | DLQ captures invalid or repeatedly failed events. | DLQ tests with reason codes and replay path |
-| R4.4 | At-least-once delivery is reconciled by idempotency keys. | Duplicate batch test |
+| R4.1 | Backpressure is bounded and observable. | In-memory/SQLite bus capacity tests; buffered ingest API 429 full-stack test; load test still required before GA |
+| R4.2 | Durable buffer exists. | SQLite durable bus reopen/dedupe tests, `beaterd` SQLite bus default, buffered trace-write queue; NATS JetStream and Vercel Queues adapters still required for scale/hosted GA |
+| R4.3 | DLQ captures invalid or repeatedly failed events. | Bus DLQ tests, trace-write worker invalid payload DLQ test, `beaterctl bus-fixture`; replay path still required |
+| R4.4 | At-least-once delivery is reconciled by idempotency keys. | SQLite bus idempotent publish tests, SQLite `TraceStore` duplicate write tests; API duplicate-batch fixture still required |
 | R4.5 | Cardinality and payload governance are enforced. | Attribute cardinality, allow/deny, and truncation-to-artifact tests |
 | R4.6 | Tail-based sampling keeps errors, slow traces, and high-cost traces. | Policy tests with full-trace buffering |
 | R4.7 | Trace completion handles root-end, idle timeout, late spans, and clock skew. | Out-of-order distributed trace fixtures |
 | R4.8 | Per-project quotas produce explicit 429 semantics. | API tests for quota exhaustion and reset headers |
-| R4.9 | Poison messages cannot stall a queue shard or consumer group. | Repeated-failure test moving a message to DLQ with attempt history |
-| R4.10 | ClickHouse or TraceStore outage does not silently drop accepted events. | Outage test proving durable buffering, retry, and DLQ behavior |
+| R4.9 | Poison messages cannot stall a queue shard or consumer group. | Lane-aware and scoped bus consumption tests plus trace-write worker invalid-payload DLQ test |
+| R4.10 | ClickHouse or TraceStore outage does not silently drop accepted events. | `buffer_native` outage/recovery unit test, buffered ingest + scoped drain full-stack API test, `beaterd` background trace-write drain worker, and `beaterctl ingest-outage-fixture` |
 
 ## R5. Evaluators
 
@@ -100,7 +100,7 @@ system, test output, or runtime behavior.
 | --- | --- | --- |
 | R8.1 | Deletion is compatible with immutable raw storage. | Crypto-shredding design, key hierarchy tests, deletion verification |
 | R8.2 | Project-level data residency is enforced. | Region pinning tests and storage routing config |
-| R8.3 | PII unmask is a separate audited scope. | RBAC test and audit event fixture |
+| R8.3 | PII unmask is a separate audited scope. | `/v1/traces` full-stack test for default redaction, denied `pii_unmask`, allowed scoped unmask, and `/v1/audit` readback; `beater-audit` SQLite store test; `beaterctl audit-fixture` |
 | R8.4 | Retention tiers are consistent across hot, cold, and artifact stores. | TTL/sweeper tests |
 | R8.5 | Orphaned artifacts are detected and cleaned. | Sweeper integration test |
 
