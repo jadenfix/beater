@@ -272,6 +272,12 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_run.contains("require_unset BEATER_DASHBOARD_E2E_IMAGE"));
     assert!(outside_run.contains("require_unset BEATER_OTEL_PYTHON_IMAGE"));
     assert!(outside_run.contains("the wrapper pins beaterd to the checked-out commit SHA"));
+    assert!(outside_run.contains("require_unset BEATER_GATE2_STOPWATCH_PROOF"));
+    assert!(outside_run.contains("require_unset BEATER_GATE2_RECORD_VIDEO"));
+    assert!(outside_run.contains("require_unset BEATER_GATE2_RECORD_NOTES"));
+    assert!(outside_run.contains("docs/demos/gate2-compose-stopwatch.md"));
+    assert!(outside_run.contains("docs/demos/gate2-compose-browser-demo.webm"));
+    assert!(outside_run.contains("docs/demos/gate2-compose-browser-demo.md"));
     assert!(outside_run.contains("scripts/gate2-compose-stopwatch.sh"));
     assert!(outside_run.contains("Gate 2 outside-run wrapper preflight passed"));
 
@@ -387,6 +393,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(public_handoff.contains("BEATER_DASHBOARD_IMAGE"));
     assert!(public_handoff.contains("BEATER_DASHBOARD_E2E_IMAGE"));
     assert!(public_handoff.contains("BEATER_OTEL_PYTHON_IMAGE"));
+    assert!(public_handoff.contains("BEATER_GATE2_STOPWATCH_PROOF"));
+    assert!(public_handoff.contains("BEATER_GATE2_RECORD_VIDEO"));
+    assert!(public_handoff.contains("BEATER_GATE2_RECORD_NOTES"));
     assert!(public_handoff.contains("--registry-fixture"));
     assert!(public_handoff.contains("--skip-local-readiness"));
 
@@ -396,7 +405,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("sets the required proof/browser/recording flags"));
     assert!(outside_proof.contains("Outside-run wrapper:"));
     assert!(outside_proof.contains("Outside-run wrapper: yes"));
-    assert!(outside_proof.contains("prebuilt image overrides"));
+    assert!(outside_proof.contains("prebuilt image"));
+    assert!(outside_proof.contains("evidence artifact path overrides"));
     assert!(outside_proof.contains("rejects"));
     assert!(outside_proof.contains("warm-loop reuse"));
     assert!(outside_proof.contains("Preflight status"));
@@ -451,9 +461,13 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("scripts/check-gate2-outside-readiness.py"));
     assert!(readme.contains("Outside-run wrapper: yes"));
     assert!(readme.contains("prebuilt image overrides"));
+    assert!(readme.contains("evidence"));
+    assert!(readme.contains("artifact path overrides"));
     assert!(readme.contains("scripts/generate-gate2-outside-proof.py"));
     assert!(readme.contains("--attest-outside-run"));
-    assert!(readme.contains("proof writing, browser proof, and browser recording"));
+    assert!(readme.contains("proof writing"));
+    assert!(readme.contains("browser proof"));
+    assert!(readme.contains("browser recording"));
     assert!(readme.contains("enabled. It also sets"));
     assert!(readme.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(readme.contains("removes any previous Beater stopwatch project"));
@@ -490,7 +504,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(requirements.contains("scripts/check-gate2-outside-readiness.py"));
     assert!(requirements.contains("public-clone handoff verifier"));
     assert!(requirements.contains("requires the clone to match the current commit"));
-    assert!(requirements.contains("alternate-port/image-override evidence"));
+    assert!(requirements.contains("alternate-port/image-override/artifact-path evidence"));
     assert!(requirements.contains("wrapper marker"));
     assert!(requirements.contains("scripts/generate-gate2-outside-proof.py"));
     assert!(requirements.contains("scripts/validate-gate2-outside-proof.sh"));

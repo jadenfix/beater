@@ -169,6 +169,19 @@ fn gate2_outside_wrapper_rejects_image_override() {
 }
 
 #[test]
+fn gate2_outside_wrapper_rejects_artifact_path_override() {
+    let output = run_outside_wrapper_dry_run(Some((
+        "BEATER_GATE2_RECORD_VIDEO",
+        "/tmp/gate2-recording.webm",
+    )));
+
+    assert_failure(
+        output,
+        "BEATER_GATE2_RECORD_VIDEO must be unset for outside-person evidence",
+    );
+}
+
+#[test]
 fn gate2_outside_validator_rejects_stopwatch_without_wrapper_marker() {
     let fixture = ValidatorFixture::new();
     replace(
@@ -859,7 +872,10 @@ fn run_outside_wrapper_dry_run(extra_env: Option<(&str, &str)>) -> Output {
         .env_remove("BEATERD_IMAGE")
         .env_remove("BEATER_DASHBOARD_IMAGE")
         .env_remove("BEATER_DASHBOARD_E2E_IMAGE")
-        .env_remove("BEATER_OTEL_PYTHON_IMAGE");
+        .env_remove("BEATER_OTEL_PYTHON_IMAGE")
+        .env_remove("BEATER_GATE2_STOPWATCH_PROOF")
+        .env_remove("BEATER_GATE2_RECORD_VIDEO")
+        .env_remove("BEATER_GATE2_RECORD_NOTES");
     if let Some((name, value)) = extra_env {
         command.env(name, value);
     }

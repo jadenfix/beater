@@ -143,11 +143,12 @@ scripts/gate2-outside-run.sh
 ```
 
 The outside-run wrapper rejects warm-loop reuse, local source builds, alternate
-ports, mutable pull-policy overrides, and prebuilt image overrides, then runs
-the stopwatch script with proof writing, browser proof, and browser recording
-enabled. It also sets an `Outside-run wrapper: yes` marker in the stopwatch
-proof; completed outside-person proof validation rejects evidence without that
-marker. The script first removes any previous Compose project/volumes, then runs
+ports, mutable pull-policy overrides, prebuilt image overrides, and evidence
+artifact path overrides, then runs the stopwatch script with proof writing,
+browser proof, and browser recording enabled. It also sets an
+`Outside-run wrapper: yes` marker in the stopwatch proof; completed
+outside-person proof validation rejects evidence without that marker. The script
+first removes any previous Compose project/volumes, then runs
 `docker compose up`, sends `examples/python/five_line_otel.py` from the
 prebuilt stock OpenTelemetry Python runner container, waits until the trace is
 visible in `localhost:3000`, and fails if time-to-first-trace exceeds 300
