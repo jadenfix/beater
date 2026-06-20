@@ -185,6 +185,12 @@ For a local source build measurement, add \`BEATER_GATE2_LOCAL_BUILD=1\`.
 function composeNotes(videoSha256) {
   const quickstartTrace = quickstartTraceId ?? "latest matching quickstart trace";
   const allKindTrace = allKindTraceId ?? "latest matching all-kind trace";
+  const defaultDashboardBase = "http://127.0.0.1:3000";
+  const portNote =
+    publicDashboardBase === defaultDashboardBase
+      ? `This automated maintainer run used the default dashboard URL \`${defaultDashboardBase}\`; no alternate host ports were needed.`
+      : `This automated maintainer run used alternate host ports; the outside-person proof must still use the default dashboard URL \`${defaultDashboardBase}\`.`;
+
   return `# Gate 2 Compose Browser Demo
 
 Recorded from the Docker Compose stopwatch path using the literal five-line
@@ -196,6 +202,8 @@ stock OpenTelemetry quickstart and the all-kind stock OpenTelemetry agent trace.
 - Quickstart trace: \`${quickstartTrace}\`
 - All-kind trace: \`${allKindTrace}\`
 - Shows: open dashboard -> click five-line trace -> click \`llm.call\` span -> read prompt, completion, model, tokens, cost, and latency -> inspect run -> turn -> step -> tool -> MCP waterfall.
+
+${portNote}
 
 Regenerate with:
 
