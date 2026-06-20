@@ -100,6 +100,7 @@ fn self_host_files_define_gate_two_compose_surface() {
     assert!(
         gate2_workflow.contains("python3 -m py_compile scripts/check-gate2-outside-readiness.py")
     );
+    assert!(gate2_workflow.contains("python3 -m py_compile scripts/check-gate2-public-handoff.py"));
     assert!(
         gate2_workflow.contains("python3 -m py_compile scripts/generate-gate2-outside-proof.py")
     );
@@ -362,6 +363,20 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_readiness.contains("missing public GHCR manifest"));
     assert!(outside_readiness.contains("--registry-fixture"));
 
+    let public_handoff = read(root.join("scripts/check-gate2-public-handoff.py"));
+    assert!(public_handoff.contains("https://github.com/jadenfix/beater.git"));
+    assert!(public_handoff.contains("git"));
+    assert!(public_handoff.contains("clone"));
+    assert!(public_handoff.contains("--depth"));
+    assert!(public_handoff.contains("--branch"));
+    assert!(public_handoff.contains("main"));
+    assert!(public_handoff.contains("public handoff clone is not the expected commit"));
+    assert!(public_handoff.contains("scripts/check-gate2-outside-readiness.py"));
+    assert!(public_handoff.contains("scripts/gate2-outside-run.sh"));
+    assert!(public_handoff.contains("BEATER_GATE2_OUTSIDE_RUN_DRY_RUN"));
+    assert!(public_handoff.contains("--registry-fixture"));
+    assert!(public_handoff.contains("--skip-local-readiness"));
+
     let outside_proof = read(root.join("docs/demos/gate2-outside-person-proof.md"));
     assert!(outside_proof.contains("Status: not yet completed"));
     assert!(outside_proof.contains("scripts/gate2-outside-run.sh"));
@@ -379,8 +394,13 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("scripts/generate-gate2-outside-proof.py"));
     assert!(outside_proof.contains("--attest-outside-run"));
     assert!(outside_proof.contains("Docker Compose version"));
+    assert!(outside_proof.contains("scripts/check-gate2-public-handoff.py"));
     assert!(outside_proof.contains("scripts/check-gate2-outside-readiness.py"));
-    assert!(outside_proof.contains("public multi-arch GHCR images"));
+    assert!(outside_proof.contains("fresh clone from"));
+    assert!(outside_proof.contains("reruns the cloned readiness check"));
+    assert!(outside_proof.contains("dry-runs the cloned"));
+    assert!(outside_proof.contains("public"));
+    assert!(outside_proof.contains("multi-arch GHCR images for the exact commit"));
     assert!(outside_proof.contains("Beater image reference"));
     assert!(outside_proof.contains("Dashboard image reference"));
     assert!(outside_proof.contains("Dashboard e2e image reference"));
@@ -411,6 +431,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     let readme = read(root.join("README.md"));
     assert!(readme.contains("docs/demos/gate2-outside-person-proof.md"));
     assert!(readme.contains("scripts/gate2-outside-run.sh"));
+    assert!(readme.contains("scripts/check-gate2-public-handoff.py"));
     assert!(readme.contains("scripts/check-gate2-outside-readiness.py"));
     assert!(readme.contains("Outside-run wrapper: yes"));
     assert!(readme.contains("scripts/generate-gate2-outside-proof.py"));
@@ -422,8 +443,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("prebuilt `dashboard-e2e` Playwright browser proof"));
     assert!(readme.contains("prebuilt stock OpenTelemetry Python runner container"));
     assert!(readme.contains("pins `beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python`"));
-    assert!(readme
-        .contains("current-SHA `beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` GHCR"));
+    assert!(readme.contains("current-SHA"));
+    assert!(readme.contains("`beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` GHCR"));
     assert!(readme.contains("mismatched SHA-pinned image references"));
     assert!(readme.contains("time-to-quickstart-click"));
     assert!(readme.contains("checks Docker and curl"));
@@ -435,12 +456,19 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("recording notes from a different dashboard session"));
     assert!(readme.contains("notes must also"));
     assert!(readme.contains("hash that does not match the committed file"));
+    assert!(readme.contains("fresh clone from `https://github.com/jadenfix/beater.git`"));
+    assert!(readme.contains("reruns the cloned readiness check"));
+    assert!(readme.contains("dry-runs"));
+    assert!(readme.contains("cloned `scripts/gate2-outside-run.sh` wrapper"));
     assert!(readme.contains("gate2-proof-contract"));
 
     let requirements = read(root.join("REQUIREMENTS.md"));
     assert!(requirements.contains("docs/demos/gate2-outside-person-proof.md"));
     assert!(requirements.contains("scripts/gate2-outside-run.sh"));
+    assert!(requirements.contains("scripts/check-gate2-public-handoff.py"));
     assert!(requirements.contains("scripts/check-gate2-outside-readiness.py"));
+    assert!(requirements.contains("public-clone handoff verifier"));
+    assert!(requirements.contains("requires the clone to match the current commit"));
     assert!(requirements.contains("wrapper marker"));
     assert!(requirements.contains("scripts/generate-gate2-outside-proof.py"));
     assert!(requirements.contains("scripts/validate-gate2-outside-proof.sh"));

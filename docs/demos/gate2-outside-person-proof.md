@@ -91,15 +91,21 @@ After replacing this template with completed evidence, run:
 scripts/validate-gate2-outside-proof.sh
 ```
 
-Maintainers should run this before handing the repo to an outside runner, after
-the `container-images` workflow has published the current commit:
+Maintainers should run this public-clone verifier before handing the repo to an
+outside runner, after the `container-images` workflow has published the current
+commit:
 
 ```bash
-scripts/check-gate2-outside-readiness.py
+scripts/check-gate2-public-handoff.py
 ```
 
-The readiness check verifies clean `main`, the expected GitHub remote, this
-proof file's structure, and public multi-arch GHCR images for the exact commit.
+The public handoff verifier first runs
+`scripts/check-gate2-outside-readiness.py`, then performs a fresh clone from
+`https://github.com/jadenfix/beater.git`, verifies the clone is on the exact
+same commit, reruns the cloned readiness check, and dry-runs the cloned
+`scripts/gate2-outside-run.sh` wrapper. The readiness check verifies clean
+`main`, the expected GitHub remote, this proof file's structure, and public
+multi-arch GHCR images for the exact commit.
 
 The validator reads the listed stopwatch proof file and screen-recording notes,
 then cross-checks default API/OTLP/dashboard endpoints, clean-start status,

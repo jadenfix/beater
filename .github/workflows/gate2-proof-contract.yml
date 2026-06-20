@@ -29,6 +29,7 @@ jobs:
         run: |
           bash -n scripts/validate-gate2-outside-proof.sh
           python3 -m py_compile scripts/check-gate2-outside-readiness.py
+          python3 -m py_compile scripts/check-gate2-public-handoff.py
           python3 -m py_compile scripts/generate-gate2-outside-proof.py
           scripts/validate-gate2-outside-proof.sh --allow-pending
 

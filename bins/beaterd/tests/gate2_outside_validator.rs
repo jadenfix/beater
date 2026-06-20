@@ -130,6 +130,19 @@ fn gate2_outside_readiness_rejects_missing_image_platform() {
 }
 
 #[test]
+fn gate2_public_handoff_verifier_accepts_clean_clone_fixture() {
+    let registry = TempDir::new().expect("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture_repo = write_public_handoff_fixture_repo();
+    let fixture_head = git_output(fixture_repo.path(), &["rev-parse", "HEAD"]);
+    let source_url = format!("file://{}", fixture_repo.path().display());
+
+    let output = run_public_handoff_with_fixture(&source_url, &fixture_head, registry.path());
+
+    assert_success(output, "Gate 2 public handoff clone passed");
+}
+
+#[test]
 fn gate2_outside_wrapper_accepts_default_dry_run() {
     let output = run_outside_wrapper_dry_run(None);
 
@@ -761,6 +774,26 @@ fn run_readiness_with_fixture(registry_path: &Path) -> Output {
         .unwrap_or_else(|err| panic!("run Gate 2 outside readiness checker: {err}"))
 }
 
+fn run_public_handoff_with_fixture(
+    source_url: &str,
+    expected_commit: &str,
+    registry_path: &Path,
+) -> Output {
+    let root = repo_root();
+    Command::new("python3")
+        .arg(root.join("scripts/check-gate2-public-handoff.py"))
+        .arg("--skip-local-readiness")
+        .arg("--source-url")
+        .arg(source_url)
+        .arg("--expected-commit")
+        .arg(expected_commit)
+        .arg("--registry-fixture")
+        .arg(registry_path)
+        .current_dir(root)
+        .output()
+        .unwrap_or_else(|err| panic!("run Gate 2 public handoff checker: {err}"))
+}
+
 fn run_outside_wrapper_dry_run(extra_env: Option<(&str, &str)>) -> Output {
     let root = repo_root();
     let mut command = Command::new(root.join("scripts/gate2-outside-run.sh"));
@@ -864,6 +897,86 @@ fn write_registry_manifest(dir: &Path, image: &str, platforms: &[&str]) {
         format!(r#"{{"manifests":[{manifests}]}}"#),
     )
     .unwrap_or_else(|err| panic!("write registry fixture for {image}: {err}"));
+}
+
+fn write_public_handoff_fixture_repo() -> TempDir {
+    let root = repo_root();
+    let fixture = TempDir::new().expect("create public handoff fixture repo");
+
+    for rel in [
+        "scripts/check-gate2-outside-readiness.py",
+        "scripts/check-gate2-public-handoff.py",
+        "scripts/gate2-outside-run.sh",
+        "scripts/generate-gate2-outside-proof.py",
+        "scripts/validate-gate2-outside-proof.sh",
+        "docs/demos/gate2-outside-person-proof.md",
+    ] {
+        copy_fixture_file(&root, fixture.path(), rel);
+    }
+
+    git_success(fixture.path(), &["init"]);
+    git_success(
+        fixture.path(),
+        &["config", "user.email", "fixture@example.invalid"],
+    );
+    git_success(fixture.path(), &["config", "user.name", "Gate 2 Fixture"]);
+    git_success(fixture.path(), &["add", "."]);
+    git_success(fixture.path(), &["commit", "-m", "fixture"]);
+    git_success(fixture.path(), &["branch", "-M", "main"]);
+    fixture
+}
+
+fn copy_fixture_file(root: &Path, fixture_root: &Path, rel: &str) {
+    let source = root.join(rel);
+    let dest = fixture_root.join(rel);
+    let parent = dest
+        .parent()
+        .unwrap_or_else(|| panic!("fixture destination should have parent: {}", dest.display()));
+    fs::create_dir_all(parent)
+        .unwrap_or_else(|err| panic!("create fixture dir {}: {err}", parent.display()));
+    fs::copy(&source, &dest).unwrap_or_else(|err| {
+        panic!(
+            "copy fixture file {} -> {}: {err}",
+            source.display(),
+            dest.display()
+        )
+    });
+}
+
+fn git_success(cwd: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .unwrap_or_else(|err| panic!("run git {}: {err}", args.join(" ")));
+    if !output.status.success() {
+        panic!(
+            "git {} failed\nstdout:\n{}\nstderr:\n{}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+fn git_output(cwd: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .unwrap_or_else(|err| panic!("run git {}: {err}", args.join(" ")));
+    if !output.status.success() {
+        panic!(
+            "git {} failed\nstdout:\n{}\nstderr:\n{}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    String::from_utf8(output.stdout)
+        .expect("git output should be utf8")
+        .trim()
+        .to_owned()
 }
 
 fn current_head() -> String {
