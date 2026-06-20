@@ -205,26 +205,42 @@ export default async function DashboardPage({
             <span>{spans.length} spans</span>
           </div>
           <div className="waterfall" aria-label="Agent span waterfall">
-            {spans.map((span) => (
-              <Link
-                key={span.span_id}
-                href={hrefFor(data.query, { trace: span.trace_id, span: span.span_id })}
-                className={
-                  data.selectedSpan?.span_id === span.span_id ? "span-line selected" : "span-line"
-                }
-                style={{
-                  "--depth": spanDepth(span, spans),
-                  "--bar": spanWidth(span, spans)
-                } as React.CSSProperties}
-              >
-                <span className={`kind-dot ${kindClass(span.kind)}`} />
-                <span className="span-title">{span.name}</span>
-                <span className="span-kind">{span.kind}</span>
-                <span className={`status ${span.status}`}>{statusLabel(span.status)}</span>
-                <span className="span-bar" />
-                <span className="duration">{formatDuration(span.start_time, span.end_time)}</span>
-              </Link>
-            ))}
+            {spans.map((span) => {
+              const depth = spanDepth(span, spans);
+              const icon = kindIcon(span.kind);
+              return (
+                <Link
+                  key={span.span_id}
+                  href={hrefFor(data.query, { trace: span.trace_id, span: span.span_id })}
+                  className={
+                    data.selectedSpan?.span_id === span.span_id ? "span-line selected" : "span-line"
+                  }
+                  data-depth={depth}
+                  data-kind={span.kind}
+                  data-span-name={span.name}
+                  style={
+                    {
+                      "--depth": depth,
+                      "--bar": spanWidth(span, spans)
+                    } as React.CSSProperties
+                  }
+                >
+                  <span
+                    className={`kind-icon ${kindClass(span.kind)}`}
+                    aria-label={`${span.kind} icon`}
+                    data-icon={icon.key}
+                    title={icon.title}
+                  >
+                    {icon.label}
+                  </span>
+                  <span className="span-title">{span.name}</span>
+                  <span className="span-kind">{span.kind}</span>
+                  <span className={`status ${span.status}`}>{statusLabel(span.status)}</span>
+                  <span className="span-bar" />
+                  <span className="duration">{formatDuration(span.start_time, span.end_time)}</span>
+                </Link>
+              );
+            })}
             {spans.length === 0 ? (
               <div className="empty">Send an OTLP trace, then refresh this view.</div>
             ) : null}
@@ -452,6 +468,24 @@ function kindClass(kind: string): string {
   if (kind === "human.review") return "human";
   if (kind === "replay.run") return "replay";
   return "other";
+}
+
+function kindIcon(kind: string): { key: string; label: string; title: string } {
+  if (kind === "agent.run") return { key: "agent-run", label: "R", title: "Agent run" };
+  if (kind === "agent.turn") return { key: "agent-turn", label: "T", title: "Agent turn" };
+  if (kind === "agent.plan") return { key: "agent-plan", label: "P", title: "Agent plan" };
+  if (kind === "agent.step") return { key: "agent-step", label: "S", title: "Agent step" };
+  if (kind === "llm.call") return { key: "llm", label: "AI", title: "LLM call" };
+  if (kind === "tool.call") return { key: "tool", label: "{}", title: "Tool call" };
+  if (kind === "mcp.request") return { key: "mcp", label: "<>", title: "MCP request" };
+  if (kind === "retrieval.query") return { key: "retrieval", label: "Q", title: "Retrieval query" };
+  if (kind === "memory.read") return { key: "memory-read", label: "Mr", title: "Memory read" };
+  if (kind === "memory.write") return { key: "memory-write", label: "Mw", title: "Memory write" };
+  if (kind === "guardrail.check") return { key: "guardrail", label: "!", title: "Guardrail check" };
+  if (kind === "human.review") return { key: "human", label: "H", title: "Human review" };
+  if (kind === "evaluator.run") return { key: "eval", label: "%", title: "Evaluator run" };
+  if (kind === "replay.run") return { key: "replay", label: ">>", title: "Replay run" };
+  return { key: "other", label: "?", title: kind };
 }
 
 function isRedactedIo(value: SpanIoResponse["input"] | undefined): boolean {

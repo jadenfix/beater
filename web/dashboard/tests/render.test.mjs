@@ -10,6 +10,11 @@ test("dashboard page exposes the trace inspection surface", () => {
   assert.match(page, /Agent Trace Debugger/);
   assert.match(page, /Trace filters/);
   assert.match(page, /Agent span waterfall/);
+  assert.match(page, /kindIcon/);
+  assert.match(page, /data-depth/);
+  assert.match(page, /data-kind/);
+  assert.match(page, /data-span-name/);
+  assert.match(page, /data-icon/);
   assert.match(page, /SpanDetail/);
   assert.match(page, /IoBlock/);
   assert.match(page, /RedactionControls/);
@@ -76,6 +81,17 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   ]) {
     assert.match(e2e, new RegExp(kind.replace(".", "\\.")));
   }
+  for (const name of [
+    "refund-agent-run",
+    "customer-refund-turn",
+    "execute-refund-step",
+    "lookup-order-tool",
+    "mcp-order-service"
+  ]) {
+    assert.match(e2e, new RegExp(name));
+  }
+  assert.match(e2e, /toHaveAttribute\("data-depth", "4"\)/);
+  assert.match(e2e, /toHaveAttribute\("data-icon", "mcp"\)/);
   const recorder = readFileSync(join(root, "tests/e2e/record-gate2-demo.mjs"), "utf8");
   assert.match(recorder, /recordVideo/);
   assert.match(recorder, /gate2-browser-demo\.webm/);

@@ -33,6 +33,46 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
   }
   await expect(waterfall).toContainText("lookup-order-tool");
 
+  const run = waterfall.locator('[data-span-name="refund-agent-run"]');
+  const turn = waterfall.locator('[data-span-name="customer-refund-turn"]');
+  const step = waterfall.locator('[data-span-name="execute-refund-step"]');
+  const tool = waterfall.locator('[data-span-name="lookup-order-tool"]');
+  const mcp = waterfall.locator('[data-span-name="mcp-order-service"]');
+
+  await expect(run).toHaveAttribute("data-kind", "agent.run");
+  await expect(turn).toHaveAttribute("data-kind", "agent.turn");
+  await expect(step).toHaveAttribute("data-kind", "agent.step");
+  await expect(tool).toHaveAttribute("data-kind", "tool.call");
+  await expect(mcp).toHaveAttribute("data-kind", "mcp.request");
+  await expect(run).toHaveAttribute("data-depth", "0");
+  await expect(turn).toHaveAttribute("data-depth", "1");
+  await expect(step).toHaveAttribute("data-depth", "2");
+  await expect(tool).toHaveAttribute("data-depth", "3");
+  await expect(mcp).toHaveAttribute("data-depth", "4");
+  await expect(run.locator(".kind-icon")).toHaveAttribute("data-icon", "agent-run");
+  await expect(waterfall.locator('[data-span-name="call-policy-model"] .kind-icon')).toHaveAttribute(
+    "data-icon",
+    "llm"
+  );
+  await expect(tool.locator(".kind-icon")).toHaveAttribute("data-icon", "tool");
+  await expect(mcp.locator(".kind-icon")).toHaveAttribute("data-icon", "mcp");
+
+  const orderedNames = await waterfall.locator("[data-span-name]").evaluateAll((rows) =>
+    rows.map((row) => row.getAttribute("data-span-name"))
+  );
+  expect(orderedNames.indexOf("refund-agent-run")).toBeLessThan(
+    orderedNames.indexOf("customer-refund-turn")
+  );
+  expect(orderedNames.indexOf("customer-refund-turn")).toBeLessThan(
+    orderedNames.indexOf("execute-refund-step")
+  );
+  expect(orderedNames.indexOf("execute-refund-step")).toBeLessThan(
+    orderedNames.indexOf("lookup-order-tool")
+  );
+  expect(orderedNames.indexOf("lookup-order-tool")).toBeLessThan(
+    orderedNames.indexOf("mcp-order-service")
+  );
+
   await waterfall.getByText("call-policy-model").click();
 
   const detail = page.getByLabel("Span detail");

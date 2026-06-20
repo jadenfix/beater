@@ -258,51 +258,60 @@ button {
   border-bottom: 1px solid #edf1f5;
   display: grid;
   gap: 8px;
-  grid-template-columns: 14px minmax(130px, 1.2fr) 92px 58px minmax(90px, 1fr) 64px;
+  grid-template-columns: 30px minmax(130px, 1.2fr) 92px 58px minmax(90px, 1fr) 64px;
   min-height: 42px;
   padding: 0 8px 0 calc(8px + var(--depth) * 18px);
 }
 
-.kind-dot {
+.kind-icon {
+  align-items: center;
   border-radius: 999px;
-  display: block;
-  height: 10px;
-  width: 10px;
+  color: #fff;
+  display: inline-flex;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  height: 24px;
+  justify-content: center;
+  letter-spacing: 0;
+  line-height: 1;
+  width: 24px;
 }
 
-.kind-dot.agent {
+.kind-icon.agent {
   background: var(--blue);
 }
 
-.kind-dot.llm {
+.kind-icon.llm {
   background: var(--teal);
 }
 
-.kind-dot.tool {
+.kind-icon.tool {
   background: var(--yellow);
+  color: #2f1f00;
 }
 
-.kind-dot.memory {
+.kind-icon.memory {
   background: var(--violet);
 }
 
-.kind-dot.guardrail {
+.kind-icon.guardrail {
   background: var(--red);
 }
 
-.kind-dot.eval {
+.kind-icon.eval {
   background: var(--green);
 }
 
-.kind-dot.human {
+.kind-icon.human {
   background: #c15f2d;
 }
 
-.kind-dot.replay {
+.kind-icon.replay {
   background: #2f6b4f;
 }
 
-.kind-dot.other {
+.kind-icon.other {
   background: #7a8797;
 }
 
@@ -430,7 +439,7 @@ pre {
   }
 
   .span-line {
-    grid-template-columns: 14px minmax(120px, 1fr) 78px 52px;
+    grid-template-columns: 30px minmax(120px, 1fr) 78px 52px;
   }
 
   .span-bar,

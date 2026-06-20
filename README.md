@@ -109,7 +109,7 @@ This repo now contains the first tested Rust vertical slice:
 - `beaterctl review-fixture` validates human annotation promotion into an eval-ready dataset case
 - `beaterctl calibration-fixture` validates persisted judge/human agreement and kappa reports
 - `beaterctl api-key-create` / `api-key-revoke` bootstrap helpers for local and hosted deployments
-- `web/dashboard` Next.js trace debugger with generated OpenAPI types, status/kind/time/model/cost/latency/release filters, trace table, agent span waterfall, span detail, and audited I/O unmask controls
+- `web/dashboard` Next.js trace debugger with generated OpenAPI types, status/kind/time/model/cost/latency/release filters, trace table, icon-coded agent span waterfall, span detail, and audited I/O unmask controls
 
 ## Verify
 
