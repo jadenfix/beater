@@ -4,8 +4,9 @@ use beater_core::{
     Timestamp, TraceId,
 };
 use beater_schema::{
-    roll_up_runs, span_matches, span_summary, ArtifactRef, CanonicalTraceBatch, RawEnvelope,
-    RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
+    filter_run_summaries, roll_up_runs, span_matches, span_summary, ArtifactRef,
+    CanonicalTraceBatch, RawEnvelope, RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView,
+    WriteAck,
 };
 use std::collections::BTreeSet;
 
@@ -509,10 +510,12 @@ impl TraceStore for InMemoryTraceStore {
             .query_spans(
                 tenant.clone(),
                 SpanFilter {
-                    trace_id: filter.trace_id,
+                    project_id: filter.project_id.clone(),
+                    environment_id: filter.environment_id.clone(),
+                    trace_id: filter.trace_id.clone(),
                     span_id: None,
-                    kind: filter.kind,
-                    status: filter.status,
+                    kind: None,
+                    status: None,
                 },
                 PageRequest {
                     limit: u32::MAX,
@@ -522,7 +525,8 @@ impl TraceStore for InMemoryTraceStore {
             .await?
             .items;
 
-        Ok(page_vec(roll_up_runs(tenant, spans), page))
+        let runs = filter_run_summaries(roll_up_runs(tenant, spans.clone()), &spans, &filter);
+        Ok(page_vec(runs, page))
     }
 
     async fn query_spans(

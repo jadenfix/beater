@@ -4,8 +4,8 @@ use beater_core::{
     Timestamp, TraceId,
 };
 use beater_schema::{
-    roll_up_runs, span_matches, span_summary, CanonicalSpan, CanonicalTraceBatch, RawEnvelope,
-    RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
+    filter_run_summaries, roll_up_runs, span_summary, CanonicalSpan, CanonicalTraceBatch,
+    RawEnvelope, RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
 };
 use beater_store::{
     page_vec, EnvironmentMetadata, MetadataStore, OrganizationMetadata, ProjectMetadata,
@@ -659,10 +659,12 @@ impl TraceStore for SqliteTraceStore {
             .query_spans(
                 tenant.clone(),
                 SpanFilter {
-                    trace_id: filter.trace_id,
+                    project_id: filter.project_id.clone(),
+                    environment_id: filter.environment_id.clone(),
+                    trace_id: filter.trace_id.clone(),
                     span_id: None,
-                    kind: filter.kind,
-                    status: filter.status,
+                    kind: None,
+                    status: None,
                 },
                 PageRequest {
                     limit: u32::MAX,
@@ -672,7 +674,8 @@ impl TraceStore for SqliteTraceStore {
             .await?
             .items;
 
-        Ok(page_vec(roll_up_runs(tenant, spans), page))
+        let runs = filter_run_summaries(roll_up_runs(tenant, spans.clone()), &spans, &filter);
+        Ok(page_vec(runs, page))
     }
 
     async fn query_spans(
@@ -688,21 +691,41 @@ impl TraceStore for SqliteTraceStore {
                 SELECT span_json
                 FROM spans
                 WHERE tenant_id = ?1
+                  AND (?2 IS NULL OR project_id = ?2)
+                  AND (?3 IS NULL OR environment_id = ?3)
+                  AND (?4 IS NULL OR trace_id = ?4)
+                  AND (?5 IS NULL OR span_id = ?5)
+                  AND (?6 IS NULL OR kind = ?6)
+                  AND (?7 IS NULL OR status = ?7)
                 ORDER BY start_time DESC, seq ASC
                 "#,
             )
             .map_err(StoreError::backend)?;
         let rows = statement
-            .query_map(params![tenant.as_str()], |row| row.get::<_, String>(0))
+            .query_map(
+                params![
+                    tenant.as_str(),
+                    filter
+                        .project_id
+                        .as_ref()
+                        .map(|project_id| project_id.as_str()),
+                    filter
+                        .environment_id
+                        .as_ref()
+                        .map(|environment_id| environment_id.as_str()),
+                    filter.trace_id.as_ref().map(|trace_id| trace_id.as_str()),
+                    filter.span_id.as_ref().map(|span_id| span_id.as_str()),
+                    filter.kind.as_ref().map(|kind| kind.as_str()),
+                    filter.status.as_ref().map(|status| status.as_str()),
+                ],
+                |row| row.get::<_, String>(0),
+            )
             .map_err(StoreError::backend)?;
 
         let mut spans = Vec::new();
         for row in rows {
             let json = row.map_err(StoreError::backend)?;
             let span = serde_json::from_str::<CanonicalSpan>(&json).map_err(StoreError::backend)?;
-            if !span_matches(&span, &filter) {
-                continue;
-            }
             spans.push(span_summary(span));
         }
 
@@ -883,6 +906,8 @@ mod tests {
             .query_spans(
                 tenant.clone(),
                 SpanFilter {
+                    project_id: None,
+                    environment_id: None,
                     trace_id: Some(trace.clone()),
                     span_id: None,
                     kind: Some(AgentSpanKind::AgentStep),

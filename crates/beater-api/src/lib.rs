@@ -15,9 +15,9 @@ use beater_calibration::{
 };
 use beater_core::{
     AgentReleaseId, AnnotationId, ApiKeyId, ArtifactId, DatasetCaseId, DatasetId, DatasetVersionId,
-    EnvironmentId, EvaluatorVersionId, ExperimentRunId, GateId, ProjectId, PromptVersionId,
-    ProviderSecretId, ReviewQueueId, ReviewTaskId, Sha256Hash, SpanId, TenantId, TenantScope,
-    TraceId,
+    EnvironmentId, EvaluatorVersionId, ExperimentRunId, GateId, Page, PageRequest, ProjectId,
+    PromptVersionId, ProviderSecretId, ReviewQueueId, ReviewTaskId, Sha256Hash, SpanId, TenantId,
+    TenantScope, TraceId,
 };
 use beater_datasets::{
     evaluate_dataset_version, evaluate_dataset_version_with_judge, promote_trace_span_to_case,
@@ -45,7 +45,8 @@ use beater_judge::{
 };
 use beater_otlp::{decode_export_trace_request, export_to_raw_trace_ingest_request};
 use beater_schema::{
-    AgentSpanKind, ArtifactRef, AuthContext, RedactionClass, SpanStatus, TraceView,
+    AgentSpanKind, ArtifactRef, AuthContext, CanonicalSpan, RedactionClass, RunFilter, RunSummary,
+    SpanStatus, TraceView,
 };
 use beater_search::{NoopSearchIndex, SearchIndex, SearchRequest, SearchResponse};
 use beater_secrets::{
@@ -308,6 +309,15 @@ pub fn router(state: ApiState) -> Router {
             post(drain_trace_ingested_route),
         )
         .route("/v1/search/:tenant_id/spans", get(search_spans))
+        .route("/v1/traces/:tenant_id", get(list_traces))
+        .route(
+            "/v1/spans/:tenant_id/:trace_id/:span_id",
+            get(get_span_route),
+        )
+        .route(
+            "/v1/spans/:tenant_id/:trace_id/:span_id/io",
+            get(get_span_io_route),
+        )
         .route(
             "/v1/archive/:tenant_id/:project_id/:trace_id",
             post(archive_trace),
@@ -794,6 +804,53 @@ async fn search_spans(
     Ok(Json(state.search.search(request).await?))
 }
 
+async fn list_traces(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path(tenant_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<ListTracesQuery>,
+) -> Result<Json<Page<RunSummary>>, ApiError> {
+    let tenant_id =
+        TenantId::new(tenant_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let project_id = params
+        .project_id
+        .map(ProjectId::new)
+        .transpose()
+        .map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let environment_id = params
+        .environment_id
+        .map(EnvironmentId::new)
+        .transpose()
+        .map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let auth = authorize_query_scope(
+        &state,
+        &headers,
+        &tenant_id,
+        project_id.as_ref(),
+        environment_id.as_ref(),
+        ApiScope::TraceRead,
+    )
+    .await?;
+    let filter = RunFilter {
+        project_id: auth.project_id.or(project_id),
+        environment_id: auth.environment_id.or(environment_id),
+        trace_id: params
+            .trace_id
+            .map(TraceId::new)
+            .transpose()
+            .map_err(|err| ApiError::bad_request(err.to_string()))?,
+        kind: params.kind.map(parse_span_kind).transpose()?,
+        status: params.status.map(parse_span_status).transpose()?,
+    };
+    let page = PageRequest {
+        limit: params.limit.unwrap_or(50).clamp(1, 200),
+        cursor: params.cursor,
+    };
+    Ok(Json(
+        state.traces.query_runs(tenant_id, filter, page).await?,
+    ))
+}
+
 async fn get_trace(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -812,6 +869,32 @@ async fn get_trace(
         return Ok(Json(trace));
     }
     Ok(Json(redact_trace_view(trace)))
+}
+
+async fn get_span_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, trace_id, span_id)): Path<(String, String, String)>,
+    Query(params): Query<TraceReadQuery>,
+) -> Result<Json<CanonicalSpan>, ApiError> {
+    let span = load_span_for_route(state, headers, tenant_id, trace_id, span_id, params).await?;
+    Ok(Json(span))
+}
+
+async fn get_span_io_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, trace_id, span_id)): Path<(String, String, String)>,
+    Query(params): Query<TraceReadQuery>,
+) -> Result<Json<SpanIoResponse>, ApiError> {
+    let span = load_span_for_route(state, headers, tenant_id, trace_id, span_id, params).await?;
+    Ok(Json(SpanIoResponse {
+        tenant_id: span.tenant_id.clone(),
+        trace_id: span.trace_id.clone(),
+        span_id: span.span_id.clone(),
+        input: span_io_value(&span, "input.value", span.input_ref.as_ref()),
+        output: span_io_value(&span, "output.value", span.output_ref.as_ref()),
+    }))
 }
 
 async fn list_audit_events_route(
@@ -2000,6 +2083,17 @@ struct SearchQueryParams {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+struct ListTracesQuery {
+    project_id: Option<String>,
+    environment_id: Option<String>,
+    trace_id: Option<String>,
+    kind: Option<String>,
+    status: Option<String>,
+    limit: Option<u32>,
+    cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 struct TraceReadQuery {
     unmask: Option<bool>,
     reason: Option<String>,
@@ -2018,6 +2112,24 @@ struct DrainTraceWritesQuery {
 #[derive(Clone, Debug, Default, Deserialize)]
 struct ReplayDeadLetterQuery {
     reset_attempts: Option<bool>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SpanIoResponse {
+    tenant_id: TenantId,
+    trace_id: TraceId,
+    span_id: SpanId,
+    input: SpanIoValue,
+    output: SpanIoValue,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum SpanIoValue {
+    Inline { value: serde_json::Value },
+    Artifact { artifact_ref: ArtifactRef },
+    Redacted { reason: String },
+    Missing,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2272,6 +2384,68 @@ fn ensure_trace_auth_scope(trace: &TraceView, auth: &AuthDecision) -> Result<(),
         }
     }
     Ok(())
+}
+
+async fn load_span_for_route(
+    state: ApiState,
+    headers: HeaderMap,
+    tenant_id: String,
+    trace_id: String,
+    span_id: String,
+    params: TraceReadQuery,
+) -> Result<CanonicalSpan, ApiError> {
+    let tenant_id =
+        TenantId::new(tenant_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let trace_id = TraceId::new(trace_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let span_id = SpanId::new(span_id).map_err(|err| ApiError::bad_request(err.to_string()))?;
+    let auth = authorize_tenant_route(&state, &headers, &tenant_id, ApiScope::TraceRead).await?;
+    let trace = state
+        .traces
+        .get_trace(tenant_id.clone(), trace_id.clone())
+        .await?;
+    ensure_trace_auth_scope(&trace, &auth)?;
+    let trace = if params.unmask.unwrap_or(false) {
+        authorize_and_audit_trace_unmask(&state, &headers, trace, auth, params.reason).await?
+    } else {
+        redact_trace_view(trace)
+    };
+    trace
+        .spans
+        .into_iter()
+        .find(|span| span.span_id == span_id)
+        .ok_or_else(|| {
+            ApiError::not_found(format!(
+                "span {} not found in trace {}",
+                span_id.as_str(),
+                trace_id.as_str()
+            ))
+        })
+}
+
+fn span_io_value(
+    span: &CanonicalSpan,
+    inline_key: &str,
+    artifact_ref: Option<&ArtifactRef>,
+) -> SpanIoValue {
+    if let Some(artifact_ref) = artifact_ref {
+        if is_sensitive_redaction(&artifact_ref.redaction_class) {
+            return SpanIoValue::Redacted {
+                reason: format!(
+                    "{} payload is {:?}",
+                    inline_key, artifact_ref.redaction_class
+                ),
+            };
+        }
+        return SpanIoValue::Artifact {
+            artifact_ref: artifact_ref.clone(),
+        };
+    }
+    if let Some(value) = span.attributes.get(inline_key) {
+        return SpanIoValue::Inline {
+            value: value.clone(),
+        };
+    }
+    SpanIoValue::Missing
 }
 
 async fn authorize_and_audit_trace_unmask(

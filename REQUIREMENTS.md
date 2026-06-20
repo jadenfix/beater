@@ -8,8 +8,8 @@ system, test output, or runtime behavior.
 
 | ID | Requirement | Evidence required |
 | --- | --- | --- |
-| R0.1 | A user can send agent telemetry without a Beater-specific SDK. | OTLP HTTP/gRPC endpoint docs, `beaterctl smoke` local/remote tests, live `beaterd` OTLP HTTP/gRPC test; trace visible in UI still required |
-| R0.2 | A user can inspect a trace as an agent-native span tree. | UI screenshots/tests covering `agent.*`, `llm.call`, `tool.call`, `mcp.request`, memory, guardrail, evaluator spans |
+| R0.1 | A user can send agent telemetry without a Beater-specific SDK. | OTLP HTTP/gRPC endpoint docs, `beaterctl smoke` local/remote tests, live `beaterd` OTLP HTTP/gRPC test, initial `web/dashboard` trace table; recorded UI demo still required |
+| R0.2 | A user can inspect a trace as an agent-native span tree. | Initial `web/dashboard` waterfall/detail/I/O surface and dashboard static test; screenshots/tests covering every canonical span kind still required |
 | R0.3 | A failure can be promoted to a dataset case. | Trace-to-dataset API test, human-review annotation promotion API test, and `beaterctl review-fixture` |
 | R0.4 | Offline evals run over a dataset version. | Deterministic and judge-backed dataset eval integration tests plus `beaterctl judge-dataset-fixture` |
 | R0.5 | Candidate and baseline releases can be compared. | Experiment output with per-case scores, aggregate deltas, stored gate policy, deterministic/judge experiment API tests |
@@ -23,7 +23,7 @@ system, test output, or runtime behavior.
 | R1.1 | MVP ships as one all-in-one `beaterd` binary. | Cargo workspace with `bins/beaterd`; compose uses one Beater process by default |
 | R1.2 | Future service split is logical, not operational. | Optional thin bins behind features; no mandatory 10-service deployment |
 | R1.3 | OSS runs without Beater Cloud. | Offline compose test with network calls disabled except configured providers |
-| R1.4 | Vercel is used only for stateless/control-plane work. | Vercel config contains Rust functions/UI only; stateful workers run outside Vercel or in `beaterd` |
+| R1.4 | Vercel is used only for stateless/control-plane work. | `web/dashboard/vercel.json` deploys the stateless Next.js UI; stateful workers run outside Vercel or in `beaterd`; Rust function config still required for hosted control plane |
 
 ## R2. Data Model and Schema Evolution
 

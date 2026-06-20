@@ -4,7 +4,7 @@ use beater_core::{
     IdempotencyKey, Money, Page, PageRequest, ProjectId, PromptId, PromptVersionId, RunId,
     Sha256Hash, SpanId, TenantId, TenantScope, Timestamp, TokenCounts, TraceId, WebhookEndpointId,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -43,8 +43,7 @@ impl SourceDialect {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AgentSpanKind {
     AgentRun,
     AgentTurn,
@@ -84,22 +83,43 @@ impl AgentSpanKind {
 
     pub fn parse(value: &str) -> Option<Self> {
         match value {
-            "agent.run" => Some(Self::AgentRun),
-            "agent.turn" => Some(Self::AgentTurn),
-            "agent.plan" => Some(Self::AgentPlan),
-            "agent.step" => Some(Self::AgentStep),
-            "llm.call" => Some(Self::LlmCall),
-            "tool.call" => Some(Self::ToolCall),
-            "mcp.request" => Some(Self::McpRequest),
-            "retrieval.query" => Some(Self::RetrievalQuery),
-            "memory.read" => Some(Self::MemoryRead),
-            "memory.write" => Some(Self::MemoryWrite),
-            "guardrail.check" => Some(Self::GuardrailCheck),
-            "human.review" => Some(Self::HumanReview),
-            "evaluator.run" => Some(Self::EvaluatorRun),
-            "replay.run" => Some(Self::ReplayRun),
+            "agent.run" | "agent_run" => Some(Self::AgentRun),
+            "agent.turn" | "agent_turn" => Some(Self::AgentTurn),
+            "agent.plan" | "agent_plan" => Some(Self::AgentPlan),
+            "agent.step" | "agent_step" => Some(Self::AgentStep),
+            "llm.call" | "llm_call" => Some(Self::LlmCall),
+            "tool.call" | "tool_call" => Some(Self::ToolCall),
+            "mcp.request" | "mcp_request" => Some(Self::McpRequest),
+            "retrieval.query" | "retrieval_query" => Some(Self::RetrievalQuery),
+            "memory.read" | "memory_read" => Some(Self::MemoryRead),
+            "memory.write" | "memory_write" => Some(Self::MemoryWrite),
+            "guardrail.check" | "guardrail_check" => Some(Self::GuardrailCheck),
+            "human.review" | "human_review" => Some(Self::HumanReview),
+            "evaluator.run" | "evaluator_run" => Some(Self::EvaluatorRun),
+            "replay.run" | "replay_run" => Some(Self::ReplayRun),
             _ => None,
         }
+    }
+}
+
+impl Serialize for AgentSpanKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentSpanKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).ok_or_else(|| {
+            serde::de::Error::custom(format!("unsupported agent span kind: {value}"))
+        })
     }
 }
 
@@ -264,6 +284,8 @@ pub struct SpanSummary {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunFilter {
+    pub project_id: Option<ProjectId>,
+    pub environment_id: Option<EnvironmentId>,
     pub trace_id: Option<TraceId>,
     pub status: Option<SpanStatus>,
     pub kind: Option<AgentSpanKind>,
@@ -271,6 +293,8 @@ pub struct RunFilter {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SpanFilter {
+    pub project_id: Option<ProjectId>,
+    pub environment_id: Option<EnvironmentId>,
     pub trace_id: Option<TraceId>,
     pub span_id: Option<SpanId>,
     pub kind: Option<AgentSpanKind>,
@@ -430,6 +454,16 @@ pub fn now(clock: &(impl Clock + ?Sized)) -> Timestamp {
 }
 
 pub fn span_matches(span: &CanonicalSpan, filter: &SpanFilter) -> bool {
+    if let Some(project_id) = &filter.project_id {
+        if span.project_id != *project_id {
+            return false;
+        }
+    }
+    if let Some(environment_id) = &filter.environment_id {
+        if span.environment_id != *environment_id {
+            return false;
+        }
+    }
     if let Some(trace_id) = &filter.trace_id {
         if span.trace_id != *trace_id {
             return false;
@@ -468,12 +502,14 @@ pub fn span_summary(span: CanonicalSpan) -> SpanSummary {
 
 pub fn roll_up_runs(tenant: TenantId, spans: Vec<SpanSummary>) -> Vec<RunSummary> {
     let mut runs = Vec::<RunSummary>::new();
-    for span in spans {
+    for span in &spans {
         if let Some(run) = runs.iter_mut().find(|run| run.trace_id == span.trace_id) {
             run.span_count += 1;
-            if run.status != SpanStatus::Error && span.status == SpanStatus::Error {
-                run.status = SpanStatus::Error;
+            if span.started_at < run.started_at {
+                run.started_at = span.started_at;
+                run.first_span_name = span.name.clone();
             }
+            run.status = aggregate_run_status(&run.status, &span.status);
             run.ended_at = match (run.ended_at, span.ended_at) {
                 (Some(left), Some(right)) => Some(left.max(right)),
                 (None, Some(right)) => Some(right),
@@ -482,10 +518,10 @@ pub fn roll_up_runs(tenant: TenantId, spans: Vec<SpanSummary>) -> Vec<RunSummary
         } else {
             runs.push(RunSummary {
                 tenant_id: tenant.clone(),
-                trace_id: span.trace_id,
-                first_span_name: span.name,
+                trace_id: span.trace_id.clone(),
+                first_span_name: span.name.clone(),
                 span_count: 1,
-                status: span.status,
+                status: span.status.clone(),
                 started_at: span.started_at,
                 ended_at: span.ended_at,
             });
@@ -496,10 +532,49 @@ pub fn roll_up_runs(tenant: TenantId, spans: Vec<SpanSummary>) -> Vec<RunSummary
     runs
 }
 
+pub fn filter_run_summaries(
+    runs: Vec<RunSummary>,
+    spans: &[SpanSummary],
+    filter: &RunFilter,
+) -> Vec<RunSummary> {
+    let kind_trace_ids = filter.kind.as_ref().map(|kind| {
+        spans
+            .iter()
+            .filter(|span| &span.kind == kind)
+            .map(|span| span.trace_id.clone())
+            .collect::<BTreeSet<_>>()
+    });
+    runs.into_iter()
+        .filter(|run| match &filter.trace_id {
+            Some(trace_id) => &run.trace_id == trace_id,
+            None => true,
+        })
+        .filter(|run| match &filter.status {
+            Some(status) => &run.status == status,
+            None => true,
+        })
+        .filter(|run| match &kind_trace_ids {
+            Some(trace_ids) => trace_ids.contains(&run.trace_id),
+            None => true,
+        })
+        .collect()
+}
+
+fn aggregate_run_status(current: &SpanStatus, next: &SpanStatus) -> SpanStatus {
+    if current == &SpanStatus::Error || next == &SpanStatus::Error {
+        return SpanStatus::Error;
+    }
+    if current == &SpanStatus::Ok || next == &SpanStatus::Ok {
+        return SpanStatus::Ok;
+    }
+    SpanStatus::Unset
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use beater_core::{EnvironmentId, ProjectId, TenantId};
+    use chrono::{TimeZone, Utc};
 
     #[test]
     fn span_taxonomy_is_agent_native() {
@@ -509,6 +584,19 @@ mod tests {
         assert_eq!(
             AgentSpanKind::parse("agent.step"),
             Some(AgentSpanKind::AgentStep)
+        );
+        assert_eq!(
+            AgentSpanKind::parse("agent_step"),
+            Some(AgentSpanKind::AgentStep)
+        );
+        assert_eq!(
+            serde_json::to_value(&AgentSpanKind::LlmCall).unwrap_or_else(|err| panic!("{err}")),
+            Value::String("llm.call".to_string())
+        );
+        assert_eq!(
+            serde_json::from_value::<AgentSpanKind>(Value::String("tool_call".to_string()))
+                .unwrap_or_else(|err| panic!("{err}")),
+            AgentSpanKind::ToolCall
         );
         assert_eq!(AgentSpanKind::parse("bogus"), None);
         assert_eq!(SpanStatus::Error.as_str(), "error");
@@ -530,5 +618,96 @@ mod tests {
             .unwrap_or_else(|err| panic!("{err}"));
 
         assert_eq!(key.as_str(), "tenant:project:trace:span:7:abc");
+    }
+
+    #[test]
+    fn rollups_use_complete_trace_order_and_filter_after_aggregation() {
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let trace = TraceId::new("trace").unwrap_or_else(|err| panic!("{err}"));
+        let other_trace = TraceId::new("other-trace").unwrap_or_else(|err| panic!("{err}"));
+        let early = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+        let middle = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 1)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+        let late = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 2)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+        let spans = vec![
+            SpanSummary {
+                tenant_id: tenant.clone(),
+                trace_id: trace.clone(),
+                span_id: SpanId::new("child").unwrap_or_else(|err| panic!("{err}")),
+                kind: AgentSpanKind::AgentStep,
+                name: "latest child".to_string(),
+                status: SpanStatus::Ok,
+                started_at: late,
+                ended_at: Some(late),
+            },
+            SpanSummary {
+                tenant_id: tenant.clone(),
+                trace_id: trace.clone(),
+                span_id: SpanId::new("root").unwrap_or_else(|err| panic!("{err}")),
+                kind: AgentSpanKind::AgentRun,
+                name: "earliest root".to_string(),
+                status: SpanStatus::Error,
+                started_at: early,
+                ended_at: Some(middle),
+            },
+            SpanSummary {
+                tenant_id: tenant.clone(),
+                trace_id: other_trace.clone(),
+                span_id: SpanId::new("other").unwrap_or_else(|err| panic!("{err}")),
+                kind: AgentSpanKind::LlmCall,
+                name: "other run".to_string(),
+                status: SpanStatus::Ok,
+                started_at: middle,
+                ended_at: Some(middle),
+            },
+        ];
+
+        let runs = roll_up_runs(tenant, spans.clone());
+        let run = runs
+            .iter()
+            .find(|candidate| candidate.trace_id == trace)
+            .unwrap_or_else(|| panic!("trace run exists"));
+        assert_eq!(run.first_span_name, "earliest root");
+        assert_eq!(run.span_count, 2);
+        assert_eq!(run.status, SpanStatus::Error);
+        assert_eq!(run.started_at, early);
+        assert_eq!(run.ended_at, Some(late));
+
+        let error_agent_step_runs = filter_run_summaries(
+            runs.clone(),
+            &spans,
+            &RunFilter {
+                project_id: None,
+                environment_id: None,
+                trace_id: None,
+                kind: Some(AgentSpanKind::AgentStep),
+                status: Some(SpanStatus::Error),
+            },
+        );
+        assert_eq!(error_agent_step_runs.len(), 1);
+        assert_eq!(error_agent_step_runs[0].trace_id, trace);
+        assert_eq!(error_agent_step_runs[0].span_count, 2);
+
+        let ok_runs = filter_run_summaries(
+            runs,
+            &spans,
+            &RunFilter {
+                project_id: None,
+                environment_id: None,
+                trace_id: None,
+                kind: None,
+                status: Some(SpanStatus::Ok),
+            },
+        );
+        assert_eq!(ok_runs.len(), 1);
+        assert_eq!(ok_runs[0].trace_id, other_trace);
     }
 }
