@@ -11,6 +11,15 @@ pub enum EvalError {
     RequiresJudgeBroker(String),
     #[error("evaluator {0} requires deterministic lane")]
     RequiresDeterministicLane(String),
+    #[error(
+        "evaluator {evaluator_id} kind {catalog_id} requires {expected:?} lane, got {actual:?}"
+    )]
+    EvaluatorLaneMismatch {
+        evaluator_id: String,
+        catalog_id: String,
+        expected: EvaluatorLane,
+        actual: EvaluatorLane,
+    },
     #[error("judge budget exceeded: attempted {attempted_micros} micros, remaining {remaining_micros} micros")]
     JudgeBudgetExceeded {
         attempted_micros: i64,
@@ -62,10 +71,131 @@ pub enum EvaluatorKind {
     LlmJudge { rubric: String, model: String },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct EvaluatorCatalogEntry {
+    pub id: &'static str,
+    pub lane: EvaluatorLane,
+    pub display_name: &'static str,
+    pub description: &'static str,
+    pub requires_reference: bool,
+    pub consumes_trace: bool,
+    pub wasm_safe: bool,
+}
+
+pub const EVALUATOR_CATALOG: &[EvaluatorCatalogEntry] = &[
+    EvaluatorCatalogEntry {
+        id: "exact_match",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Exact match",
+        description: "Scores output equality against a reference value.",
+        requires_reference: true,
+        consumes_trace: false,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "regex_match",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Regex match",
+        description: "Scores a string output against a configured regular expression.",
+        requires_reference: false,
+        consumes_trace: false,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "json_object",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "JSON object",
+        description: "Scores whether the output is a JSON object.",
+        requires_reference: false,
+        consumes_trace: false,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "cost_budget",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Cost budget",
+        description: "Scores whether trace cost stays within a configured micro-unit budget.",
+        requires_reference: false,
+        consumes_trace: true,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "latency_budget_ms",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Latency budget",
+        description: "Scores whether trace latency stays within a configured millisecond budget.",
+        requires_reference: false,
+        consumes_trace: true,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "llm_judge",
+        lane: EvaluatorLane::JudgeBroker,
+        display_name: "LLM judge",
+        description: "Routes model-dependent scoring through the judge broker.",
+        requires_reference: false,
+        consumes_trace: false,
+        wasm_safe: false,
+    },
+];
+
+pub fn evaluator_catalog() -> &'static [EvaluatorCatalogEntry] {
+    EVALUATOR_CATALOG
+}
+
+pub fn evaluator_catalog_entry(id: &str) -> Option<&'static EvaluatorCatalogEntry> {
+    EVALUATOR_CATALOG.iter().find(|entry| entry.id == id)
+}
+
+impl EvaluatorKind {
+    pub fn catalog_id(&self) -> &'static str {
+        match self {
+            Self::ExactMatch => "exact_match",
+            Self::RegexMatch { .. } => "regex_match",
+            Self::JsonObject => "json_object",
+            Self::CostBudget { .. } => "cost_budget",
+            Self::LatencyBudgetMs { .. } => "latency_budget_ms",
+            Self::LlmJudge { .. } => "llm_judge",
+        }
+    }
+
+    pub fn catalog_entry(&self) -> &'static EvaluatorCatalogEntry {
+        match self {
+            Self::ExactMatch => &EVALUATOR_CATALOG[0],
+            Self::RegexMatch { .. } => &EVALUATOR_CATALOG[1],
+            Self::JsonObject => &EVALUATOR_CATALOG[2],
+            Self::CostBudget { .. } => &EVALUATOR_CATALOG[3],
+            Self::LatencyBudgetMs { .. } => &EVALUATOR_CATALOG[4],
+            Self::LlmJudge { .. } => &EVALUATOR_CATALOG[5],
+        }
+    }
+
+    pub fn expected_lane(&self) -> EvaluatorLane {
+        self.catalog_entry().lane
+    }
+}
+
+impl EvaluatorSpec {
+    pub fn validate_catalog_lane(&self) -> Result<(), EvalError> {
+        let entry = self.kind.catalog_entry();
+        if self.lane == entry.lane {
+            return Ok(());
+        }
+
+        Err(EvalError::EvaluatorLaneMismatch {
+            evaluator_id: self.id.clone(),
+            catalog_id: entry.id.to_string(),
+            expected: entry.lane,
+            actual: self.lane,
+        })
+    }
+}
+
 pub fn evaluate_deterministic(
     spec: &EvaluatorSpec,
     case: &EvaluationCase,
 ) -> Result<ScoreResult, EvalError> {
+    spec.validate_catalog_lane()?;
     if spec.lane != EvaluatorLane::DeterministicWasi {
         return Err(EvalError::RequiresDeterministicLane(spec.id.clone()));
     }
@@ -154,6 +284,7 @@ where
         spec: &EvaluatorSpec,
         case: &EvaluationCase,
     ) -> Result<ScoreResult, EvalError> {
+        spec.validate_catalog_lane()?;
         let EvaluatorKind::LlmJudge { rubric, model } = &spec.kind else {
             return Err(EvalError::RequiresDeterministicLane(spec.id.clone()));
         };
@@ -314,6 +445,46 @@ fn sample_variance(values: &[f64]) -> f64 {
 mod tests {
     use super::*;
     use beater_core::Money;
+
+    #[test]
+    fn evaluator_catalog_classifies_execution_lanes() {
+        let catalog = evaluator_catalog();
+        assert_eq!(catalog.len(), 6);
+
+        let exact = evaluator_catalog_entry("exact_match")
+            .unwrap_or_else(|| panic!("exact_match catalog entry should exist"));
+        assert_eq!(exact.lane, EvaluatorLane::DeterministicWasi);
+        assert!(exact.requires_reference);
+        assert!(exact.wasm_safe);
+
+        let cost = EvaluatorKind::CostBudget { max_micros: 10 };
+        assert_eq!(cost.catalog_id(), "cost_budget");
+        assert_eq!(cost.expected_lane(), EvaluatorLane::DeterministicWasi);
+        assert!(cost.catalog_entry().consumes_trace);
+
+        let judge = EvaluatorKind::LlmJudge {
+            rubric: "correctness".to_string(),
+            model: "judge-model".to_string(),
+        };
+        assert_eq!(judge.catalog_id(), "llm_judge");
+        assert_eq!(judge.expected_lane(), EvaluatorLane::JudgeBroker);
+        assert!(!judge.catalog_entry().wasm_safe);
+
+        let mismatch = EvaluatorSpec {
+            id: "bad-exact".to_string(),
+            lane: EvaluatorLane::JudgeBroker,
+            kind: EvaluatorKind::ExactMatch,
+        }
+        .validate_catalog_lane();
+        assert!(matches!(
+            mismatch,
+            Err(EvalError::EvaluatorLaneMismatch {
+                expected: EvaluatorLane::DeterministicWasi,
+                actual: EvaluatorLane::JudgeBroker,
+                ..
+            })
+        ));
+    }
 
     #[tokio::test]
     async fn deterministic_and_judge_lanes_are_separate() {
