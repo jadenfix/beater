@@ -34,6 +34,49 @@ fn gate2_outside_validator_accepts_matching_default_port_artifacts() {
 }
 
 #[test]
+fn gate2_outside_generator_builds_valid_completed_proof() {
+    let fixture = ValidatorFixture::new();
+    let generated = fixture.dir.path().join("generated-outside-proof.md");
+
+    let output = run_generator(&fixture.stopwatch_path, &generated);
+
+    assert_success(output, "Wrote Gate 2 outside-person proof");
+    assert_success(
+        run_validator(&generated),
+        "Gate 2 outside-person proof is complete and valid",
+    );
+    let generated_text = fs::read_to_string(&generated)
+        .unwrap_or_else(|err| panic!("read {}: {err}", generated.display()));
+    assert!(generated_text.contains("- Name: Validator Fixture Runner"));
+    assert!(generated_text.contains("- Beater image digest: ghcr.io/jadenfix/beater/beaterd@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+    assert!(generated_text.contains(
+        "- [x] The runner completed the flow using only public repository instructions."
+    ));
+}
+
+#[test]
+fn gate2_outside_generator_does_not_write_invalid_completed_proof() {
+    let fixture = ValidatorFixture::new();
+    let generated = fixture
+        .dir
+        .path()
+        .join("invalid-generated-outside-proof.md");
+    replace(&fixture.stopwatch_path, "127.0.0.1:3000", "127.0.0.1:13080");
+
+    let output = run_generator(&fixture.stopwatch_path, &generated);
+
+    assert_failure(
+        output,
+        "stopwatch proof must not use alternate/warm-loop evidence",
+    );
+    assert!(
+        !generated.exists(),
+        "generator must not leave an invalid completed proof at {}",
+        generated.display()
+    );
+}
+
+#[test]
 fn gate2_outside_validator_rejects_missing_stopwatch_proof() {
     let fixture = ValidatorFixture::new();
     replace(
@@ -327,6 +370,45 @@ fn run_default_validator(args: &[&str]) -> Output {
         .env_remove("BEATER_GATE2_OUTSIDE_PROOF")
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside proof validator: {err}"))
+}
+
+fn run_generator(stopwatch_path: &Path, output_path: &Path) -> Output {
+    let root = repo_root();
+    Command::new("python3")
+        .arg(root.join("scripts/generate-gate2-outside-proof.py"))
+        .arg("--stopwatch-proof")
+        .arg(stopwatch_path)
+        .arg("--output")
+        .arg(output_path)
+        .arg("--runner-name")
+        .arg("Validator Fixture Runner")
+        .arg("--relationship")
+        .arg("external validation fixture")
+        .arg("--prior-exposure")
+        .arg("no prior exposure")
+        .arg("--machine-os")
+        .arg("macOS arm64")
+        .arg("--browser")
+        .arg("Chromium")
+        .arg("--preflight-status")
+        .arg("passed")
+        .arg("--date")
+        .arg("2026-06-20")
+        .arg("--branch")
+        .arg("main")
+        .arg("--network-notes")
+        .arg("public docs only")
+        .arg("--terminal-output-excerpt")
+        .arg("generated proof says browser recording passed")
+        .arg("--compose-logs-saved")
+        .arg("temp fixture")
+        .arg("--failure-notes")
+        .arg("none")
+        .arg("--runner-notes")
+        .arg("No extra runner notes.")
+        .current_dir(root)
+        .output()
+        .unwrap_or_else(|err| panic!("run Gate 2 outside proof generator: {err}"))
 }
 
 fn assert_success(output: Output, expected_stdout: &str) {

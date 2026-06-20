@@ -28,6 +28,7 @@ jobs:
       - name: Validate Gate 2 outside-proof template
         run: |
           bash -n scripts/validate-gate2-outside-proof.sh
+          python3 -m py_compile scripts/generate-gate2-outside-proof.py
           scripts/validate-gate2-outside-proof.sh --allow-pending
 
       - name: Gate 2 self-host contract tests

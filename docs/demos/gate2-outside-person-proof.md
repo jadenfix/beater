@@ -54,6 +54,19 @@ After the script prints the dashboard URLs, the runner must open
 the `llm.call` span, and capture the evidence below. Cleanup can happen after
 the recording.
 
+After the stopwatch command finishes, prefer generating completed evidence from
+the stopwatch proof instead of manually copying fields:
+
+```bash
+scripts/generate-gate2-outside-proof.py \
+  --runner-name "..." \
+  --relationship "..." \
+  --prior-exposure "none" \
+  --machine-os "..." \
+  --browser "..." \
+  --preflight-status "passed"
+```
+
 After replacing this template with completed evidence, run:
 
 ```bash

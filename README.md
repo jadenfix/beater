@@ -218,7 +218,20 @@ BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 BEATER_GATE2_RECORD_DEMO
 
 Gate 2 still requires an unaided outside-person run before it can be called
 passed. Use [docs/demos/gate2-outside-person-proof.md](docs/demos/gate2-outside-person-proof.md)
-as the required evidence template for that run, then validate it with:
+as the required evidence template for that run. After the outside runner has
+completed the stopwatch command, generate the proof from the stopwatch artifact:
+
+```bash
+scripts/generate-gate2-outside-proof.py \
+  --runner-name "..." \
+  --relationship "..." \
+  --prior-exposure "none" \
+  --machine-os "..." \
+  --browser "..." \
+  --preflight-status "passed"
+```
+
+Then validate it with:
 
 ```bash
 scripts/validate-gate2-outside-proof.sh
