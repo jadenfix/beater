@@ -369,7 +369,22 @@ button:hover {
 .workspace {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(300px, 380px) minmax(520px, 1fr) minmax(326px, 394px);
+  grid-template-areas:
+    "traces traces"
+    "waterfall detail";
+  grid-template-columns: minmax(0, 1fr) minmax(326px, 394px);
+}
+
+.trace-list {
+  grid-area: traces;
+}
+
+.trace-pane {
+  grid-area: waterfall;
+}
+
+.span-detail {
+  grid-area: detail;
 }
 
 .trace-list,
@@ -377,6 +392,10 @@ button:hover {
 .span-detail {
   min-height: calc(100vh - 205px);
   overflow: hidden;
+}
+
+.trace-list {
+  min-height: 0;
 }
 
 .section-heading {
@@ -416,7 +435,9 @@ button:hover {
 .run-table-head,
 .run-row {
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
+  grid-template-columns:
+    62px minmax(180px, 1.35fr) minmax(48px, 0.36fr) minmax(92px, 0.68fr)
+    minmax(86px, 0.62fr) minmax(72px, 0.54fr) minmax(92px, 0.68fr);
 }
 
 .run-table-head {
@@ -438,11 +459,11 @@ button:hover {
 }
 
 .run-row {
-  align-items: start;
+  align-items: center;
   border-bottom: 1px solid var(--line);
-  gap: 6px 10px;
-  min-height: 78px;
-  padding: 11px 12px;
+  gap: 8px;
+  min-height: 58px;
+  padding: 10px 12px;
   position: relative;
   transition:
     background 120ms ease,
@@ -464,13 +485,8 @@ button:hover {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.run-row .status {
-  margin-top: 2px;
-}
-
 .run-name,
-.run-metrics {
-  grid-column: 2;
+.run-cell {
   min-width: 0;
 }
 
@@ -492,7 +508,7 @@ button:hover {
 }
 
 .run-name small,
-.run-metrics,
+.run-cell,
 .span-kind,
 .duration {
   color: var(--muted);
@@ -500,30 +516,11 @@ button:hover {
   min-width: 0;
 }
 
-.run-name small {
+.run-name small,
+.run-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.run-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 7px;
-  line-height: 1.35;
-}
-
-.run-metrics span {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.run-metrics span:not(:last-child)::after {
-  color: var(--faint);
-  content: "·";
-  margin-left: 7px;
 }
 
 .metric-emphasis {
@@ -725,17 +722,37 @@ button:hover {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(36px, 1fr) auto;
+  grid-template-columns: minmax(72px, 1fr) auto;
+}
+
+.span-track {
+  background: #edf1ed;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
 }
 
 .span-bar {
   background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 48%, #d5b858));
   border-radius: 2px;
   display: block;
-  height: 6px;
-  min-width: 12px;
-  opacity: 0.86;
+  height: 100%;
+  left: var(--offset);
+  min-width: 4px;
+  position: absolute;
+  top: 0;
+  transform-origin: left center;
   width: var(--bar);
+}
+
+.span-track .span-bar {
+  height: 6px;
+  opacity: 0.86;
+  top: 1px;
 }
 
 .detail-stack {
@@ -747,28 +764,28 @@ button:hover {
 .span-identity {
   align-items: start;
   border-bottom: 1px solid var(--line);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  justify-content: space-between;
   min-width: 0;
   padding: 0 0 11px;
 }
 
 .span-identity > div {
   display: grid;
-  flex: 1 1 auto;
   gap: 4px;
   min-width: 0;
+}
+
+.span-identity .status {
+  justify-self: start;
+  margin-top: -6px;
 }
 
 .span-identity p {
   color: var(--muted);
   font-size: 11px;
   overflow-wrap: anywhere;
-}
-
-.span-identity .status {
-  display: none;
 }
 
 .metrics {
@@ -891,7 +908,14 @@ pre {
 
 @media (max-width: 1400px) {
   .workspace {
-    grid-template-columns: minmax(280px, 348px) minmax(440px, 1fr) minmax(300px, 342px);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 342px);
+  }
+
+  .run-table-head,
+  .run-row {
+    grid-template-columns:
+      56px minmax(152px, 1.2fr) minmax(42px, 0.32fr) minmax(76px, 0.62fr)
+      minmax(74px, 0.56fr) minmax(62px, 0.48fr) minmax(78px, 0.58fr);
   }
 
   .waterfall-head,
@@ -923,6 +947,10 @@ pre {
   }
 
   .workspace {
+    grid-template-areas:
+      "traces"
+      "waterfall"
+      "detail";
     grid-template-columns: 1fr;
   }
 
@@ -979,8 +1007,35 @@ pre {
     display: none;
   }
 
+  .run-table-head {
+    display: none;
+  }
+
+  .run-row {
+    align-items: start;
+    grid-template-columns: 62px minmax(0, 1fr);
+    min-height: 94px;
+  }
+
+  .run-name {
+    grid-column: 2;
+  }
+
+  .run-cell {
+    grid-column: 2;
+    white-space: normal;
+  }
+
+  .run-cell::before {
+    color: var(--faint);
+    content: attr(data-label) ": ";
+    font-size: 10px;
+    font-weight: 740;
+    text-transform: uppercase;
+  }
+
   .span-line {
-    grid-template-columns: minmax(0, 1fr) minmax(88px, 0.5fr);
+    grid-template-columns: minmax(0, 1fr) minmax(88px, 0.42fr) 58px;
     min-height: 44px;
     padding-left: calc(10px + var(--depth) * 11px);
   }
@@ -994,7 +1049,6 @@ pre {
     width: 7px;
   }
 
-  .span-line .status,
   .span-line .duration {
     display: none;
   }

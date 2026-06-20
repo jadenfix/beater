@@ -46,6 +46,7 @@ record_demo_sha256="not requested"
 time_to_quickstart_click_seconds=""
 all_kind_trace_id=""
 all_kind_dashboard_url=""
+outside_runner_next_steps=""
 e2e_base_url="http://dashboard:3000"
 git_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 git_branch="$(git branch --show-current 2>/dev/null || echo unknown)"
@@ -299,6 +300,19 @@ require_command() {
   fi
 }
 
+print_port_owner() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    echo "Listening process on TCP $port:" >&2
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2 || true
+  elif command -v ss >/dev/null 2>&1; then
+    echo "Listening process on TCP $port:" >&2
+    ss -ltnp "sport = :$port" >&2 || true
+  else
+    echo "Install lsof or ss to identify the process holding TCP $port." >&2
+  fi
+}
+
 port_is_free() {
   if (: >/dev/tcp/127.0.0.1/"$1") >/dev/null 2>&1; then
     return 1
@@ -316,7 +330,10 @@ Port $port for $label is already in use before Gate 2 Compose startup.
 
 For outside-person Gate 2 evidence, free the default port and rerun. For
 maintainer diagnostics only, set $env_name to an unused alternate port.
+If this is a stale Beater run, clean it up with:
+  docker compose -f docker-compose.prebuilt.yml -p $project down -v --remove-orphans
 EOF
+    print_port_owner "$port"
     return 1
   fi
 }
@@ -368,6 +385,16 @@ wait_text "$dashboard_url" "gpt-quickstart" "dashboard model detail"
 wait_text "$dashboard_url" "hello from stock OpenTelemetry" "dashboard prompt detail"
 script_to_first_trace_seconds=$(($(date +%s) - start_epoch))
 time_to_first_trace_seconds=$(($(date +%s) - timing_start_epoch))
+if (( time_to_first_trace_seconds > 300 )); then
+  echo "Time-to-first-trace exceeded 300s: ${time_to_first_trace_seconds}s" >&2
+  exit 1
+fi
+cat <<EOF
+Gate 2 first trace visible in ${time_to_first_trace_seconds}s.
+
+Open the dashboard:
+  $dashboard_url
+EOF
 
 if [[ "$browser_proof" == "1" ]]; then
   run_before_deadline "five-line dashboard browser proof" compose_run_e2e \
@@ -434,10 +461,6 @@ beater_image_digest="$(service_image_digest beaterd)"
 dashboard_image_digest="$(service_image_digest dashboard)"
 dashboard_e2e_image_digest="$(service_image_digest dashboard-e2e)"
 otel_python_image_digest="$(service_image_digest otel-python-quickstart)"
-if (( time_to_first_trace_seconds > 300 )); then
-  echo "Time-to-first-trace exceeded 300s: ${time_to_first_trace_seconds}s" >&2
-  exit 1
-fi
 if [[ "$write_proof" == "1" ]]; then
   mkdir -p "$(dirname "$proof_path")"
   cat >"$proof_path" <<EOF
@@ -508,6 +531,22 @@ BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 BEATER_GATE2_RECORD_DEMO
 EOF
 fi
 
+if [[ "$outside_wrapper" == "1" ]]; then
+  outside_runner_next_steps="$(cat <<EOF
+
+Outside-run next steps:
+  1. Open $dashboard_url in a normal browser.
+  2. Click the quickstart trace, then click the llm.call span.
+  3. Confirm prompt, completion, model, tokens, cost, latency, and the nested
+     run -> turn -> step -> tool -> MCP waterfall are visible.
+  4. Generate the completed proof with scripts/generate-gate2-outside-proof.py.
+  5. Validate it with scripts/validate-gate2-outside-proof.sh.
+  6. After evidence is captured, clean up with:
+       docker compose -f docker-compose.prebuilt.yml -p $project down -v --remove-orphans
+EOF
+)"
+fi
+
 cat <<EOF
 Gate 2 compose stopwatch passed in ${time_to_first_trace_seconds}s to first trace (${duration_seconds}s total).
 
@@ -556,4 +595,5 @@ Set BEATER_GATE2_RECORD_DEMO=1 to record the quickstart click-through and
 all-kind waterfall browser proof as a committed demo artifact.
 Set BEATER_GATE2_POST_SLO_TIMEOUT_SECONDS to control each post-SLO evidence
 step timeout after the five-line trace and quickstart click have passed.
+$outside_runner_next_steps
 EOF

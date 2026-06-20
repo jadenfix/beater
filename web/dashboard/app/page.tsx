@@ -223,6 +223,11 @@ export default async function DashboardPage({
             <div className="run-table-head" aria-hidden="true">
               <span>Status</span>
               <span>Trace</span>
+              <span>Spans</span>
+              <span>Model</span>
+              <span>Cost</span>
+              <span>Latency</span>
+              <span>Release</span>
             </div>
             {data.runs.items.map((run) => (
               <Link
@@ -235,12 +240,20 @@ export default async function DashboardPage({
                   <strong>{run.first_span_name}</strong>
                   <small>{run.trace_id}</small>
                 </span>
-                <span className="run-metrics">
-                  <span className="metric-emphasis">{run.span_count} spans</span>
-                  <span>{formatModels(run.models)}</span>
-                  <span>{formatCost(run.total_cost)}</span>
-                  <span>{formatLatency(run.duration_ms)}</span>
-                  <span>{formatReleases(run.release_ids)}</span>
+                <span className="run-cell metric-emphasis" data-label="Spans">
+                  {run.span_count}
+                </span>
+                <span className="run-cell" data-label="Model">
+                  {formatModels(run.models)}
+                </span>
+                <span className="run-cell" data-label="Cost">
+                  {formatCost(run.total_cost)}
+                </span>
+                <span className="run-cell" data-label="Latency">
+                  {formatLatency(run.duration_ms)}
+                </span>
+                <span className="run-cell" data-label="Release">
+                  {formatReleases(run.release_ids)}
                 </span>
               </Link>
             ))}
@@ -267,6 +280,7 @@ export default async function DashboardPage({
             {spans.map((span) => {
               const depth = spanDepth(span, spans);
               const icon = kindIcon(span.kind);
+              const timing = spanTimeline(span, spans);
               return (
                 <Link
                   key={span.span_id}
@@ -280,7 +294,8 @@ export default async function DashboardPage({
                   style={
                     {
                       "--depth": depth,
-                      "--bar": spanWidth(span, spans)
+                      "--offset": timing.offset,
+                      "--bar": timing.width
                     } as React.CSSProperties
                   }
                 >
@@ -300,8 +315,10 @@ export default async function DashboardPage({
                   <span className="span-kind">{span.kind}</span>
                   <span className={`status ${span.status}`}>{statusLabel(span.status)}</span>
                   <span className="duration">
-                    <span className="span-bar" />
-                    {formatDuration(span.start_time, span.end_time)}
+                    <span className="span-track" role="presentation">
+                      <span className="span-bar" />
+                    </span>
+                    <span>{formatDuration(span.start_time, span.end_time)}</span>
                   </span>
                 </Link>
               );
@@ -540,17 +557,36 @@ function hrefFor(
   return `/?${params.toString()}`;
 }
 
-function spanWidth(span: CanonicalSpan, spans: CanonicalSpan[]): string {
-  const durations = spans
+function spanTimeline(
+  span: CanonicalSpan,
+  spans: CanonicalSpan[]
+): { offset: string; width: string } {
+  const bounds = spans
     .map((candidate) => {
-      if (!candidate.end_time) return 0;
-      return Math.max(0, new Date(candidate.end_time).getTime() - new Date(candidate.start_time).getTime());
+      const start = Date.parse(candidate.start_time);
+      const end = candidate.end_time ? Date.parse(candidate.end_time) : start;
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      return { start, end: Math.max(start, end) };
     })
-    .filter((duration) => duration > 0);
-  const max = Math.max(...durations, 1);
-  if (!span.end_time) return "20%";
-  const duration = Math.max(0, new Date(span.end_time).getTime() - new Date(span.start_time).getTime());
-  return `${Math.max(8, Math.round((duration / max) * 100))}%`;
+    .filter((candidate): candidate is { start: number; end: number } => candidate !== null);
+
+  if (bounds.length === 0) return { offset: "0%", width: "100%" };
+
+  const traceStart = Math.min(...bounds.map((bound) => bound.start));
+  const traceEnd = Math.max(...bounds.map((bound) => bound.end));
+  const traceDuration = Math.max(1, traceEnd - traceStart);
+  const spanStart = Date.parse(span.start_time);
+  const spanEnd = span.end_time ? Date.parse(span.end_time) : spanStart;
+
+  if (!Number.isFinite(spanStart) || !Number.isFinite(spanEnd)) {
+    return { offset: "0%", width: "8%" };
+  }
+
+  const offset = Math.min(96, Math.max(0, ((spanStart - traceStart) / traceDuration) * 100));
+  const duration = Math.max(1, Math.max(spanEnd, spanStart) - spanStart);
+  const available = Math.max(4, 100 - offset);
+  const width = Math.min(available, Math.max(4, (duration / traceDuration) * 100));
+  return { offset: `${offset.toFixed(1)}%`, width: `${width.toFixed(1)}%` };
 }
 
 function kindClass(kind: string): string {

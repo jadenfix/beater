@@ -9,8 +9,12 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
   await page.goto(`/?tenant=demo&project=demo&environment=local${traceParam}`);
 
   await expect(page.getByRole("heading", { name: "Agent Trace Debugger" })).toBeVisible();
-  await expect(page.getByLabel("Traces")).toContainText("refund-agent-run");
-  await expect(page.getByLabel("Traces")).toContainText("openai/gpt-demo");
+  const traceList = page.getByLabel("Traces");
+  await expect(traceList).toContainText("Spans");
+  await expect(traceList).toContainText("Latency");
+  await expect(traceList).toContainText("Release");
+  await expect(traceList).toContainText("refund-agent-run");
+  await expect(traceList).toContainText("openai/gpt-demo");
 
   const waterfall = page.getByLabel("Agent span waterfall");
   for (const kind of [
@@ -54,6 +58,8 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
     "data-icon",
     "llm"
   );
+  await expect(waterfall.locator('[data-span-name="call-policy-model"] .span-track')).toBeVisible();
+  await expect(waterfall.locator('[data-span-name="call-policy-model"] .span-bar')).toBeVisible();
   await expect(tool.locator(".kind-icon")).toHaveAttribute("data-icon", "tool");
   await expect(mcp.locator(".kind-icon")).toHaveAttribute("data-icon", "mcp");
 

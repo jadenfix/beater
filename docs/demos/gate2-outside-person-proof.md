@@ -52,10 +52,7 @@ outside the project who runs the flow unaided from a fresh clone.
 ## Commands
 
 ```bash
-BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)"
-git clone https://github.com/jadenfix/beater.git
-cd beater
-BEATER_GATE2_CLONE_STARTED_EPOCH="$BEATER_GATE2_CLONE_STARTED_EPOCH" scripts/gate2-outside-run.sh
+bash -lc 't="$(date +%s)"; git clone https://github.com/jadenfix/beater.git; cd beater; BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
 ```
 
 No project maintainer may provide step-by-step help beyond public repo docs
@@ -105,23 +102,9 @@ After replacing this template with completed evidence, run:
 scripts/validate-gate2-outside-proof.sh
 ```
 
-Maintainers should run this public-clone verifier before handing the repo to an
-outside runner, after the `container-images` workflow has published the current
-commit:
-
-```bash
-scripts/check-gate2-public-handoff.py
-```
-
-The public handoff verifier first runs
-`scripts/check-gate2-outside-readiness.py`, then performs a fresh clone from
-`https://github.com/jadenfix/beater.git`, verifies the clone is on the exact
-same commit, reruns the cloned readiness check, and dry-runs the cloned
-`scripts/gate2-outside-run.sh` wrapper. The readiness check verifies clean
-`main`, the expected GitHub remote, this proof file's structure, and public
-multi-arch GHCR images for the exact commit.
-
-For stronger maintainer preflight before handoff, run:
+Maintainers should run this full public-clone verifier before handing the repo
+to an outside runner, after the `container-images` workflow has published the
+current commit:
 
 ```bash
 scripts/check-gate2-public-handoff.py --full-run
@@ -136,6 +119,10 @@ timestamp captured before the verifier's `git clone`, and cleans up the
 public outside-run path and images can run, but it is not outside-person
 evidence and does not close this proof file. `--full-run` is intentionally
 supported only for the canonical public GitHub/GHCR handoff, not fixture or fork URLs.
+
+If Docker is unavailable on the maintainer machine, `scripts/check-gate2-public-handoff.py`
+still performs the public clone, exact-commit, wrapper dry-run, proof-structure,
+and multi-arch GHCR-image checks, but it is not a runtime handoff proof.
 
 The validator reads the listed stopwatch proof file and screen-recording notes,
 then cross-checks default API/OTLP/dashboard endpoints, clean-start status,

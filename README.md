@@ -19,6 +19,25 @@ instrument agent -> inspect trace -> promote failure to dataset -> run evals
 - [Ship Requirements](REQUIREMENTS.md): requirement-by-requirement checklist for
   what must be true before the platform can be called shipped.
 
+## Outside Runner Quickstart
+
+This is the public clean-clone path Gate 2 is measured on. Prerequisites:
+Docker Desktop or another reachable Docker daemon, Docker Compose v2, `git`, and
+`curl`, with local ports `8080`, `4317`, and `3000` free.
+
+Run this from Bash, zsh, Git Bash, or WSL2 before cloning:
+
+```bash
+bash -lc 't="$(date +%s)"; git clone https://github.com/jadenfix/beater.git; cd beater; BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
+```
+
+When the script finishes, open the printed dashboard URL or
+`http://127.0.0.1:3000`, click the quickstart trace, then click the
+`llm.call` span. You should see the prompt, completion, model, tokens, cost, and
+latency, plus the nested agent waterfall. Gate 2 is not closed until someone
+outside the project completes this unaided in 5 minutes or less and fills
+[docs/demos/gate2-outside-person-proof.md](docs/demos/gate2-outside-person-proof.md).
+
 ## Current State
 
 This repo now contains the first tested Rust vertical slice:
@@ -136,11 +155,10 @@ cargo run -q -p beaterd -- --data-dir /tmp/beaterd --judge-provider http-routing
 
 Exact Docker Compose stopwatch proof for the mandate's clean-machine path:
 
+Run this from Bash, zsh, Git Bash, or WSL2 before cloning:
+
 ```bash
-BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)"
-git clone https://github.com/jadenfix/beater.git
-cd beater
-BEATER_GATE2_CLONE_STARTED_EPOCH="$BEATER_GATE2_CLONE_STARTED_EPOCH" scripts/gate2-outside-run.sh
+bash -lc 't="$(date +%s)"; git clone https://github.com/jadenfix/beater.git; cd beater; BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
 ```
 
 The outside-run wrapper rejects non-`main` checkouts, non-canonical GitHub
@@ -235,24 +253,8 @@ BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 BEATER_GATE2_RECORD_DEMO
 
 Gate 2 still requires an unaided outside-person run before it can be called
 passed. Before handing the repo to the outside runner, a maintainer should run
-the public handoff verifier after the `container-images` workflow has published
-the current commit:
-
-```bash
-scripts/check-gate2-public-handoff.py
-```
-
-That first runs `scripts/check-gate2-outside-readiness.py`, then performs a
-fresh clone from `https://github.com/jadenfix/beater.git`, verifies the clone is
-on the exact same commit, reruns the cloned readiness check, and dry-runs the
-cloned `scripts/gate2-outside-run.sh` wrapper. The readiness check verifies the
-repo is on clean `main`, `origin` points at this GitHub repo, the
-pending/completed outside-proof file is structurally valid, and the current-SHA
-`beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` GHCR images are
-public for both `linux/amd64` and `linux/arm64`.
-
-For a stronger maintainer preflight, run the verifier's full public-clone mode
-with Docker running and default ports `8080`, `4317`, and `3000` free:
+the full public handoff verifier after the `container-images` workflow has
+published the current commit:
 
 ```bash
 scripts/check-gate2-public-handoff.py --full-run
@@ -268,6 +270,10 @@ exact public outside-run path, current GHCR images, OTLP ingest, dashboard
 render, browser proof, and browser recording work; it is not a substitute for
 the required outside-person proof below. `--full-run` is intentionally supported
 only for the canonical public GitHub/GHCR handoff, not fixture or fork URLs.
+
+If Docker is unavailable on the maintainer machine, `scripts/check-gate2-public-handoff.py`
+still performs the public clone, exact-commit, wrapper dry-run, proof-structure,
+and multi-arch GHCR-image checks, but it is not a runtime handoff proof.
 
 Use [docs/demos/gate2-outside-person-proof.md](docs/demos/gate2-outside-person-proof.md)
 as the required evidence template for that run. After the outside runner has

@@ -144,6 +144,9 @@ quickstart_trace_id="$(curl -fsS "$quickstart_trace_query" | first_trace_id)"
 (
   cd "$root/web/dashboard"
   npm run build
+  rm -rf .next/standalone/.next/static
+  mkdir -p .next/standalone/.next
+  cp -R .next/static .next/standalone/.next/static
 )
 
 (

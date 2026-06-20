@@ -15,6 +15,11 @@ test("dashboard page exposes the trace inspection surface", () => {
   assert.match(page, /data-kind/);
   assert.match(page, /data-span-name/);
   assert.match(page, /data-icon/);
+  assert.match(page, /data-label="Spans"/);
+  assert.match(page, /data-label="Latency"/);
+  assert.match(page, /spanTimeline/);
+  assert.match(page, /"--offset"/);
+  assert.match(page, /span-track/);
   assert.match(page, /SpanDetail/);
   assert.match(page, /IoBlock/);
   assert.match(page, /RedactionControls/);
@@ -39,10 +44,22 @@ test("dashboard chrome stays dense and tool-like", () => {
   assert.match(css, /--canvas: #f5f6f3/);
   assert.match(css, /\.workspace \{\n  display: grid;/);
   assert.match(css, /\.summary-strip \{\n  background: rgb\(255 255 255 \/ 0\.72\);/);
+  assert.match(css, /grid-template-columns:\n    62px minmax\(180px, 1\.35fr\)/);
+  assert.match(css, /\.run-cell::before/);
   assert.match(css, /\.waterfall-head,\n\.span-line \{/);
+  assert.match(css, /\.span-track \{/);
+  assert.match(css, /left: var\(--offset\);/);
   assert.doesNotMatch(css, /--bg-grid/);
   assert.doesNotMatch(css, /linear-gradient\(var\(--bg-grid\)/);
   assert.doesNotMatch(css, /\.workspace,\n\.notice \{\n  background/);
+  assert.doesNotMatch(css, /\.span-identity \.status \{\n  display: none;/);
+});
+
+test("local Gate 2 proof serves standalone CSS assets", () => {
+  const proof = readFileSync(join(root, "..", "..", "scripts/gate2-proof.sh"), "utf8");
+  assert.match(proof, /npm run build/);
+  assert.ok(proof.includes(".next/standalone/.next/static"));
+  assert.ok(proof.includes("cp -R .next/static .next/standalone/.next/static"));
 });
 
 test("dashboard client uses public beater read endpoints", () => {
