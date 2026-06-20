@@ -421,7 +421,7 @@ impl IngestService {
             source: SourceDialect::Native,
             source_schema_url: Some("beater://native/v1".to_string()),
             source_schema_version: Some("1".to_string()),
-            received_at: Utc::now(),
+            received_at: self.clock.now(),
             idempotency_key: idempotency_key.clone(),
             payload_hash,
             body_ref: raw_ref.clone(),
@@ -474,7 +474,7 @@ impl IngestService {
             kind: request.kind,
             name: request.name,
             status: request.status,
-            start_time: request.start_time.unwrap_or_else(Utc::now),
+            start_time: request.start_time.unwrap_or_else(|| self.clock.now()),
             end_time: request.end_time,
             model: request.model,
             cost: request.cost,
@@ -543,7 +543,7 @@ impl IngestService {
             source: request.source,
             source_schema_url: request.source_schema_url,
             source_schema_version: request.source_schema_version,
-            received_at: Utc::now(),
+            received_at: self.clock.now(),
             idempotency_key: raw_idempotency_key.clone(),
             payload_hash,
             body_ref: raw_ref.clone(),
@@ -595,7 +595,7 @@ impl IngestService {
                 kind: draft.kind,
                 name: draft.name,
                 status: draft.status,
-                start_time: draft.start_time.unwrap_or_else(Utc::now),
+                start_time: draft.start_time.unwrap_or_else(|| self.clock.now()),
                 end_time: draft.end_time,
                 model: draft.model,
                 cost: draft.cost,
@@ -1198,10 +1198,12 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use beater_bus::{BusError, DurableBus, InMemoryBus, PublishAck, SqliteDurableBus};
+    use beater_core::FixedClock;
     use beater_core::{Page, PageRequest};
     use beater_schema::{RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView};
     use beater_store_obj::FsArtifactStore;
     use beater_store_sql::{SqliteQuotaLimiter, SqliteTraceStore};
+    use chrono::TimeZone;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct FailOnceTraceIngestedPublishBus {
@@ -1332,6 +1334,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn native_ingest_uses_injected_clock_for_missing_timestamps() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        let now = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 42)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+        let service = IngestService::new(artifacts, traces.clone(), bus, IngestPolicy::default())
+            .with_clock(Arc::new(FixedClock::new(now)));
+        let idempotency_key =
+            IdempotencyKey::new("fixed-clock-native").unwrap_or_else(|err| panic!("{err}"));
+        let mut request = fixture_request();
+        request.start_time = None;
+        request.end_time = None;
+        request.idempotency_key = Some(idempotency_key.clone());
+
+        service
+            .ingest_native(request.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let raw = traces
+            .get_raw_envelope(
+                request.scope.tenant_id.clone(),
+                request.scope.project_id.clone(),
+                idempotency_key,
+            )
+            .await
+            .unwrap_or_else(|err| panic!("{err}"))
+            .unwrap_or_else(|| panic!("raw envelope should exist"));
+        assert_eq!(raw.received_at, now);
+
+        let trace = traces
+            .get_trace(request.scope.tenant_id, request.trace_id)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(trace.spans[0].start_time, now);
+        assert_eq!(trace.spans[0].end_time, None);
+    }
+
+    #[tokio::test]
     async fn raw_trace_batch_preserves_external_source_bytes_and_envelope() {
         let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
         let artifacts = Arc::new(
@@ -1425,6 +1473,82 @@ mod tests {
             .await
             .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(stored_bytes, raw_bytes);
+    }
+
+    #[tokio::test]
+    async fn raw_trace_batch_uses_injected_clock_for_missing_timestamps() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        let now = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 2, 3)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+        let service = IngestService::new(artifacts, traces.clone(), bus, IngestPolicy::default())
+            .with_clock(Arc::new(FixedClock::new(now)));
+        let scope = TenantScope::new(
+            TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}")),
+            ProjectId::new("project").unwrap_or_else(|err| panic!("{err}")),
+            EnvironmentId::new("prod").unwrap_or_else(|err| panic!("{err}")),
+        );
+        let raw_idempotency_key =
+            IdempotencyKey::new("fixed-clock-raw").unwrap_or_else(|err| panic!("{err}"));
+        let trace_id = TraceId::new("clock-raw-trace").unwrap_or_else(|err| panic!("{err}"));
+
+        service
+            .ingest_raw_trace_batch(RawTraceIngestRequest {
+                scope: scope.clone(),
+                source: SourceDialect::Otlp,
+                source_schema_url: None,
+                source_schema_version: None,
+                normalizer_version: "beater-otlp-v1".to_string(),
+                mime_type: "application/x-protobuf".to_string(),
+                redaction_class: RedactionClass::Internal,
+                raw_bytes: b"fixed-clock-raw".to_vec(),
+                raw_idempotency_key: Some(raw_idempotency_key.clone()),
+                auth_context: None,
+                spans: vec![CanonicalSpanDraft {
+                    trace_id: trace_id.clone(),
+                    span_id: SpanId::new("span").unwrap_or_else(|err| panic!("{err}")),
+                    parent_span_id: None,
+                    seq: 1,
+                    kind: AgentSpanKind::LlmCall,
+                    name: "llm call".to_string(),
+                    status: SpanStatus::Ok,
+                    start_time: None,
+                    end_time: None,
+                    model: None,
+                    cost: None,
+                    tokens: None,
+                    input: None,
+                    output: None,
+                    attributes: BTreeMap::new(),
+                }],
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let raw = traces
+            .get_raw_envelope(
+                scope.tenant_id.clone(),
+                scope.project_id.clone(),
+                raw_idempotency_key,
+            )
+            .await
+            .unwrap_or_else(|err| panic!("{err}"))
+            .unwrap_or_else(|| panic!("raw envelope should exist"));
+        assert_eq!(raw.received_at, now);
+
+        let trace = traces
+            .get_trace(scope.tenant_id, trace_id)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(trace.spans[0].start_time, now);
+        assert_eq!(trace.spans[0].end_time, None);
     }
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use beater_core::{
-    EnvironmentId, IdempotencyKey, OrganizationId, Page, PageRequest, ProjectId, TenantId,
-    Timestamp, TraceId,
+    Clock, EnvironmentId, IdempotencyKey, OrganizationId, Page, PageRequest, ProjectId,
+    SystemClock, TenantId, Timestamp, TraceId,
 };
 use beater_schema::{
     filter_run_summaries, roll_up_runs, span_summary, CanonicalSpan, CanonicalTraceBatch,
@@ -12,7 +12,7 @@ use beater_store::{
     QuotaDecision, QuotaLimiter, QuotaReservationRequest, RoleBinding, StoreError, StoreResult,
     TraceStore,
 };
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::collections::BTreeSet;
 use std::fs;
@@ -33,6 +33,7 @@ pub struct SqliteMetadataStore {
 #[derive(Clone)]
 pub struct SqliteQuotaLimiter {
     connection: Arc<Mutex<Connection>>,
+    clock: Arc<dyn Clock>,
 }
 
 impl SqliteQuotaLimiter {
@@ -41,6 +42,7 @@ impl SqliteQuotaLimiter {
         configure_quota_connection(&connection)?;
         let limiter = Self {
             connection: Arc::new(Mutex::new(connection)),
+            clock: Arc::new(SystemClock),
         };
         limiter.init()?;
         Ok(limiter)
@@ -55,9 +57,15 @@ impl SqliteQuotaLimiter {
         configure_quota_connection(&connection)?;
         let limiter = Self {
             connection: Arc::new(Mutex::new(connection)),
+            clock: Arc::new(SystemClock),
         };
         limiter.init()?;
         Ok(limiter)
+    }
+
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.clock = clock;
+        self
     }
 
     fn init(&self) -> StoreResult<()> {
@@ -147,7 +155,7 @@ impl QuotaLimiter for SqliteQuotaLimiter {
                 request.window_start.to_rfc3339(),
                 request.reset_at.to_rfc3339(),
                 new_used as i64,
-                Utc::now().to_rfc3339(),
+                self.clock.now().to_rfc3339(),
             ],
         )
         .map_err(StoreError::backend)?;
@@ -827,12 +835,13 @@ fn conversion_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use beater_core::FixedClock;
     use beater_store_conformance::{
         assert_metadata_store_conformance, assert_quota_limiter_conformance,
         assert_trace_store_conformance,
     };
     use beater_store_memory::{InMemoryMetadataStore, InMemoryQuotaLimiter, InMemoryTraceStore};
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Utc};
 
     #[tokio::test]
     async fn sqlite_trace_store_conforms() {
@@ -866,6 +875,48 @@ mod tests {
             SqliteQuotaLimiter::in_memory().unwrap_or_else(|err| panic!("{err}")),
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn sqlite_quota_limiter_uses_injected_clock_for_updates() {
+        let now = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 42)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+        let limiter = SqliteQuotaLimiter::in_memory()
+            .unwrap_or_else(|err| panic!("{err}"))
+            .with_clock(Arc::new(FixedClock::new(now)));
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+        let window_start = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+        let reset_at = Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 1, 0)
+            .single()
+            .unwrap_or_else(|| panic!("valid timestamp"));
+
+        let decision = limiter
+            .reserve_quota(QuotaReservationRequest {
+                tenant_id: tenant,
+                project_id: project,
+                amount: 1,
+                limit: 2,
+                window_start,
+                reset_at,
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(decision.accepted);
+
+        let connection = limiter.lock().unwrap_or_else(|err| panic!("{err}"));
+        let updated_at = connection
+            .query_row("SELECT updated_at FROM quota_counters", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(updated_at, now.to_rfc3339());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
