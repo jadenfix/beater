@@ -49,8 +49,14 @@ export default async function DashboardPage({
     <main className="shell">
       <header className="topbar">
         <div className="brand-lockup">
+          <div className="brand-mark" aria-hidden="true">
+            B
+          </div>
           <div className="brand-block">
-            <p className="eyebrow">Beater / {data.query.environmentId ?? "environment"}</p>
+            <p className="eyebrow">
+              Beater
+              <span>{data.query.environmentId ?? "environment"}</span>
+            </p>
             <h1>Agent Trace Debugger</h1>
             <p className="scope-line">
               {data.query.tenantId}
@@ -62,7 +68,8 @@ export default async function DashboardPage({
           </div>
         </div>
         <div className="api-pill">
-          <span>API</span>
+          <span className="live-dot" aria-hidden="true" />
+          <span>Read API</span>
           <code>{data.apiBaseUrl}</code>
         </div>
       </header>
@@ -216,7 +223,6 @@ export default async function DashboardPage({
             <div className="run-table-head" aria-hidden="true">
               <span>Status</span>
               <span>Trace</span>
-              <span>Summary</span>
             </div>
             {data.runs.items.map((run) => (
               <Link
@@ -230,7 +236,7 @@ export default async function DashboardPage({
                   <small>{run.trace_id}</small>
                 </span>
                 <span className="run-metrics">
-                  <span>{run.span_count} spans</span>
+                  <span className="metric-emphasis">{run.span_count} spans</span>
                   <span>{formatModels(run.models)}</span>
                   <span>{formatCost(run.total_cost)}</span>
                   <span>{formatLatency(run.duration_ms)}</span>
@@ -287,7 +293,9 @@ export default async function DashboardPage({
                     >
                       {icon.label}
                     </span>
-                    <span className="span-title">{span.name}</span>
+                    <span className="span-title">
+                      <span>{span.name}</span>
+                    </span>
                   </span>
                   <span className="span-kind">{span.kind}</span>
                   <span className={`status ${span.status}`}>{statusLabel(span.status)}</span>
@@ -557,8 +565,8 @@ function kindIcon(kind: string): { key: string; label: string; title: string } {
   if (kind === "agent.turn") return { key: "agent-turn", label: "T", title: "Agent turn" };
   if (kind === "agent.plan") return { key: "agent-plan", label: "P", title: "Agent plan" };
   if (kind === "agent.step") return { key: "agent-step", label: "S", title: "Agent step" };
-  if (kind === "llm.call") return { key: "llm", label: "L", title: "LLM call" };
-  if (kind === "tool.call") return { key: "tool", label: "T", title: "Tool call" };
+  if (kind === "llm.call") return { key: "llm", label: "AI", title: "LLM call" };
+  if (kind === "tool.call") return { key: "tool", label: "Fn", title: "Tool call" };
   if (kind === "mcp.request") return { key: "mcp", label: "M", title: "MCP request" };
   if (kind === "retrieval.query") return { key: "retrieval", label: "Q", title: "Retrieval query" };
   if (kind === "memory.read") return { key: "memory-read", label: "Mr", title: "Memory read" };
@@ -566,7 +574,7 @@ function kindIcon(kind: string): { key: string; label: string; title: string } {
   if (kind === "guardrail.check") return { key: "guardrail", label: "!", title: "Guardrail check" };
   if (kind === "human.review") return { key: "human", label: "H", title: "Human review" };
   if (kind === "evaluator.run") return { key: "eval", label: "%", title: "Evaluator run" };
-  if (kind === "replay.run") return { key: "replay", label: ">>", title: "Replay run" };
+  if (kind === "replay.run") return { key: "replay", label: "Re", title: "Replay run" };
   return { key: "other", label: "?", title: kind };
 }
 
