@@ -94,5 +94,9 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   assert.match(e2e, /toHaveAttribute\("data-icon", "mcp"\)/);
   const recorder = readFileSync(join(root, "tests/e2e/record-gate2-demo.mjs"), "utf8");
   assert.match(recorder, /recordVideo/);
+  assert.match(recorder, /requireAttribute/);
+  assert.match(recorder, /data-depth/);
+  assert.match(recorder, /data-icon/);
+  assert.match(recorder, /color\/icon-coded all-kind agent waterfall/);
   assert.match(recorder, /gate2-browser-demo\.webm/);
 });
