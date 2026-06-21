@@ -279,6 +279,7 @@ REQUIRED_PROOF_FIELDS = [
     "Docker version",
     "Docker Compose version",
     "Browser",
+    "Network notes",
     "Preflight status",
     "Outside-run attestation",
     "Clone URL",
@@ -363,7 +364,13 @@ if allow_pending and status == "not yet completed.":
 unresolved_fields = []
 for field in REQUIRED_PROOF_FIELDS:
     value = field_value(field)
-    if not value or value.endswith(":") or "none / describe" in value:
+    normalized_value = value.lower()
+    if (
+        not value
+        or value.endswith(":")
+        or "none / describe" in value
+        or normalized_value in {"unknown", "not requested"}
+    ):
         unresolved_fields.append(field)
 if unresolved_fields:
     fail("unresolved required fields: " + ", ".join(unresolved_fields))
@@ -427,6 +434,8 @@ quickstart_trace_id = field_value("Quickstart trace ID")
 all_kind_trace_id = field_value("All-kind nested trace ID")
 require_trace_id("Quickstart trace ID", quickstart_trace_id, "outside-person proof")
 require_trace_id("All-kind nested trace ID", all_kind_trace_id, "outside-person proof")
+if quickstart_trace_id == all_kind_trace_id:
+    fail("Quickstart trace ID and All-kind nested trace ID must be distinct")
 beater_image_ref = field_value("Beater image reference")
 dashboard_image_ref = field_value("Dashboard image reference")
 dashboard_e2e_image_ref = field_value("Dashboard e2e image reference")
@@ -618,6 +627,31 @@ if stopwatch_text:
         "total proof duration",
         field_value("Total proof duration"),
         field_value_from(stopwatch_text, "Total duration", "stopwatch proof"),
+    )
+    require_equal(
+        "Docker version",
+        field_value("Docker version"),
+        field_value_from(stopwatch_text, "Docker", "stopwatch proof"),
+    )
+    require_equal(
+        "Docker Compose version",
+        field_value("Docker Compose version"),
+        field_value_from(stopwatch_text, "Docker Compose", "stopwatch proof"),
+    )
+    require_equal(
+        "OS/arch",
+        field_value("OS/arch"),
+        field_value_from(stopwatch_text, "OS/arch", "stopwatch proof"),
+    )
+    require_equal(
+        "started time",
+        field_value("Started at"),
+        field_value_from(stopwatch_text, "Started", "stopwatch proof"),
+    )
+    require_equal(
+        "ended time",
+        field_value("Ended at"),
+        field_value_from(stopwatch_text, "Ended", "stopwatch proof"),
     )
     stopwatch_script_first_trace = duration_seconds(
         stopwatch_text, "Script-to-first-trace", "stopwatch proof"

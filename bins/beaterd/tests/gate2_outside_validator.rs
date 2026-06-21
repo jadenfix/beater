@@ -685,6 +685,37 @@ fn gate2_outside_validator_rejects_duplicate_status_line() {
 }
 
 #[test]
+fn gate2_outside_validator_rejects_missing_network_notes() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        "- Network notes: public docs only\n",
+        "",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "missing field in outside-person proof: Network notes",
+    );
+}
+
+#[test]
+fn gate2_outside_validator_rejects_placeholder_required_field_value() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        "- Browser: Chromium",
+        "- Browser: unknown",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(output, "unresolved required fields: Browser");
+}
+
+#[test]
 fn gate2_outside_validator_rejects_placeholder_compose_images_excerpt() {
     let fixture = ValidatorFixture::new();
     replace(
@@ -743,6 +774,20 @@ fn gate2_outside_validator_rejects_duplicate_stopwatch_field() {
     let output = run_validator(&fixture.proof_path);
 
     assert_failure(output, "duplicate field in stopwatch proof: Git branch");
+}
+
+#[test]
+fn gate2_outside_validator_rejects_copied_stopwatch_metadata_mismatch() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        "- Docker version: Docker version 29.2.0",
+        "- Docker version: Docker version 0.0.0",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(output, "Docker version mismatch between proof artifacts");
 }
 
 #[test]
@@ -1017,6 +1062,21 @@ fn gate2_outside_validator_rejects_dashboard_url_trace_mismatch() {
     assert_failure(
         output,
         &format!("Quickstart dashboard URL must include trace={QUICKSTART_TRACE}"),
+    );
+}
+
+#[test]
+fn gate2_outside_validator_rejects_reused_trace_id_for_both_flows() {
+    let fixture = ValidatorFixture::new();
+    replace(&fixture.proof_path, ALL_KIND_TRACE, QUICKSTART_TRACE);
+    replace(&fixture.stopwatch_path, ALL_KIND_TRACE, QUICKSTART_TRACE);
+    replace(&fixture.notes_path, ALL_KIND_TRACE, QUICKSTART_TRACE);
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "Quickstart trace ID and All-kind nested trace ID must be distinct",
     );
 }
 
