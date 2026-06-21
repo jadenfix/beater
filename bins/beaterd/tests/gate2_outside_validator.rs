@@ -856,7 +856,14 @@ fn gate2_public_handoff_full_run_has_local_runtime_preflight_contract() {
     assert!(script.contains("\"ffprobe\""));
     assert!(script.contains("socket.create_connection"));
     assert!(script.contains("def port_owner_hint"));
+    assert!(script.contains("def process_owner_details"));
+    assert!(script.contains("def process_command"));
+    assert!(script.contains("def process_cwd"));
     assert!(script.contains("lsof"));
+    assert!(script.contains("\"ps\", \"-p\", pid, \"-o\", \"command=\""));
+    assert!(script.contains("\"lsof\", \"-a\", \"-p\", pid, \"-d\", \"cwd\", \"-Fn\""));
+    assert!(script.contains("process {pid} command"));
+    assert!(script.contains("process {pid} cwd"));
     assert!(script.contains("install lsof or ss to identify the process holding TCP"));
     assert!(script.contains("(8080, \"beaterd HTTP\", \"BEATER_HTTP_PORT\")"));
     assert!(script.contains("(4317, \"OTLP gRPC\", \"BEATER_OTLP_GRPC_PORT\")"));
@@ -2563,13 +2570,19 @@ fn run_validator_with_ffprobe_script(proof_path: &Path, script: &str) -> Output 
 }
 
 fn run_validator_without_ffprobe(proof_path: &Path) -> Output {
-    let path_dir = tempdir("create validator PATH without ffprobe");
-    symlink(
-        &command_executable("python3"),
-        path_dir.path().join("python3"),
-    )
-    .unwrap_or_else(|err| panic!("symlink python3 fixture: {err}"));
-    run_validator_with_path(proof_path, &[], Some(&path_dir))
+    let path_dir = path_without_ffprobe(
+        "create validator PATH without ffprobe",
+        &["python3", "dirname", "git"],
+    );
+    let root = repo_root();
+    Command::new("/bin/bash")
+        .arg(root.join("scripts/validate-gate2-outside-proof.sh"))
+        .current_dir(root)
+        .env("PATH", path_with_isolated_tempdir(&path_dir))
+        .env("BEATER_GATE2_OUTSIDE_PROOF", proof_path)
+        .env("BEATER_GATE2_ALLOW_UNTRACKED_ARTIFACTS", "1")
+        .output()
+        .unwrap_or_else(|err| panic!("run Gate 2 outside proof validator without ffprobe: {err}"))
 }
 
 fn run_validator_with_path(proof_path: &Path, args: &[&str], path_dir: Option<&TempDir>) -> Output {
@@ -2645,12 +2658,10 @@ fn run_generator_without_observations(stopwatch_path: &Path, output_path: &Path)
 }
 
 fn run_generator_without_fake_ffprobe(stopwatch_path: &Path, output_path: &Path) -> Output {
-    let path_dir = tempdir("create generator PATH without ffprobe");
-    symlink(
-        &command_executable("python3"),
-        path_dir.path().join("python3"),
-    )
-    .unwrap_or_else(|err| panic!("symlink python3 fixture: {err}"));
+    let path_dir = path_without_ffprobe(
+        "create generator PATH without ffprobe",
+        &["python3", "bash", "dirname", "git"],
+    );
     let mut command = generator_command(
         stopwatch_path,
         output_path,
@@ -2665,7 +2676,7 @@ fn run_generator_without_fake_ffprobe(stopwatch_path: &Path, output_path: &Path)
         .arg(LLM_OBSERVATION)
         .arg("--waterfall-observation")
         .arg(WATERFALL_OBSERVATION)
-        .env("PATH", path_with_tempdir(&path_dir));
+        .env("PATH", path_with_isolated_tempdir(&path_dir));
     command
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside proof generator without ffprobe: {err}"))
@@ -2980,6 +2991,13 @@ fn path_with_tempdir(dir: &TempDir) -> String {
     path_with_dir(dir.path())
 }
 
+fn path_with_isolated_tempdir(dir: &TempDir) -> String {
+    std::env::join_paths([dir.path()])
+        .unwrap_or_else(|err| panic!("build isolated fixture PATH: {err}"))
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn path_with_dir(dir: &Path) -> String {
     let existing_path = std::env::var_os("PATH").unwrap_or_default();
     let mut paths = vec![dir.to_path_buf()];
@@ -2988,6 +3006,15 @@ fn path_with_dir(dir: &Path) -> String {
         .unwrap_or_else(|err| panic!("build fixture PATH: {err}"))
         .to_string_lossy()
         .into_owned()
+}
+
+fn path_without_ffprobe(label: &str, tools: &[&str]) -> TempDir {
+    let dir = tempdir(label);
+    for name in tools {
+        symlink(&command_executable(name), dir.path().join(name))
+            .unwrap_or_else(|err| panic!("symlink {name} fixture: {err}"));
+    }
+    dir
 }
 
 fn python3_executable() -> PathBuf {

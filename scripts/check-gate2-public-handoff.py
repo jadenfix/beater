@@ -108,7 +108,71 @@ def port_owner_hint(port: int) -> str:
     output = result.stdout.strip()
     if not output:
         return f"    no listener details available for TCP {port}"
-    return "\n".join(f"    {line}" for line in output.splitlines())
+    details = process_owner_details(port)
+    lines = [f"    {line}" for line in output.splitlines()]
+    if details:
+        lines.extend(f"    {line}" for line in details)
+    return "\n".join(lines)
+
+
+def process_owner_details(port: int) -> list[str]:
+    if not shutil.which("lsof"):
+        return []
+
+    result = subprocess.run(
+        ["lsof", "-nP", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"],
+        cwd=repo_root(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    pids = []
+    seen = set()
+    for line in result.stdout.splitlines():
+        pid = line.strip()
+        if pid.isdigit() and pid not in seen:
+            seen.add(pid)
+            pids.append(pid)
+
+    details = []
+    for pid in pids:
+        command = process_command(pid)
+        cwd = process_cwd(pid)
+        if command:
+            details.append(f"process {pid} command: {command}")
+        if cwd:
+            details.append(f"process {pid} cwd: {cwd}")
+    return details
+
+
+def process_command(pid: str) -> str | None:
+    if not shutil.which("ps"):
+        return None
+    result = subprocess.run(
+        ["ps", "-p", pid, "-o", "command="],
+        cwd=repo_root(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    command = result.stdout.strip()
+    return command or None
+
+
+def process_cwd(pid: str) -> str | None:
+    if not shutil.which("lsof"):
+        return None
+    result = subprocess.run(
+        ["lsof", "-a", "-p", pid, "-d", "cwd", "-Fn"],
+        cwd=repo_root(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    for line in result.stdout.splitlines():
+        if line.startswith("n") and len(line) > 1:
+            return line[1:]
+    return None
 
 
 def occupied_port_message(port: int, label: str, env_name: str) -> str:
