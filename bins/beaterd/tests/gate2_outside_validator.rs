@@ -178,6 +178,42 @@ fn gate2_outside_generator_requires_explicit_attestation() {
 }
 
 #[test]
+fn gate2_outside_generator_refuses_non_pending_output_with_pending_phrase() {
+    let fixture = ValidatorFixture::new();
+    let existing = fixture.dir.path().join("existing-outside-proof.md");
+    let existing_text = "# Gate 2 Outside-Person Proof\n\nStatus: completed.\n\nRunner note mentions Status: not yet completed.\n";
+    fs::write(&existing, existing_text)
+        .unwrap_or_else(|err| panic!("write {}: {err}", existing.display()));
+
+    let output = run_generator(&fixture.stopwatch_path, &existing);
+
+    assert_failure(output, "already exists and is not the pending template");
+    let after = fs::read_to_string(&existing)
+        .unwrap_or_else(|err| panic!("read {}: {err}", existing.display()));
+    assert_eq!(
+        after, existing_text,
+        "generator must not overwrite non-pending proof"
+    );
+}
+
+#[test]
+fn gate2_outside_generator_overwrites_pending_template() {
+    let fixture = ValidatorFixture::new();
+    let pending = fixture.dir.path().join("pending-outside-proof.md");
+    let source = fs::read_to_string(repo_root().join("docs/demos/gate2-outside-person-proof.md"))
+        .unwrap_or_else(|err| panic!("read pending proof template: {err}"));
+    fs::write(&pending, source).unwrap_or_else(|err| panic!("write {}: {err}", pending.display()));
+
+    let output = run_generator(&fixture.stopwatch_path, &pending);
+
+    assert_success(output, "Wrote Gate 2 outside-person proof");
+    assert_success(
+        run_validator(&pending),
+        "Gate 2 outside-person proof is complete and valid",
+    );
+}
+
+#[test]
 fn gate2_outside_readiness_accepts_fixture_registry_manifests() {
     let registry = tempdir("create registry fixture dir");
     write_registry_fixtures(registry.path());

@@ -59,11 +59,20 @@ def compose_images_excerpt(stopwatch_text, stopwatch_path):
     return " | ".join(lines[:3])
 
 
+def proof_status(text, output_path):
+    matches = re.findall(r"^Status:\s*(.+)$", text, re.MULTILINE)
+    if len(matches) != 1:
+        raise SystemExit(
+            f"{output_path} must contain exactly one top-level Status line; pass --force"
+        )
+    return matches[0].strip()
+
+
 def require_pending_or_force(output_path, force):
     if not output_path.exists() or force:
         return
     text = output_path.read_text()
-    if "Status: not yet completed." in text:
+    if proof_status(text, output_path) == "not yet completed.":
         return
     raise SystemExit(f"{output_path} already exists and is not the pending template; pass --force")
 
