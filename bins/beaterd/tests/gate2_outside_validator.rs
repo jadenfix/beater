@@ -84,6 +84,8 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     assert!(readme.contains("--waterfall-observation"));
     assert!(readme.contains("Do not leave placeholder values such as `...`"));
     assert!(readme.contains(r#"--runner-name "Jane Outside Runner""#));
+    assert!(readme.contains(r#"--relationship "external evaluator; no Beater project role""#));
+    assert!(!readme.contains(r#"--relationship "external evaluator; no Beater maintainer role""#));
     assert!(!readme.contains(r#"--runner-name "...""#));
     assert!(!readme.contains(r#"--relationship "...""#));
     assert!(!readme.contains(r#"--machine-os "...""#));
@@ -104,6 +106,11 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     assert!(proof_template.contains("--waterfall-observation"));
     assert!(proof_template.contains("placeholder values such as `...`"));
     assert!(proof_template.contains(r#"--runner-name "Jane Outside Runner""#));
+    assert!(
+        proof_template.contains(r#"--relationship "external evaluator; no Beater project role""#)
+    );
+    assert!(!proof_template
+        .contains(r#"--relationship "external evaluator; no Beater maintainer role""#));
     assert!(!proof_template.contains(r#"--runner-name "...""#));
     assert!(!proof_template.contains(r#"--relationship "...""#));
     assert!(!proof_template.contains(r#"--machine-os "...""#));
@@ -1285,7 +1292,7 @@ fn gate2_outside_validator_rejects_placeholder_compose_images_excerpt() {
 }
 
 #[test]
-fn gate2_outside_validator_rejects_incomplete_compose_images_excerpt() {
+fn gate2_outside_validator_accepts_compose_images_excerpt_from_long_running_services() {
     let fixture = ValidatorFixture::new();
     let commit_sha = current_head();
     replace(
@@ -1298,10 +1305,7 @@ fn gate2_outside_validator_rejects_incomplete_compose_images_excerpt() {
 
     let output = run_validator(&fixture.proof_path);
 
-    assert_failure(
-        output,
-        "`docker compose images` excerpt must include ghcr.io/jadenfix/beater/dashboard-e2e",
-    );
+    assert_success(output, "Gate 2 outside-person proof is complete and valid");
 }
 
 #[test]
@@ -1465,30 +1469,44 @@ fn gate2_outside_validator_rejects_clone_started_after_script_started() {
 
     assert_failure(
         output,
-        "Clone started at in outside-person proof must be before Script started at",
+        "Clone started at in outside-person proof must not be after Script started at",
     );
 }
 
 #[test]
-fn gate2_outside_validator_rejects_clone_started_at_script_started() {
+fn gate2_outside_validator_accepts_clone_started_at_script_started() {
     let fixture = ValidatorFixture::new();
+    for path in [&fixture.proof_path, &fixture.stopwatch_path] {
+        replace(
+            path,
+            "- Clone started at: 2026-06-20T11:59:55Z",
+            "- Clone started at: 2026-06-20T12:00:00Z",
+        );
+        replace(
+            path,
+            "- Time-to-first-trace: 12s",
+            "- Time-to-first-trace: 7s",
+        );
+        replace(
+            path,
+            "- Time-to-quickstart-click: 20s",
+            "- Time-to-quickstart-click: 15s",
+        );
+    }
     replace(
         &fixture.proof_path,
-        "- Clone started at: 2026-06-20T11:59:55Z",
-        "- Clone started at: 2026-06-20T12:00:00Z",
+        "- Total proof duration: 40s",
+        "- Total proof duration: 35s",
     );
     replace(
         &fixture.stopwatch_path,
-        "- Clone started at: 2026-06-20T11:59:55Z",
-        "- Clone started at: 2026-06-20T12:00:00Z",
+        "- Total duration: 40s",
+        "- Total duration: 35s",
     );
 
     let output = run_validator(&fixture.proof_path);
 
-    assert_failure(
-        output,
-        "Clone started at in outside-person proof must be before Script started at",
-    );
+    assert_success(output, "Gate 2 outside-person proof is complete and valid");
 }
 
 #[test]

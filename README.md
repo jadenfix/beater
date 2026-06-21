@@ -309,7 +309,7 @@ the generator and validator reject unresolved evidence.
 ```bash
 scripts/generate-gate2-outside-proof.py \
   --runner-name "Jane Outside Runner" \
-  --relationship "external evaluator; no Beater maintainer role" \
+  --relationship "external evaluator; no Beater project role" \
   --prior-exposure "none" \
   --machine-os "Ubuntu 24.04 x86_64" \
   --browser "Chrome stable" \

@@ -187,6 +187,7 @@ test("dashboard client uses public beater read endpoints", () => {
   assert.match(api, /let runs: Page<RunSummary>;/);
   assert.match(api, /selectedSpan = selectedSpanFromTrace;/);
   assert.match(api, /selectedIo = await fetchJson<SpanIoResponse>/);
+  assert.match(api, /if \(!query\.unmask\) return params;/);
 });
 
 test("dashboard API errors stay concise and user-facing", () => {
@@ -211,6 +212,43 @@ test("dashboard API errors stay concise and user-facing", () => {
   const long = formatApiError(500, "Internal Server Error", "x".repeat(300));
   assert.equal(long.length, "API 500 Internal Server Error: ".length + 240);
   assert.ok(long.endsWith("..."));
+});
+
+test("dashboard time formatters hide invalid backend timing", () => {
+  const { durationMs, formatDuration, formatLatency } = loadDashboardApiModule();
+
+  assert.equal(durationMs("bad-start", "2026-01-01T00:00:00Z"), null);
+  assert.equal(durationMs("2026-01-01T00:00:00Z", "bad-end"), null);
+  assert.equal(formatDuration("bad-start", "2026-01-01T00:00:00Z"), "open");
+  assert.equal(formatDuration("2026-01-01T00:00:01Z", "2026-01-01T00:00:00Z"), "0 ms");
+  assert.equal(formatLatency(Number.NaN), "open");
+  assert.equal(formatLatency(Number.POSITIVE_INFINITY), "open");
+  assert.equal(formatLatency(-1), "open");
+  assert.equal(formatLatency(999), "999 ms");
+});
+
+test("dashboard read URLs send unmask reason only with unmask=true", () => {
+  const { tracePath, spanPath, spanIoPath } = loadDashboardApiModule();
+  const redactedQuery = {
+    tenantId: "demo",
+    projectId: "demo",
+    environmentId: "local",
+    unmask: false,
+    unmaskReason: "incident-123"
+  };
+  const unmaskedQuery = { ...redactedQuery, unmask: true };
+
+  assert.equal(tracePath(redactedQuery, "trace-1"), "/v1/traces/demo/trace-1");
+  assert.equal(spanPath(redactedQuery, "trace-1", "span-1"), "/v1/spans/demo/trace-1/span-1");
+  assert.equal(spanIoPath(redactedQuery, "trace-1", "span-1"), "/v1/spans/demo/trace-1/span-1/io");
+  assert.equal(
+    tracePath(unmaskedQuery, "trace-1"),
+    "/v1/traces/demo/trace-1?unmask=true&reason=incident-123"
+  );
+  assert.equal(
+    spanIoPath(unmaskedQuery, "trace-1", "span-1"),
+    "/v1/spans/demo/trace-1/span-1/io?unmask=true&reason=incident-123"
+  );
 });
 
 test("dashboard loader preserves trace context when span I/O fails", async () => {

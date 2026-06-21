@@ -139,7 +139,8 @@ export function spanIoPath(query: DashboardQuery, traceId: string, spanId: strin
 
 function traceReadParams(query: DashboardQuery): URLSearchParams {
   const params = new URLSearchParams();
-  if (query.unmask) params.set("unmask", "true");
+  if (!query.unmask) return params;
+  params.set("unmask", "true");
   if (query.unmaskReason) params.set("reason", query.unmaskReason);
   return params;
 }
@@ -259,7 +260,10 @@ function truncateApiError(value: string): string {
 
 export function durationMs(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
-  return Math.max(0, new Date(end).getTime() - new Date(start).getTime());
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+  return Math.max(0, endMs - startMs);
 }
 
 export function formatDuration(start: string, end: string | null | undefined): string {
@@ -285,7 +289,9 @@ export function formatReleases(releaseIds: string[] | undefined): string {
 }
 
 export function formatLatency(durationMs: number | null | undefined): string {
-  if (durationMs === null || durationMs === undefined) return "open";
+  if (durationMs === null || durationMs === undefined || !Number.isFinite(durationMs) || durationMs < 0) {
+    return "open";
+  }
   if (durationMs < 1000) return `${durationMs} ms`;
   return `${(durationMs / 1000).toFixed(2)} s`;
 }

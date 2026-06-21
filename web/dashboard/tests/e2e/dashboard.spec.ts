@@ -211,6 +211,30 @@ test("keeps the trace console inside the viewport on desktop and mobile", async 
       viewportWidth: overflow.viewportWidth,
       offenders: []
     });
+
+    if (viewport.width === 390) {
+      const timingLayout = await page
+        .locator('[data-span-name="call-policy-model"] .duration')
+        .first()
+        .evaluate((node) => {
+          const track = node.querySelector(".span-track");
+          const label = node.querySelector(":scope > span:last-child");
+          if (!track || !label) return null;
+          const trackRect = track.getBoundingClientRect();
+          const labelRect = label.getBoundingClientRect();
+          return {
+            trackRight: trackRect.right,
+            labelLeft: labelRect.left,
+            separated:
+              trackRect.right <= labelRect.left ||
+              labelRect.bottom <= trackRect.top ||
+              trackRect.bottom <= labelRect.top
+          };
+        });
+      expect(timingLayout).not.toBeNull();
+      expect(timingLayout?.separated).toBe(true);
+      expect(timingLayout!.labelLeft - timingLayout!.trackRight).toBeGreaterThanOrEqual(6);
+    }
   }
 });
 

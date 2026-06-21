@@ -1649,9 +1649,19 @@ pre {
   }
 
   .duration {
+    align-items: center;
+    display: grid;
     grid-column: 1 / -1;
     grid-template-columns: minmax(120px, 1fr) auto;
+    gap: 10px;
     margin-left: 34px;
+  }
+
+  .duration > span:last-child {
+    background: transparent;
+    padding: 0;
+    position: static;
+    transform: none;
   }
 }
 
