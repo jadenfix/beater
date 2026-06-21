@@ -71,6 +71,22 @@ fn gate2_pending_template_rejects_missing_required_field_label() {
 }
 
 #[test]
+fn gate2_pending_template_rejects_duplicate_status_line() {
+    let fixture =
+        TempDir::new().unwrap_or_else(|err| panic!("create pending proof fixture: {err}"));
+    let proof_path = fixture.path().join("pending-proof.md");
+    let source = fs::read_to_string(repo_root().join("docs/demos/gate2-outside-person-proof.md"))
+        .unwrap_or_else(|err| panic!("read pending proof template: {err}"));
+    fs::write(&proof_path, source)
+        .unwrap_or_else(|err| panic!("write {}: {err}", proof_path.display()));
+    append(&proof_path, "\nStatus: completed.\n");
+
+    let output = run_validator_with_args(&proof_path, &["--allow-pending"]);
+
+    assert_failure(output, "duplicate Status line");
+}
+
+#[test]
 fn gate2_outside_validator_accepts_matching_default_port_artifacts() {
     let fixture = ValidatorFixture::new();
 
@@ -579,6 +595,16 @@ fn gate2_outside_validator_rejects_duplicate_proof_field() {
     let output = run_validator(&fixture.proof_path);
 
     assert_failure(output, "duplicate field in outside-person proof: Branch");
+}
+
+#[test]
+fn gate2_outside_validator_rejects_duplicate_status_line() {
+    let fixture = ValidatorFixture::new();
+    append(&fixture.proof_path, "\nStatus: not yet completed.\n");
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(output, "duplicate Status line");
 }
 
 #[test]

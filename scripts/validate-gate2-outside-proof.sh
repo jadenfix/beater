@@ -328,10 +328,12 @@ def require_pending_template_fields() -> None:
         field_value_from(text, field, "pending outside-person proof template")
 
 
-status_match = re.search(r"^Status:\s*(.+)$", text, re.MULTILINE)
-status = status_match.group(1).strip() if status_match else ""
-if not status:
+status_matches = re.findall(r"^Status:\s*(.+)$", text, re.MULTILINE)
+status = status_matches[0].strip() if status_matches else ""
+if not status_matches:
     fail("missing Status line")
+elif len(status_matches) > 1:
+    fail("duplicate Status line")
 elif status == "not yet completed." and allow_pending:
     pass
 elif status != "completed.":
