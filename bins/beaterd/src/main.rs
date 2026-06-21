@@ -86,6 +86,10 @@ struct Args {
         default_value_t = 1000
     )]
     trace_ingested_drain_interval_ms: u64,
+    #[arg(long, hide = true, env = "BEATER_TEST_TRACE_WRITE_LEASE_MARKER")]
+    test_trace_write_lease_marker: Option<PathBuf>,
+    #[arg(long, hide = true, env = "BEATER_TEST_TRACE_WRITE_HOLD_PATH")]
+    test_trace_write_hold_path: Option<PathBuf>,
     #[arg(long, hide = true, env = "BEATER_TEST_TRACE_INGESTED_LEASE_MARKER")]
     test_trace_ingested_lease_marker: Option<PathBuf>,
     #[arg(long, hide = true, env = "BEATER_TEST_TRACE_INGESTED_HOLD_PATH")]
@@ -216,9 +220,14 @@ async fn main() -> anyhow::Result<()> {
     let ingest = IngestService::new(artifacts, traces.clone(), bus, ingest_policy)
         .with_quota_limiter(quota_limiter);
     if args.trace_write_drain_interval_ms > 0 {
+        let trace_write_hooks = TraceWriteWorkerHooks {
+            lease_marker_path: args.test_trace_write_lease_marker.clone(),
+            hold_path: args.test_trace_write_hold_path.clone(),
+        };
         spawn_trace_write_worker(
             ingest.clone(),
             Duration::from_millis(args.trace_write_drain_interval_ms),
+            trace_write_hooks,
         );
     }
     if args.trace_ingested_drain_interval_ms > 0 {
@@ -285,12 +294,29 @@ fn migrate_local_sqlite_stores(paths: &[PathBuf]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn spawn_trace_write_worker(ingest: IngestService, interval: Duration) {
+#[derive(Clone, Debug, Default)]
+struct TraceWriteWorkerHooks {
+    lease_marker_path: Option<PathBuf>,
+    hold_path: Option<PathBuf>,
+}
+
+fn spawn_trace_write_worker(
+    ingest: IngestService,
+    interval: Duration,
+    hooks: TraceWriteWorkerHooks,
+) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         loop {
             ticker.tick().await;
-            let report = match ingest.drain_trace_writes(100).await {
+            let hooks = hooks.clone();
+            let report = match ingest
+                .drain_trace_writes_with_hook(100, move |_queued| {
+                    let hooks = hooks.clone();
+                    async move { apply_trace_write_test_hooks(&hooks).await }
+                })
+                .await
+            {
                 Ok(report) => report,
                 Err(error) => {
                     eprintln!("trace write drain failed: {error}");
@@ -311,6 +337,18 @@ fn spawn_trace_write_worker(ingest: IngestService, interval: Duration) {
             }
         }
     });
+}
+
+async fn apply_trace_write_test_hooks(hooks: &TraceWriteWorkerHooks) -> Result<(), String> {
+    if let Some(marker_path) = &hooks.lease_marker_path {
+        write_hook_marker(marker_path, "trace.write")?;
+    }
+    if let Some(hold_path) = &hooks.hold_path {
+        while hold_path.exists() {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Default)]
@@ -364,7 +402,7 @@ fn spawn_trace_ingested_worker(
 
 async fn apply_trace_ingested_test_hooks(hooks: &TraceIngestedWorkerHooks) -> Result<(), String> {
     if let Some(marker_path) = &hooks.lease_marker_path {
-        write_hook_marker(marker_path)?;
+        write_hook_marker(marker_path, "trace.ingested")?;
     }
     if let Some(hold_path) = &hooks.hold_path {
         while hold_path.exists() {
@@ -382,12 +420,12 @@ async fn apply_trace_ingested_test_hooks(hooks: &TraceIngestedWorkerHooks) -> Re
     Ok(())
 }
 
-fn write_hook_marker(path: &Path) -> Result<(), String> {
+fn write_hook_marker(path: &Path, lane: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
-            .map_err(|err| format!("create trace.ingested marker dir failed: {err}"))?;
+            .map_err(|err| format!("create {lane} marker dir failed: {err}"))?;
     }
-    fs::write(path, b"leased").map_err(|err| format!("write trace.ingested marker failed: {err}"))
+    fs::write(path, b"leased").map_err(|err| format!("write {lane} marker failed: {err}"))
 }
 
 async fn index_trace_ref(

@@ -211,6 +211,73 @@ async fn beaterd_consumer_kill_restart_dlq_replay_recovers_trace_ingested_work(
 }
 
 #[tokio::test]
+async fn beaterd_trace_write_kill_replay_preserves_buffered_trace() -> anyhow::Result<()> {
+    let _guard = live_smoke_guard().await;
+    let tempdir = tempfile::tempdir()?;
+    let data_dir = tempdir.path().join("beaterd");
+    let marker_path = tempdir.path().join("trace-write-leased");
+    let hold_path = tempdir.path().join("trace-write-hold");
+    let fail_path = tempdir.path().join("trace-store-fail");
+    std::fs::write(&hold_path, b"hold")?;
+    let addrs = free_addrs(4)?;
+    let first_http = addrs[0];
+    let first_grpc = addrs[1];
+    let second_http = addrs[2];
+    let second_grpc = addrs[3];
+
+    let mut first = BeaterdChild::spawn_with_options(
+        &data_dir,
+        first_http,
+        first_grpc,
+        BeaterdSpawnOptions {
+            trace_write_lease_marker: Some(marker_path.clone()),
+            trace_write_hold_path: Some(hold_path.clone()),
+            ..BeaterdSpawnOptions::default()
+        },
+    )?;
+    let first_url = format!("http://{first_http}");
+    wait_for_health(&first_url).await?;
+    let trace_id = post_buffered_otlp_http(&first_url, "trace write kill restart replay").await?;
+    wait_for_file(&marker_path, Duration::from_secs(5)).await?;
+    assert_trace_span_count(&first_url, &trace_id, 0).await?;
+    first.kill_and_wait();
+    let _ = std::fs::remove_file(&hold_path);
+
+    std::fs::write(&fail_path, b"fail")?;
+    let _second = BeaterdChild::spawn_with_options(
+        &data_dir,
+        second_http,
+        second_grpc,
+        BeaterdSpawnOptions {
+            trace_write_max_attempts: Some(1),
+            trace_store_fail_write_while_path: Some(fail_path.clone()),
+            ..BeaterdSpawnOptions::default()
+        },
+    )?;
+    let second_url = format!("http://{second_http}");
+    wait_for_health(&second_url).await?;
+    let dead_letter = wait_for_dead_letter(
+        &second_url,
+        "trace.write_batch",
+        "test trace store write failure",
+        Duration::from_secs(5),
+    )
+    .await?;
+    assert_trace_span_count(&second_url, &trace_id, 0).await?;
+    assert_search_hit_count(&second_url, &trace_id, 0).await?;
+
+    std::fs::remove_file(&fail_path)?;
+    replay_dead_letter(&second_url, &dead_letter).await?;
+    let trace = wait_for_trace(&second_url, &trace_id).await?;
+    assert_eq!(span_count(&trace), 1);
+    let search = wait_for_search_hit(&second_url, &trace_id).await?;
+    assert_eq!(hit_count(&search), 1);
+    wait_for_queue_empty(&second_url, Duration::from_secs(5)).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn beaterd_storage_failure_accounts_every_event_without_silent_drop() -> anyhow::Result<()> {
     let _guard = live_smoke_guard().await;
     let tempdir = tempfile::tempdir()?;
@@ -302,6 +369,8 @@ struct BeaterdSpawnOptions {
     quota_window_seconds: Option<i64>,
     quota_db_path: Option<PathBuf>,
     trace_write_max_attempts: Option<u32>,
+    trace_write_lease_marker: Option<PathBuf>,
+    trace_write_hold_path: Option<PathBuf>,
     trace_ingested_lease_marker: Option<PathBuf>,
     trace_ingested_hold_path: Option<PathBuf>,
     trace_ingested_fail_while_path: Option<PathBuf>,
@@ -357,6 +426,12 @@ impl BeaterdChild {
             command
                 .arg("--trace-write-max-attempts")
                 .arg(max_attempts.to_string());
+        }
+        if let Some(path) = options.trace_write_lease_marker {
+            command.arg("--test-trace-write-lease-marker").arg(path);
+        }
+        if let Some(path) = options.trace_write_hold_path {
+            command.arg("--test-trace-write-hold-path").arg(path);
         }
         if let Some(path) = options.trace_ingested_lease_marker {
             command.arg("--test-trace-ingested-lease-marker").arg(path);
@@ -654,6 +729,10 @@ async fn wait_for_queue_empty(http_url: &str, timeout: Duration) -> anyhow::Resu
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         let status = queue_status(http_url).await?;
+        let trace_write_depth = status
+            .get("trace_write_depth")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default();
         let trace_ingested_depth = status
             .get("trace_ingested_depth")
             .and_then(serde_json::Value::as_u64)
@@ -663,7 +742,7 @@ async fn wait_for_queue_empty(http_url: &str, timeout: Duration) -> anyhow::Resu
             .and_then(serde_json::Value::as_array)
             .map(Vec::len)
             .unwrap_or_default();
-        if trace_ingested_depth == 0 && dead_letters == 0 {
+        if trace_write_depth == 0 && trace_ingested_depth == 0 && dead_letters == 0 {
             return Ok(());
         }
         if tokio::time::Instant::now() >= deadline {

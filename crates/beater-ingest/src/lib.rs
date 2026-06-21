@@ -171,12 +171,26 @@ impl IngestService {
         &self,
         limit: usize,
     ) -> Result<TraceWriteDrainReport, IngestError> {
+        self.drain_trace_writes_with_hook(limit, |_| async { Ok(()) })
+            .await
+    }
+
+    pub async fn drain_trace_writes_with_hook<F, Fut>(
+        &self,
+        limit: usize,
+        before_write: F,
+    ) -> Result<TraceWriteDrainReport, IngestError>
+    where
+        F: FnMut(QueuedTraceWrite) -> Fut,
+        Fut: Future<Output = Result<(), String>>,
+    {
         let messages = self
             .bus
             .consume_kind_batch(TRACE_WRITE_BATCH_KIND, limit)
             .await
             .map_err(map_bus_error)?;
-        self.drain_trace_write_messages(messages).await
+        self.drain_trace_write_messages(messages, before_write)
+            .await
     }
 
     pub async fn drain_trace_writes_for(
@@ -190,7 +204,8 @@ impl IngestService {
             .consume_scoped_kind_batch(tenant_id, project_id, TRACE_WRITE_BATCH_KIND, limit)
             .await
             .map_err(map_bus_error)?;
-        self.drain_trace_write_messages(messages).await
+        self.drain_trace_write_messages(messages, |_| async { Ok(()) })
+            .await
     }
 
     pub async fn drain_trace_ingested<F, Fut>(
@@ -229,16 +244,21 @@ impl IngestService {
         self.drain_trace_ingested_messages(messages, process).await
     }
 
-    async fn drain_trace_write_messages(
+    async fn drain_trace_write_messages<F, Fut>(
         &self,
         messages: Vec<BusMessage>,
-    ) -> Result<TraceWriteDrainReport, IngestError> {
+        mut before_write: F,
+    ) -> Result<TraceWriteDrainReport, IngestError>
+    where
+        F: FnMut(QueuedTraceWrite) -> Fut,
+        Fut: Future<Output = Result<(), String>>,
+    {
         let mut report = TraceWriteDrainReport {
             consumed: messages.len(),
             ..TraceWriteDrainReport::default()
         };
         for message in messages {
-            self.process_trace_write_message(message, &mut report)
+            self.process_trace_write_message(message, &mut report, &mut before_write)
                 .await?;
         }
         report.trace_ids.sort();
@@ -681,11 +701,16 @@ impl IngestService {
         Ok(published)
     }
 
-    async fn process_trace_write_message(
+    async fn process_trace_write_message<F, Fut>(
         &self,
         message: BusMessage,
         report: &mut TraceWriteDrainReport,
-    ) -> Result<(), IngestError> {
+        before_write: &mut F,
+    ) -> Result<(), IngestError>
+    where
+        F: FnMut(QueuedTraceWrite) -> Fut,
+        Fut: Future<Output = Result<(), String>>,
+    {
         let will_dead_letter = message.attempts.saturating_add(1) >= message.max_attempts;
         let queued = match serde_json::from_slice::<QueuedTraceWrite>(&message.payload) {
             Ok(queued) => queued,
@@ -704,6 +729,13 @@ impl IngestService {
 
         if let Err(reason) = validate_trace_write_scope(&message, &queued.batch) {
             report.invalid_messages += 1;
+            self.retry_or_dlq_counted(message, reason, will_dead_letter, report)
+                .await?;
+            return Ok(());
+        }
+
+        if let Err(reason) = before_write(queued.clone()).await {
+            report.failed_writes += 1;
             self.retry_or_dlq_counted(message, reason, will_dead_letter, report)
                 .await?;
             return Ok(());
@@ -1818,6 +1850,64 @@ mod tests {
             .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(trace.spans.len(), 1);
         assert_eq!(trace.spans[0].name, "agent run");
+    }
+
+    #[tokio::test]
+    async fn trace_write_before_write_hook_retries_without_touching_trace_store() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        let service = IngestService::new(
+            artifacts,
+            traces.clone(),
+            bus.clone(),
+            IngestPolicy::default(),
+        );
+        let request = fixture_request();
+
+        service
+            .buffer_native(request.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        let first = service
+            .drain_trace_writes_with_hook(10, |_| async {
+                Err("test trace.write pre-write failure".to_string())
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(first.consumed, 1);
+        assert_eq!(first.failed_writes, 1);
+        assert_eq!(first.written_spans, 0);
+        assert_eq!(first.downstream_published, 0);
+        assert_eq!(first.retried, 1);
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+        assert_eq!(bus.depth_for_kind(TRACE_INGESTED_KIND).await, Ok(0));
+        let empty_trace = traces
+            .get_trace(request.scope.tenant_id.clone(), request.trace_id.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(empty_trace.spans.len(), 0);
+
+        let second = service
+            .drain_trace_writes(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(second.consumed, 1);
+        assert_eq!(second.written_spans, 1);
+        assert_eq!(second.downstream_published, 1);
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(0));
+        assert_eq!(bus.depth_for_kind(TRACE_INGESTED_KIND).await, Ok(1));
+        let trace = traces
+            .get_trace(request.scope.tenant_id, request.trace_id)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(trace.spans.len(), 1);
     }
 
     #[tokio::test]
