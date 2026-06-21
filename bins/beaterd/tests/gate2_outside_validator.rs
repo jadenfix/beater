@@ -160,7 +160,7 @@ fn gate2_outside_generator_requires_explicit_attestation() {
 
 #[test]
 fn gate2_outside_readiness_accepts_fixture_registry_manifests() {
-    let registry = TempDir::new().expect("create registry fixture dir");
+    let registry = tempdir("create registry fixture dir");
     write_registry_fixtures(registry.path());
 
     let output = run_readiness_with_fixture(registry.path());
@@ -170,7 +170,7 @@ fn gate2_outside_readiness_accepts_fixture_registry_manifests() {
 
 #[test]
 fn gate2_outside_readiness_rejects_missing_image_platform() {
-    let registry = TempDir::new().expect("create registry fixture dir");
+    let registry = tempdir("create registry fixture dir");
     write_registry_fixtures(registry.path());
     write_registry_manifest(registry.path(), "dashboard", &["linux/amd64"]);
 
@@ -181,7 +181,7 @@ fn gate2_outside_readiness_rejects_missing_image_platform() {
 
 #[test]
 fn gate2_public_handoff_verifier_accepts_clean_clone_fixture() {
-    let registry = TempDir::new().expect("create registry fixture dir");
+    let registry = tempdir("create registry fixture dir");
     write_registry_fixtures(registry.path());
     let fixture_repo = write_public_handoff_fixture_repo();
     let fixture_head = git_output(fixture_repo.path(), &["rev-parse", "HEAD"]);
@@ -194,8 +194,8 @@ fn gate2_public_handoff_verifier_accepts_clean_clone_fixture() {
 
 #[test]
 fn gate2_public_handoff_verifier_full_run_rejects_noncanonical_fixture_source() {
-    let registry = TempDir::new().expect("create registry fixture dir");
-    let clone_parent = TempDir::new().expect("create public handoff clone parent");
+    let registry = tempdir("create registry fixture dir");
+    let clone_parent = tempdir("create public handoff clone parent");
     write_registry_fixtures(registry.path());
     let fixture_repo = write_public_handoff_fixture_repo();
     let fixture_head = git_output(fixture_repo.path(), &["rev-parse", "HEAD"]);
@@ -221,7 +221,7 @@ fn gate2_public_handoff_verifier_full_run_rejects_noncanonical_fixture_source() 
 #[test]
 fn gate2_public_handoff_full_run_has_local_runtime_preflight_contract() {
     let script = fs::read_to_string(repo_root().join("scripts/check-gate2-public-handoff.py"))
-        .expect("read Gate 2 public handoff verifier");
+        .unwrap_or_else(|err| panic!("read Gate 2 public handoff verifier: {err}"));
 
     assert!(script.contains("preflight_full_run_runtime"));
     assert!(script.contains("require_full_run_source(args)"));
@@ -252,7 +252,7 @@ fn gate2_outside_wrapper_real_run_executes_stopwatch_with_clone_timer() {
 
     assert_success(output, "fixture outside wrapper runtime executed");
     let env_marker = fs::read_to_string(fixture.path().join("wrapper-real-env.txt"))
-        .expect("read outside wrapper runtime marker");
+        .unwrap_or_else(|err| panic!("read outside wrapper runtime marker: {err}"));
     assert!(env_marker.contains("write=1"));
     assert!(env_marker.contains("browser=1"));
     assert!(env_marker.contains("record=1"));
@@ -814,7 +814,7 @@ fn gate2_outside_validator_rejects_absolute_artifact_paths() {
     replace(
         &fixture.proof_path,
         &fixture.recording_field,
-        fixture.recording_path.to_str().unwrap(),
+        &fixture.recording_path.to_string_lossy(),
     );
 
     let output = run_validator(&fixture.proof_path);
@@ -890,9 +890,10 @@ struct ValidatorFixture {
 impl ValidatorFixture {
     fn new() -> Self {
         let root = repo_root();
-        let artifact_dir = TempDir::new_in(root.join("docs/demos"))
-            .expect("create validator fixture artifact tempdir under docs/demos");
-        let dir = TempDir::new().expect("create validator fixture tempdir");
+        let artifact_dir = TempDir::new_in(root.join("docs/demos")).unwrap_or_else(|err| {
+            panic!("create validator fixture artifact tempdir under docs/demos: {err}")
+        });
+        let dir = tempdir("create validator fixture tempdir");
         let proof_path = dir.path().join("outside-proof.md");
         let stopwatch_path = artifact_dir.path().join("stopwatch-proof.md");
         let notes_path = artifact_dir.path().join("recording-notes.md");
@@ -904,11 +905,17 @@ impl ValidatorFixture {
 
         fs::write(&recording_path, recording_bytes())
             .unwrap_or_else(|err| panic!("write {}: {err}", recording_path.display()));
-        fs::write(
-            &notes_path,
-            recording_notes(&recording_path.file_name().unwrap().to_string_lossy()),
-        )
-        .unwrap_or_else(|err| panic!("write {}: {err}", notes_path.display()));
+        let recording_name = recording_path
+            .file_name()
+            .unwrap_or_else(|| {
+                panic!(
+                    "recording path has no file name: {}",
+                    recording_path.display()
+                )
+            })
+            .to_string_lossy();
+        fs::write(&notes_path, recording_notes(&recording_name))
+            .unwrap_or_else(|err| panic!("write {}: {err}", notes_path.display()));
         fs::write(
             &stopwatch_path,
             stopwatch_proof(&recording_field, &notes_field),
@@ -1431,7 +1438,7 @@ fn bytes_from_hex(hex: &str) -> Vec<u8> {
 
 fn write_public_handoff_fixture_repo() -> TempDir {
     let root = repo_root();
-    let fixture = TempDir::new().expect("create public handoff fixture repo");
+    let fixture = tempdir("create public handoff fixture repo");
 
     for rel in [
         "scripts/check-gate2-outside-readiness.py",
@@ -1492,7 +1499,7 @@ echo "fixture outside wrapper runtime executed"
 
 fn write_outside_wrapper_fixture_repo(branch: &str) -> TempDir {
     let root = repo_root();
-    let fixture = TempDir::new().expect("create outside wrapper fixture repo");
+    let fixture = tempdir("create outside wrapper fixture repo");
 
     copy_fixture_file(&root, fixture.path(), "scripts/gate2-outside-run.sh");
 
@@ -1564,10 +1571,7 @@ fn git_output(cwd: &Path, args: &[&str]) -> String {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    String::from_utf8(output.stdout)
-        .expect("git output should be utf8")
-        .trim()
-        .to_owned()
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
 fn current_head() -> String {
@@ -1584,8 +1588,9 @@ fn current_head() -> String {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    String::from_utf8(output.stdout)
-        .expect("git HEAD should be utf8")
-        .trim()
-        .to_owned()
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+fn tempdir(context: &str) -> TempDir {
+    TempDir::new().unwrap_or_else(|err| panic!("{context}: {err}"))
 }
