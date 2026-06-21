@@ -221,16 +221,7 @@ def clone_repo(
         raise SystemExit(f"clone destination already exists: {clone_dir}")
 
     clone_started_epoch = int(time.time())
-    clone_command = [
-        "git",
-        "clone",
-        "--depth",
-        "1",
-        "--branch",
-        "main",
-        args.source_url,
-        str(clone_dir),
-    ]
+    clone_command = ["git", "clone", args.source_url, str(clone_dir)]
     run(clone_command, cwd=parent)
 
     clone_commit = run(["git", "rev-parse", "HEAD"], cwd=clone_dir, quiet=True)

@@ -42,19 +42,6 @@ def relative_or_absolute(path):
         return str(path)
 
 
-def git_branch():
-    try:
-        branch = subprocess.check_output(
-            ["git", "branch", "--show-current"],
-            cwd=repo_root(),
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-    except (OSError, subprocess.CalledProcessError):
-        branch = ""
-    return branch or "main"
-
-
 def compose_images_excerpt(stopwatch_text, stopwatch_path):
     match = re.search(r"## Compose Images\s+```text\n(.*?)\n```", stopwatch_text, re.DOTALL)
     if not match:
@@ -228,11 +215,6 @@ def parse_args():
     parser.add_argument("--failure-notes", default="")
     parser.add_argument("--runner-notes", default="")
     parser.add_argument("--date", default=dt.date.today().isoformat())
-    parser.add_argument(
-        "--branch",
-        default=git_branch(),
-        help=argparse.SUPPRESS,
-    )
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--no-validate", action="store_true")
     args = parser.parse_args()

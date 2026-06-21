@@ -22,8 +22,8 @@ instrument agent -> inspect trace -> promote failure to dataset -> run evals
 ## Outside Runner Quickstart
 
 This is the public clean-clone path Gate 2 is measured on. Prerequisites:
-Docker Desktop or another reachable Docker daemon, Docker Compose v2, `git`, and
-`curl`, with local ports `8080`, `4317`, and `3000` free.
+Docker Desktop or another local Docker daemon, Docker Compose v2, `git`, `curl`,
+and `shasum` or `sha256sum`, with local ports `8080`, `4317`, and `3000` free.
 The public Compose path uses prebuilt Beater images and digest-pinned
 third-party service images for deterministic pulls.
 
@@ -188,9 +188,10 @@ visible in `localhost:3000`, and fails if time-to-first-trace exceeds 300
 seconds. It also records time-to-quickstart-click when browser proof is
 enabled. It leaves the dashboard running by default so a human can click
 through the trace.
-Before starting Compose it checks Docker and curl. It removes any previous Beater stopwatch project, then checks the required host ports. For
-outside-person evidence, free the default `8080`/`4317`/`3000` ports rather than
-using alternate ports.
+Before starting Compose it checks local Docker, Docker Compose, curl, and SHA
+tooling. It removes any previous Beater stopwatch project, then checks the
+required host ports. For outside-person evidence, free the default
+`8080`/`4317`/`3000` ports rather than using alternate ports.
 By default it uses `docker-compose.prebuilt.yml` and pulls current GHCR images
 published by `.github/workflows/container-images.yml`. The stopwatch script
 pins `beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` to the checked-out commit SHA
@@ -270,8 +271,8 @@ scripts/check-gate2-public-handoff.py --full-run
 ```
 
 That mode first preflights the local runtime: canonical public source URL only,
-`docker`, Docker Compose v2, `curl`, reachable Docker daemon, and free default
-ports after removing any previous `beater-stopwatch` Compose project. It runs
+`docker`, Docker Compose v2, `curl`, local Docker daemon, SHA tooling, and free
+default ports after removing any previous `beater-stopwatch` Compose project. It runs
 `scripts/check-gate2-outside-readiness.py`, performs a fresh clone from `https://github.com/jadenfix/beater.git`, verifies the clone is on the exact
 same commit, reruns the cloned readiness check, and dry-runs the cloned
 `scripts/gate2-outside-run.sh` wrapper. The readiness check verifies clean

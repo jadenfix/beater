@@ -236,6 +236,10 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     );
     assert!(stopwatch_script.contains("require_command docker"));
     assert!(stopwatch_script.contains("require_command curl"));
+    assert!(stopwatch_script.contains("shasum or sha256sum"));
+    assert!(stopwatch_script.contains("DOCKER_HOST"));
+    assert!(stopwatch_script.contains("docker context inspect"));
+    assert!(stopwatch_script.contains("requires a local Docker context"));
     assert!(!stopwatch_script.contains("require_command python3"));
     assert!(!stopwatch_script.contains("python3 -m venv"));
     assert!(!stopwatch_script.contains("pip --version"));
@@ -244,18 +248,22 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("require_free_port \"$host_http_port\""));
     assert!(stopwatch_script.contains("require_free_port \"$host_otlp_grpc_port\""));
     assert!(stopwatch_script.contains("require_free_port \"$host_dashboard_port\""));
-    let prerequisite_preflight = stopwatch_script
-        .find("run_before_deadline \"Gate 2 prerequisite preflight\" preflight_prerequisites")
-        .expect("stopwatch script should run prerequisite preflight");
-    let clean_start = stopwatch_script
-        .find("run_before_deadline \"clean previous Gate 2 state\" clean_start")
-        .expect("stopwatch script should clean previous state");
-    let port_preflight = stopwatch_script
-        .find("run_before_deadline \"Gate 2 port preflight\" preflight_ports")
-        .expect("stopwatch script should run port preflight");
-    let compose_startup = stopwatch_script
-        .find("run_before_deadline \"compose startup ($startup_mode)\"")
-        .expect("stopwatch script should start compose");
+    let prerequisite_preflight = find_required(
+        &stopwatch_script,
+        "run_before_deadline \"Gate 2 prerequisite preflight\" preflight_prerequisites",
+    );
+    let clean_start = find_required(
+        &stopwatch_script,
+        "run_before_deadline \"clean previous Gate 2 state\" clean_start",
+    );
+    let port_preflight = find_required(
+        &stopwatch_script,
+        "run_before_deadline \"Gate 2 port preflight\" preflight_ports",
+    );
+    let compose_startup = find_required(
+        &stopwatch_script,
+        "run_before_deadline \"compose startup ($startup_mode)\"",
+    );
     assert!(prerequisite_preflight < clean_start);
     assert!(clean_start < port_preflight);
     assert!(port_preflight < compose_startup);
@@ -354,12 +362,13 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_validator.contains("hashlib.sha256"));
     assert!(outside_validator.contains("MIN_RECORDING_BYTES"));
     assert!(outside_validator.contains("require_webm_recording"));
+    assert!(outside_validator.contains("require_tracked_artifact"));
+    assert!(outside_validator.contains("must be tracked by git before Gate 2 closure"));
     assert!(outside_validator.contains("screen recording must start with a WebM/EBML header"));
     assert!(outside_validator.contains("screen recording must declare WebM DocType"));
     assert!(outside_validator.contains("subprocess.check_output"));
     assert!(outside_validator.contains("parse_qs"));
     assert!(outside_validator.contains("screen recording sha mismatch"));
-    assert!(outside_validator.contains("require_image_digest"));
     assert!(outside_validator.contains("require_ghcr_image_digest"));
     assert!(outside_validator.contains("repo_artifact_path"));
     assert!(outside_validator.contains("must be a repo-relative path under docs/demos"));
@@ -452,8 +461,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(public_handoff.contains("https://github.com/jadenfix/beater.git"));
     assert!(public_handoff.contains("git"));
     assert!(public_handoff.contains("clone"));
-    assert!(public_handoff.contains("--depth"));
-    assert!(public_handoff.contains("--branch"));
+    assert!(public_handoff.contains("clone_command = [\"git\", \"clone\""));
+    assert!(!public_handoff.contains("\"--depth\""));
+    assert!(!public_handoff.contains("\"--branch\""));
     assert!(public_handoff.contains("compile(path.read_text(), str(path), 'exec')"));
     assert!(public_handoff.contains("main"));
     assert!(public_handoff.contains("public handoff clone is not the expected commit"));
@@ -518,8 +528,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("Preflight status"));
     assert!(outside_proof.contains("Docker was running before the stopwatch started"));
     assert!(outside_proof.contains("curl was available before the stopwatch started"));
-    assert!(outside_proof.contains("prebuilt `otel-python` container"));
-    assert!(outside_proof.contains("prebuilt `dashboard-e2e` container"));
+    assert!(outside_proof.contains("prebuilt"));
+    assert!(outside_proof.contains("`otel-python` container"));
+    assert!(outside_proof.contains("`dashboard-e2e`"));
     assert!(outside_proof.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(outside_proof.contains("scripts/generate-gate2-outside-proof.py"));
     assert!(outside_proof.contains("--attest-outside-run"));
@@ -527,8 +538,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("scripts/check-gate2-public-handoff.py"));
     assert!(outside_proof.contains("executes the cloned `scripts/gate2-outside-run.sh` wrapper"));
     assert!(outside_proof.contains("preflights the local runtime"));
-    assert!(outside_proof.contains("reachable Docker daemon"));
-    assert!(outside_proof.contains("free default"));
+    assert!(outside_proof.contains("local Docker daemon"));
+    assert!(outside_proof.contains("SHA tooling"));
+    assert!(outside_proof.contains("free those default ports"));
     assert!(outside_proof.contains("fixture or fork URLs"));
     assert!(outside_proof.contains("scripts/check-gate2-outside-readiness.py"));
     assert!(outside_proof.contains("fresh clone from"));
@@ -576,8 +588,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("scripts/check-gate2-public-handoff.py"));
     assert!(readme.contains("executes the cloned `scripts/gate2-outside-run.sh` wrapper"));
     assert!(readme.contains("preflights the local runtime"));
-    assert!(readme.contains("reachable Docker daemon"));
-    assert!(readme.contains("free default"));
+    assert!(readme.contains("local Docker daemon"));
+    assert!(readme.contains("SHA tooling"));
+    assert!(readme.contains("free the default"));
     assert!(readme.contains("fixture or fork URLs"));
     assert!(readme.contains("scripts/check-gate2-outside-readiness.py"));
     assert!(readme.contains("Outside-run wrapper: yes"));
@@ -604,7 +617,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("`beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` GHCR"));
     assert!(readme.contains("mismatched SHA-pinned image references"));
     assert!(readme.contains("time-to-quickstart-click"));
-    assert!(readme.contains("checks Docker and curl"));
+    assert!(readme.contains("checks local Docker, Docker Compose, curl, and SHA"));
     assert!(readme.contains("mismatched trace IDs"));
     assert!(readme.contains("mismatched API/dashboard endpoints"));
     assert!(readme.contains("repo-relative `docs/demos/` artifacts"));
@@ -746,6 +759,12 @@ fn repo_root() -> PathBuf {
         panic!("beaterd manifest must live under bins/beaterd");
     };
     root.to_path_buf()
+}
+
+fn find_required(haystack: &str, needle: &str) -> usize {
+    haystack
+        .find(needle)
+        .unwrap_or_else(|| panic!("expected text not found: {needle:?}"))
 }
 
 fn assert_pinned_image(compose: &str, label: &str, image: &str, digest: &str) {

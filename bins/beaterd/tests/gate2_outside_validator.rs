@@ -242,6 +242,20 @@ fn gate2_public_handoff_full_run_has_local_runtime_preflight_contract() {
 }
 
 #[test]
+fn gate2_stopwatch_outside_next_steps_separate_dashboard_targets() {
+    let script = fs::read_to_string(repo_root().join("scripts/gate2-compose-stopwatch.sh"))
+        .unwrap_or_else(|err| panic!("read Gate 2 compose stopwatch script: {err}"));
+
+    assert!(script.contains("Open $dashboard_url in a normal browser for the quickstart trace."));
+    assert!(script
+        .contains("Confirm prompt, completion, model, tokens, cost, and latency are visible."));
+    assert!(script.contains(
+        "Open ${all_kind_dashboard_url:-not requested} in a normal browser for the all-kind waterfall."
+    ));
+    assert!(script.contains("Confirm run -> turn -> step -> tool -> MCP nesting is visible."));
+}
+
+#[test]
 fn gate2_outside_wrapper_real_run_executes_stopwatch_with_clone_timer() {
     let fixture = write_outside_wrapper_fixture_repo("main");
     write_stopwatch_env_stub(fixture.path());
@@ -414,6 +428,18 @@ fn gate2_outside_validator_rejects_missing_stopwatch_proof() {
     let output = run_validator(&fixture.proof_path);
 
     assert_failure(output, "stopwatch proof file does not exist");
+}
+
+#[test]
+fn gate2_outside_validator_rejects_untracked_recording_artifacts() {
+    let fixture = ValidatorFixture::new();
+
+    let output = run_validator_without_untracked_artifact_escape(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "Screen recording must be tracked by git before Gate 2 closure",
+    );
 }
 
 #[test]
@@ -1120,6 +1146,18 @@ fn run_validator_with_args(proof_path: &Path, args: &[&str]) -> Output {
         .args(args)
         .current_dir(root)
         .env("BEATER_GATE2_OUTSIDE_PROOF", proof_path)
+        .env("BEATER_GATE2_ALLOW_UNTRACKED_ARTIFACTS", "1")
+        .output()
+        .unwrap_or_else(|err| panic!("run Gate 2 outside proof validator: {err}"))
+}
+
+fn run_validator_without_untracked_artifact_escape(proof_path: &Path) -> Output {
+    let root = repo_root();
+    Command::new("bash")
+        .arg(root.join("scripts/validate-gate2-outside-proof.sh"))
+        .current_dir(root)
+        .env("BEATER_GATE2_OUTSIDE_PROOF", proof_path)
+        .env_remove("BEATER_GATE2_ALLOW_UNTRACKED_ARTIFACTS")
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside proof validator: {err}"))
 }
@@ -1166,8 +1204,6 @@ fn run_generator_with_attestation(
         .arg("passed")
         .arg("--date")
         .arg("2026-06-20")
-        .arg("--branch")
-        .arg("feature-ignored")
         .arg("--network-notes")
         .arg("public docs only")
         .arg("--terminal-output-excerpt")
@@ -1178,7 +1214,8 @@ fn run_generator_with_attestation(
         .arg("none")
         .arg("--runner-notes")
         .arg("No extra runner notes.")
-        .current_dir(root);
+        .current_dir(root)
+        .env("BEATER_GATE2_ALLOW_UNTRACKED_ARTIFACTS", "1");
     if attest {
         command.arg("--attest-outside-run");
     }
@@ -1252,26 +1289,9 @@ fn run_outside_wrapper_dry_run_in_repo(repo: &Path, extra_env: Option<(&str, &st
     let mut command = Command::new("bash");
     command
         .arg(repo.join("scripts/gate2-outside-run.sh"))
-        .current_dir(repo)
-        .env("BEATER_GATE2_OUTSIDE_RUN_DRY_RUN", "1")
-        .env_remove("BEATER_DASHBOARD_PORT")
-        .env_remove("BEATER_HTTP_PORT")
-        .env_remove("BEATER_OTLP_GRPC_PORT")
-        .env_remove("BEATER_GATE2_REUSE")
-        .env_remove("BEATER_GATE2_LOCAL_BUILD")
-        .env_remove("BEATER_GATE2_PULL_POLICY")
-        .env_remove("BEATER_GATE2_WRITE_PROOF")
-        .env_remove("BEATER_GATE2_BROWSER_PROOF")
-        .env_remove("BEATER_GATE2_RECORD_DEMO")
-        .env_remove("BEATERD_IMAGE")
-        .env_remove("BEATER_DASHBOARD_IMAGE")
-        .env_remove("BEATER_DASHBOARD_E2E_IMAGE")
-        .env_remove("BEATER_OTEL_PYTHON_IMAGE")
-        .env_remove("BEATER_GATE2_STOPWATCH_PROOF")
-        .env_remove("BEATER_GATE2_RECORD_VIDEO")
-        .env_remove("BEATER_GATE2_RECORD_NOTES")
-        .env_remove("KEEP_BEATER_COMPOSE")
-        .env_remove("COMPOSE_PROJECT_NAME");
+        .current_dir(repo);
+    clear_outside_env(&mut command);
+    command.env("BEATER_GATE2_OUTSIDE_RUN_DRY_RUN", "1");
     if let Some((name, value)) = extra_env {
         command.env(name, value);
     }
@@ -1281,59 +1301,53 @@ fn run_outside_wrapper_dry_run_in_repo(repo: &Path, extra_env: Option<(&str, &st
 }
 
 fn run_outside_wrapper_real_preflight_in_repo(repo: &Path) -> Output {
-    Command::new("bash")
+    let mut command = Command::new("bash");
+    command
         .arg(repo.join("scripts/gate2-outside-run.sh"))
-        .current_dir(repo)
-        .env_remove("BEATER_GATE2_OUTSIDE_RUN_DRY_RUN")
-        .env_remove("BEATER_GATE2_CLONE_STARTED_EPOCH")
-        .env_remove("BEATER_DASHBOARD_PORT")
-        .env_remove("BEATER_HTTP_PORT")
-        .env_remove("BEATER_OTLP_GRPC_PORT")
-        .env_remove("BEATER_GATE2_REUSE")
-        .env_remove("BEATER_GATE2_LOCAL_BUILD")
-        .env_remove("BEATER_GATE2_PULL_POLICY")
-        .env_remove("BEATER_GATE2_WRITE_PROOF")
-        .env_remove("BEATER_GATE2_BROWSER_PROOF")
-        .env_remove("BEATER_GATE2_RECORD_DEMO")
-        .env_remove("BEATERD_IMAGE")
-        .env_remove("BEATER_DASHBOARD_IMAGE")
-        .env_remove("BEATER_DASHBOARD_E2E_IMAGE")
-        .env_remove("BEATER_OTEL_PYTHON_IMAGE")
-        .env_remove("BEATER_GATE2_STOPWATCH_PROOF")
-        .env_remove("BEATER_GATE2_RECORD_VIDEO")
-        .env_remove("BEATER_GATE2_RECORD_NOTES")
-        .env_remove("KEEP_BEATER_COMPOSE")
-        .env_remove("COMPOSE_PROJECT_NAME")
+        .current_dir(repo);
+    clear_outside_env(&mut command);
+    command
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside wrapper fixture preflight: {err}"))
 }
 
 fn run_outside_wrapper_real_with_clone_timer_in_repo(repo: &Path, clone_started: &str) -> Output {
-    Command::new("bash")
+    let mut command = Command::new("bash");
+    command
         .arg(repo.join("scripts/gate2-outside-run.sh"))
-        .current_dir(repo)
-        .env_remove("BEATER_GATE2_OUTSIDE_RUN_DRY_RUN")
+        .current_dir(repo);
+    clear_outside_env(&mut command);
+    command
         .env("BEATER_GATE2_CLONE_STARTED_EPOCH", clone_started)
-        .env_remove("BEATER_DASHBOARD_PORT")
-        .env_remove("BEATER_HTTP_PORT")
-        .env_remove("BEATER_OTLP_GRPC_PORT")
-        .env_remove("BEATER_GATE2_REUSE")
-        .env_remove("BEATER_GATE2_LOCAL_BUILD")
-        .env_remove("BEATER_GATE2_PULL_POLICY")
-        .env_remove("BEATER_GATE2_WRITE_PROOF")
-        .env_remove("BEATER_GATE2_BROWSER_PROOF")
-        .env_remove("BEATER_GATE2_RECORD_DEMO")
-        .env_remove("BEATERD_IMAGE")
-        .env_remove("BEATER_DASHBOARD_IMAGE")
-        .env_remove("BEATER_DASHBOARD_E2E_IMAGE")
-        .env_remove("BEATER_OTEL_PYTHON_IMAGE")
-        .env_remove("BEATER_GATE2_STOPWATCH_PROOF")
-        .env_remove("BEATER_GATE2_RECORD_VIDEO")
-        .env_remove("BEATER_GATE2_RECORD_NOTES")
-        .env_remove("KEEP_BEATER_COMPOSE")
-        .env_remove("COMPOSE_PROJECT_NAME")
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside wrapper fixture real run: {err}"))
+}
+
+fn clear_outside_env(command: &mut Command) {
+    for name in [
+        "BEATER_GATE2_OUTSIDE_RUN_DRY_RUN",
+        "BEATER_GATE2_CLONE_STARTED_EPOCH",
+        "BEATER_DASHBOARD_PORT",
+        "BEATER_HTTP_PORT",
+        "BEATER_OTLP_GRPC_PORT",
+        "BEATER_GATE2_REUSE",
+        "BEATER_GATE2_LOCAL_BUILD",
+        "BEATER_GATE2_PULL_POLICY",
+        "BEATER_GATE2_WRITE_PROOF",
+        "BEATER_GATE2_BROWSER_PROOF",
+        "BEATER_GATE2_RECORD_DEMO",
+        "BEATERD_IMAGE",
+        "BEATER_DASHBOARD_IMAGE",
+        "BEATER_DASHBOARD_E2E_IMAGE",
+        "BEATER_OTEL_PYTHON_IMAGE",
+        "BEATER_GATE2_STOPWATCH_PROOF",
+        "BEATER_GATE2_RECORD_VIDEO",
+        "BEATER_GATE2_RECORD_NOTES",
+        "KEEP_BEATER_COMPOSE",
+        "COMPOSE_PROJECT_NAME",
+    ] {
+        command.env_remove(name);
+    }
 }
 
 fn assert_success(output: Output, expected_stdout: &str) {

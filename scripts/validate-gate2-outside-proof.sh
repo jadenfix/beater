@@ -16,6 +16,7 @@ fi
 
 python3 - "$proof_path" "$allow_pending" <<'PY'
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -52,6 +53,12 @@ FORBIDDEN_EVIDENCE = [
     "BEATER_OTLP_GRPC_PORT=",
     "BEATER_GATE2_REUSE=1",
 ]
+proof_abs = proof_path if proof_path.is_absolute() else repo / proof_path
+default_proof_abs = repo / "docs/demos/gate2-outside-person-proof.md"
+ALLOW_UNTRACKED_ARTIFACTS = (
+    os.environ.get("BEATER_GATE2_ALLOW_UNTRACKED_ARTIFACTS") == "1"
+    and proof_abs.resolve() != default_proof_abs.resolve()
+)
 
 
 def fail(message: str) -> None:
@@ -101,11 +108,6 @@ def require_max_300(seconds: Optional[int], field_name: str, source_name: str) -
 def require_trace_id(name: str, value: str, source_name: str) -> None:
     if not re.fullmatch(r"[0-9a-f]{32}", value):
         fail(f"{name} in {source_name} must be a lowercase 32-character trace id")
-
-
-def require_image_digest(name: str, value: str, source_name: str) -> None:
-    if not re.fullmatch(r"(?:[^`\s]+@)?sha256:[0-9a-f]{64}", value):
-        fail(f"{name} in {source_name} must be a sha256 image digest")
 
 
 def require_ghcr_image_digest(
@@ -181,11 +183,6 @@ def require_webm_recording(recording_path: Path) -> None:
         fail("screen recording must declare WebM DocType in its EBML header")
 
 
-def repo_path(value: str) -> Path:
-    path = Path(value)
-    return path if path.is_absolute() else repo / path
-
-
 def repo_artifact_path(value: str, name: str) -> Path:
     path = Path(value)
     if path.is_absolute():
@@ -195,6 +192,25 @@ def repo_artifact_path(value: str, name: str) -> Path:
     if len(path.parts) < 2 or path.parts[0] != "docs" or path.parts[1] != "demos":
         fail(f"{name} must live under docs/demos")
     return repo / path
+
+
+def require_tracked_artifact(path: Path, name: str) -> None:
+    if ALLOW_UNTRACKED_ARTIFACTS:
+        return
+    try:
+        rel = path.resolve().relative_to(repo.resolve())
+    except ValueError:
+        fail(f"{name} must be inside the repository")
+        return
+    try:
+        subprocess.check_call(
+            ["git", "ls-files", "--error-unmatch", "--", str(rel)],
+            cwd=repo,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        fail(f"{name} must be tracked by git before Gate 2 closure: {rel}")
 
 
 def git_output(args: list[str]) -> str:
@@ -459,10 +475,14 @@ recording = field_value("Screen recording")
 recording_path = repo_artifact_path(recording, "Screen recording") if recording else Path("")
 if recording and not recording_path.exists():
     fail(f"screen recording does not exist: {recording}")
+elif recording:
+    require_tracked_artifact(recording_path, "Screen recording")
 notes = field_value("Screen recording notes")
 notes_path = repo_artifact_path(notes, "Screen recording notes") if notes else Path("")
 if notes and not notes_path.exists():
     fail(f"screen recording notes do not exist: {notes}")
+elif notes:
+    require_tracked_artifact(notes_path, "Screen recording notes")
 notes_text = notes_path.read_text() if notes and notes_path.exists() else ""
 sha = field_value("Screen recording SHA256")
 if sha and not re.fullmatch(r"[0-9a-f]{64}", sha):
@@ -529,6 +549,7 @@ stopwatch_text = ""
 if stopwatch_proof and not stopwatch_path.exists():
     fail(f"stopwatch proof file does not exist: {stopwatch_proof}")
 elif stopwatch_proof:
+    require_tracked_artifact(stopwatch_path, "Stopwatch proof file")
     stopwatch_text = stopwatch_path.read_text()
 
 if stopwatch_text:

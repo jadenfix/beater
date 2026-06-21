@@ -341,12 +341,27 @@ EOF
 preflight_prerequisites() {
   require_command docker
   require_command curl
+  if [[ "$record_demo" == "1" ]] && ! command -v shasum >/dev/null 2>&1 && ! command -v sha256sum >/dev/null 2>&1; then
+    echo "Gate 2 recording proof requires shasum or sha256sum before the stopwatch starts." >&2
+    return 1
+  fi
+  if [[ -n "${DOCKER_HOST:-}" && "${DOCKER_HOST:-}" != unix://* && "${DOCKER_HOST:-}" != npipe://* ]]; then
+    echo "Gate 2 outside-person proof requires a local Docker daemon because the browser proof uses 127.0.0.1." >&2
+    echo "Unset DOCKER_HOST or switch to a local Docker context and rerun." >&2
+    return 1
+  fi
   if ! docker info >/dev/null 2>&1; then
     echo "Docker daemon is not reachable; start Docker and rerun Gate 2 proof." >&2
     return 1
   fi
   if ! docker compose version >/dev/null 2>&1; then
     echo "Docker Compose v2 is required for Gate 2 proof." >&2
+    return 1
+  fi
+  local docker_context_host
+  docker_context_host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$docker_context_host" && "$docker_context_host" != "<no value>" && "$docker_context_host" != unix://* && "$docker_context_host" != npipe://* ]]; then
+    echo "Gate 2 outside-person proof requires a local Docker context because the browser proof uses 127.0.0.1; current Docker endpoint is $docker_context_host." >&2
     return 1
   fi
 }
@@ -535,13 +550,14 @@ if [[ "$outside_wrapper" == "1" ]]; then
   outside_runner_next_steps="$(cat <<EOF
 
 Outside-run next steps:
-  1. Open $dashboard_url in a normal browser.
+  1. Open $dashboard_url in a normal browser for the quickstart trace.
   2. Click the quickstart trace, then click the llm.call span.
-  3. Confirm prompt, completion, model, tokens, cost, latency, and the nested
-     run -> turn -> step -> tool -> MCP waterfall are visible.
-  4. Generate the completed proof with scripts/generate-gate2-outside-proof.py.
-  5. Validate it with scripts/validate-gate2-outside-proof.sh.
-  6. After evidence is captured, clean up with:
+  3. Confirm prompt, completion, model, tokens, cost, and latency are visible.
+  4. Open ${all_kind_dashboard_url:-not requested} in a normal browser for the all-kind waterfall.
+  5. Confirm run -> turn -> step -> tool -> MCP nesting is visible.
+  6. Generate the completed proof with scripts/generate-gate2-outside-proof.py.
+  7. Validate it with scripts/validate-gate2-outside-proof.sh.
+  8. After evidence is captured, clean up with:
        docker compose -f docker-compose.prebuilt.yml -p $project down -v --remove-orphans
 EOF
 )"

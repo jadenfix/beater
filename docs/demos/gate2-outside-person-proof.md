@@ -72,12 +72,13 @@ stopwatch proof records
 `Git worktree clean: yes`; completed outside-person evidence is invalid without
 those markers.
 
-The script fails before Compose startup if Docker is unavailable, if curl is
-missing, or if API `8080`, OTLP `4317`, or dashboard `3000` are still in use
-after it removes any previous Beater stopwatch project. The stock OpenTelemetry
-Python snippet runs in the prebuilt `otel-python` container, and browser proof
-runs in the prebuilt `dashboard-e2e` container. For this outside-person proof,
-free those default ports instead of using alternate port environment variables.
+The script fails before Compose startup if local Docker is unavailable, if curl
+is missing, if recording SHA tooling is missing, or if API `8080`, OTLP `4317`,
+or dashboard `3000` are still in use after it removes any previous Beater
+stopwatch project. The stock OpenTelemetry Python snippet runs in the prebuilt
+`otel-python` container, and browser proof runs in the prebuilt `dashboard-e2e`
+container. For this outside-person proof, free those default ports instead of
+using alternate port environment variables.
 
 After the script prints the dashboard URLs, the runner must open the
 quickstart dashboard URL in a normal browser, click the quickstart trace, click
@@ -115,8 +116,8 @@ scripts/check-gate2-public-handoff.py --full-run
 ```
 
 That mode first preflights the local runtime: canonical public source URL only,
-`docker`, Docker Compose v2, `curl`, reachable Docker daemon, and free default
-ports after removing any previous `beater-stopwatch` Compose project. It runs
+`docker`, Docker Compose v2, `curl`, local Docker daemon, SHA tooling, and free
+default ports after removing any previous `beater-stopwatch` Compose project. It runs
 `scripts/check-gate2-outside-readiness.py`, performs a fresh clone from
 `https://github.com/jadenfix/beater.git`, verifies the clone is on the exact
 same commit, reruns the cloned readiness check, and dry-runs the cloned
