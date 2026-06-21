@@ -300,10 +300,10 @@ def make_clone_parent(args: argparse.Namespace) -> tuple[Path, tempfile.Temporar
 
 
 def clone_repo(
-    args: argparse.Namespace, expected_commit: str
+    args: argparse.Namespace, expected_commit: str, clone_name: str = "beater"
 ) -> tuple[Path, tempfile.TemporaryDirectory | None, int]:
     parent, temp_owner = make_clone_parent(args)
-    clone_dir = parent / "beater"
+    clone_dir = parent / clone_name
     if clone_dir.exists():
         raise SystemExit(f"clone destination already exists: {clone_dir}")
 
@@ -442,22 +442,40 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     expected_commit = args.expected_commit or current_commit()
+    temp_owners: list[tempfile.TemporaryDirectory | None] = []
     preflight_full_run_runtime(args)
     run_local_readiness(args)
-    clone_dir, temp_owner, clone_started_epoch = clone_repo(args, expected_commit)
+    checks_clone_name = "beater-checks" if args.full_run else "beater"
+    clone_dir, temp_owner, clone_started_epoch = clone_repo(
+        args, expected_commit, checks_clone_name
+    )
+    temp_owners.append(temp_owner)
+    reported_clone_dir = clone_dir
     try:
         run_cloned_checks(args, clone_dir)
-        run_cloned_full_run(args, clone_dir, clone_started_epoch)
         if fixture_full_run_enabled(args):
             mode = "fixture full run"
         elif args.full_run:
             mode = "full run"
         else:
             mode = "clone"
-        print(f"Gate 2 public handoff {mode} passed for {expected_commit}: {clone_dir}")
+        if args.full_run:
+            full_clone_dir, full_temp_owner, full_clone_started_epoch = clone_repo(
+                args, expected_commit, "beater"
+            )
+            temp_owners.append(full_temp_owner)
+            reported_clone_dir = full_clone_dir
+            run_cloned_full_run(args, full_clone_dir, full_clone_started_epoch)
+        else:
+            run_cloned_full_run(args, clone_dir, clone_started_epoch)
+        print(
+            f"Gate 2 public handoff {mode} passed for {expected_commit}: {reported_clone_dir}"
+        )
     finally:
-        if temp_owner is not None and not args.keep_clone:
-            temp_owner.cleanup()
+        if not args.keep_clone:
+            for temp_owner in temp_owners:
+                if temp_owner is not None:
+                    temp_owner.cleanup()
 
 
 if __name__ == "__main__":

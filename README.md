@@ -280,16 +280,17 @@ That mode first preflights the local runtime: canonical public source URL only,
 `docker`, Docker Compose v2, `curl`, `ffprobe`, local Docker daemon, SHA tooling,
 and free default ports after removing any previous `beater-stopwatch` Compose project.
 Remote `DOCKER_HOST` values and remote Docker contexts fail before clone or
-Compose cleanup. It runs `scripts/check-gate2-outside-readiness.py`, performs a
-fresh clone from `https://github.com/jadenfix/beater.git`, verifies the clone is on the exact
-same commit, reruns the cloned readiness check, and dry-runs the cloned
-`scripts/gate2-outside-run.sh` wrapper. The readiness check verifies clean
-`main`, the expected GitHub remote, this proof file's structure, and public
-current-SHA multi-arch `beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` GHCR
-images for the exact commit. The verifier then executes the cloned `scripts/gate2-outside-run.sh` wrapper with the clone-start timestamp captured
-before the verifier's `git clone`, and cleans up the `beater-stopwatch` Compose
-project after the wrapper exits. This is maintainer runtime evidence that the
-exact public outside-run path, current GHCR images, OTLP ingest, dashboard
+Compose cleanup. It runs `scripts/check-gate2-outside-readiness.py`, uses one
+fresh clone from `https://github.com/jadenfix/beater.git` for exact-commit,
+cloned readiness, and wrapper dry-run checks, then uses a second fresh clone for
+the timed runtime path. The readiness check verifies clean `main`, the expected
+GitHub remote, this proof file's structure, and public current-SHA multi-arch
+`beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` GHCR images for the
+exact commit. The verifier executes the second clone's
+`scripts/gate2-outside-run.sh` wrapper with the clone-start timestamp captured
+immediately before that second `git clone`, and cleans up the `beater-stopwatch`
+Compose project after the wrapper exits. This is maintainer runtime evidence
+that the exact public outside-run path, current GHCR images, OTLP ingest, dashboard
 render, browser proof, and browser recording work; it is not a substitute for
 the required outside-person proof below. `--full-run` is intentionally supported
 only for the canonical public GitHub/GHCR handoff, not fixture or fork URLs.

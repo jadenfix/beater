@@ -728,6 +728,15 @@ fn gate2_public_handoff_verifier_full_run_accepts_rewritten_canonical_fixture() 
         .unwrap_or_else(|err| panic!("run Gate 2 public handoff full-run fixture: {err}"));
 
     assert_success(output, "Gate 2 public handoff fixture full run passed");
+    let checks_clone_dir = clone_parent.path().join("beater-checks");
+    assert!(
+        checks_clone_dir.exists(),
+        "full-run verifier must use a separate static-check clone"
+    );
+    assert!(
+        !checks_clone_dir.join("wrapper-real-env.txt").exists(),
+        "static-check clone must not execute the timed outside wrapper"
+    );
     let clone_dir = clone_parent.path().join("beater");
     let clone_origin = git_output(&clone_dir, &["remote", "get-url", "origin"]);
     assert_eq!(clone_origin, "https://github.com/jadenfix/beater.git");
@@ -870,6 +879,9 @@ fn gate2_public_handoff_full_run_has_local_runtime_preflight_contract() {
     assert!(script.contains("free it rather than setting"));
     assert!(script.contains("cleaning the beater-stopwatch Compose project"));
     assert!(script.contains("preflight_full_run_runtime(args)"));
+    assert!(script.contains("\"beater-checks\" if args.full_run else \"beater\""));
+    assert!(script.contains("full_clone_dir, full_temp_owner, full_clone_started_epoch"));
+    assert!(script.contains("expected_commit, \"beater\""));
 }
 
 #[test]
