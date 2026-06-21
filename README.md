@@ -23,9 +23,10 @@ instrument agent -> inspect trace -> promote failure to dataset -> run evals
 
 This is the public clean-clone path Gate 2 is measured on. Prerequisites:
 Docker Desktop or another local Docker daemon, Docker Compose v2, `git`, `curl`,
-and `shasum` or `sha256sum`, with local ports `8080`, `4317`, and `3000` free.
-Remote `DOCKER_HOST` values and remote Docker contexts are rejected because the
-browser proof connects to `127.0.0.1`.
+`shasum` or `sha256sum`, and `python3` for post-run proof generation, with
+local ports `8080`, `4317`, and `3000` free. Remote `DOCKER_HOST` values and
+remote Docker contexts are rejected because the browser proof connects to
+`127.0.0.1`.
 The public Compose path uses prebuilt Beater images and digest-pinned
 third-party service images for deterministic pulls.
 
@@ -192,8 +193,9 @@ seconds. It also records time-to-quickstart-click when browser proof is
 enabled. It leaves the dashboard running by default so a human can click
 through the trace.
 Before starting Compose it checks local Docker, Docker Compose, curl, and SHA
-tooling. It removes any previous Beater stopwatch project, then checks the
-required host ports. For outside-person evidence, free the default
+tooling; `python3` is required afterward for proof generation and validation.
+It removes any previous Beater stopwatch project, then checks the required host
+ports. For outside-person evidence, free the default
 `8080`/`4317`/`3000` ports rather than using alternate ports.
 By default it uses `docker-compose.prebuilt.yml` and pulls current GHCR images
 published by `.github/workflows/container-images.yml`. The stopwatch script
@@ -308,6 +310,8 @@ scripts/generate-gate2-outside-proof.py \
   --machine-os "..." \
   --browser "..." \
   --network-notes "..." \
+  --llm-observation "clicked llm.call and saw prompt, completion, model, tokens, cost, and latency" \
+  --waterfall-observation "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting" \
   --preflight-status "passed" \
   --attest-outside-run
 ```
@@ -330,7 +334,9 @@ must be a WebM capture of at least 64 KiB with EBML/WebM, Segment, Info, Tracks,
 Cluster, and video-track structure, and artifact paths must not traverse
 symlinks. The notes must also describe the full recorded flow: quickstart trace,
 `llm.call`, prompt, completion, model, tokens, cost, latency, and run -> turn ->
-step -> tool -> MCP waterfall.
+step -> tool -> MCP waterfall. The completed proof must additionally include
+the runner's own `llm.call` detail and waterfall observations, not only the
+automated browser recording notes.
 The `gate2-proof-contract` GitHub workflow runs the validator template check
 and the executable proof-artifact fixture tests on pull requests and `main`.
 

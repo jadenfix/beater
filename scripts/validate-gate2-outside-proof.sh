@@ -42,6 +42,11 @@ DEFAULT_API_ENDPOINT = "http://127.0.0.1:8080"
 DEFAULT_DASHBOARD_BASE = "http://127.0.0.1:3000"
 DEFAULT_OTLP_ENDPOINT = "http://127.0.0.1:4317"
 EXPECTED_CLONE_URL = "https://github.com/jadenfix/beater.git"
+EXPECTED_OUTSIDE_COMMAND = (
+    "bash -lc 't=\"$(date +%s)\" && git clone "
+    "https://github.com/jadenfix/beater.git && cd beater && "
+    "BEATER_GATE2_CLONE_STARTED_EPOCH=\"$t\" scripts/gate2-outside-run.sh'"
+)
 MIN_RECORDING_BYTES = 64 * 1024
 OUTSIDE_RUN_ATTESTATION = (
     "I attest that I am not a Beater project maintainer, I received no "
@@ -329,6 +334,17 @@ def require_recording_shows_full_flow(notes_text: str) -> None:
             "screen recording notes Shows must describe the full Gate 2 flow; "
             "missing: " + ", ".join(missing)
         )
+
+
+def require_runner_observation(
+    field_name: str, value: str, required_fragments: list[str]
+) -> None:
+    normalized = value.lower()
+    missing = [
+        fragment for fragment in required_fragments if fragment.lower() not in normalized
+    ]
+    if missing:
+        fail(f"{field_name} must mention: " + ", ".join(missing))
 
 
 EBML_ID = 0x1A45DFA3
@@ -721,6 +737,8 @@ REQUIRED_PROOF_FIELDS = [
     "Screen recording notes",
     "Screen recording SHA256",
     "Terminal output excerpt",
+    "Runner llm.call observation",
+    "Runner waterfall observation",
     "`docker compose images` excerpt",
     "Quickstart trace ID",
     "Quickstart dashboard URL",
@@ -748,6 +766,7 @@ elif status != "completed.":
     fail("Status must be 'completed.' for Gate 2 closure")
 
 for snippet, description in [
+    (EXPECTED_OUTSIDE_COMMAND, "fail-fast clone-to-browser command"),
     ("scripts/gate2-outside-run.sh", "canonical outside-run command"),
     ("BEATER_GATE2_CLONE_STARTED_EPOCH", "clone-to-browser stopwatch command"),
     ("http://127.0.0.1:3000", "default dashboard URL"),
@@ -914,6 +933,16 @@ all_kind_url = field_value("All-kind dashboard URL")
 require_default_dashboard_url("Quickstart dashboard URL", quickstart_url, quickstart_trace_id)
 require_default_dashboard_url("All-kind dashboard URL", all_kind_url, all_kind_trace_id)
 require_terminal_excerpt(field_value("Terminal output excerpt"), quickstart_url, all_kind_url)
+require_runner_observation(
+    "Runner llm.call observation",
+    field_value("Runner llm.call observation"),
+    ["llm.call", "prompt", "completion", "model", "tokens", "cost", "latency"],
+)
+require_runner_observation(
+    "Runner waterfall observation",
+    field_value("Runner waterfall observation"),
+    ["run", "turn", "step", "tool", "MCP"],
+)
 
 recording = field_value("Screen recording")
 recording_path = (

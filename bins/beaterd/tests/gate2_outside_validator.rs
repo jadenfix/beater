@@ -16,6 +16,10 @@ const DASHBOARD_E2E_IMAGE_DIGEST: &str =
     "ghcr.io/jadenfix/beater/dashboard-e2e@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const OTEL_PYTHON_IMAGE_DIGEST: &str =
     "ghcr.io/jadenfix/beater/otel-python@sha256:abababababababababababababababababababababababababababababababab";
+const LLM_OBSERVATION: &str =
+    "clicked llm.call and saw prompt, completion, model, tokens, cost, and latency";
+const WATERFALL_OBSERVATION: &str =
+    "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting";
 const OUTSIDE_RUN_ATTESTATION: &str = "I attest that I am not a Beater project maintainer, I received no step-by-step help beyond public repository instructions, I used a fresh clone, and I completed the Gate 2 flow unaided.";
 
 #[test]
@@ -69,9 +73,15 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
         "reaches the first trace and quickstart browser click unaided in\n5 minutes or less"
     ));
     assert!(readme.contains("`scripts/check-gate2-public-handoff.py` without `--full-run`"));
+    assert!(readme.contains("`python3` for post-run proof generation"));
+    assert!(readme.contains("--llm-observation"));
+    assert!(readme.contains("--waterfall-observation"));
     let proof_template = fs::read_to_string(root.join("docs/demos/gate2-outside-person-proof.md"))
         .unwrap_or_else(|err| panic!("read outside proof template: {err}"));
     assert!(proof_template.contains("`scripts/check-gate2-public-handoff.py` without `--full-run`"));
+    assert!(proof_template.contains("`python3` is required after the timed run"));
+    assert!(proof_template.contains("--llm-observation"));
+    assert!(proof_template.contains("--waterfall-observation"));
 }
 
 #[test]
@@ -151,9 +161,8 @@ fn gate2_outside_generator_builds_valid_completed_proof() {
     assert!(generated_text.contains("- Beater image digest: ghcr.io/jadenfix/beater/beaterd@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
     assert!(generated_text.contains("- Dashboard e2e image digest: ghcr.io/jadenfix/beater/dashboard-e2e@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
     assert!(generated_text.contains("- OTEL Python image digest: ghcr.io/jadenfix/beater/otel-python@sha256:abababababababababababababababababababababababababababababababab"));
-    assert!(generated_text.contains(
-        r#"BEATER_GATE2_CLONE_STARTED_EPOCH="$BEATER_GATE2_CLONE_STARTED_EPOCH" scripts/gate2-outside-run.sh"#
-    ));
+    assert!(generated_text.contains(r#"bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'"#));
+    assert!(!generated_text.contains(r#"BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)""#));
     assert!(generated_text.contains("- Outside-run wrapper: yes"));
     assert!(generated_text.contains("Gate 2 compose stopwatch passed; Browser recording: passed"));
     assert!(generated_text.contains(&format!(
@@ -163,6 +172,10 @@ fn gate2_outside_generator_builds_valid_completed_proof() {
         "All-kind dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={ALL_KIND_TRACE}"
     )));
     assert!(generated_text.contains("- `docker compose images` excerpt:"));
+    assert!(generated_text.contains(&format!("- Runner llm.call observation: {LLM_OBSERVATION}")));
+    assert!(generated_text.contains(&format!(
+        "- Runner waterfall observation: {WATERFALL_OBSERVATION}"
+    )));
     assert!(generated_text.contains("ghcr.io/jadenfix/beater/beaterd"));
     assert!(generated_text.contains("ghcr.io/jadenfix/beater/dashboard"));
     assert!(generated_text.contains(
@@ -223,6 +236,23 @@ fn gate2_outside_generator_requires_network_notes() {
     assert!(
         !generated.exists(),
         "generator must not write completed proof without network notes"
+    );
+}
+
+#[test]
+fn gate2_outside_generator_requires_runner_observations() {
+    let fixture = ValidatorFixture::new();
+    let generated = fixture
+        .dir
+        .path()
+        .join("missing-observations-generated-proof.md");
+
+    let output = run_generator_without_observations(&fixture.stopwatch_path, &generated);
+
+    assert_failure(output, "--llm-observation");
+    assert!(
+        !generated.exists(),
+        "generator must not write completed proof without runner observations"
     );
 }
 
@@ -771,6 +801,22 @@ fn gate2_outside_validator_rejects_missing_stopwatch_proof() {
     let output = run_validator(&fixture.proof_path);
 
     assert_failure(output, "stopwatch proof file does not exist");
+}
+
+#[test]
+fn gate2_outside_validator_rejects_split_clone_command() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        r#"bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'"#,
+        r#"BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)"
+git clone https://github.com/jadenfix/beater.git && cd beater
+BEATER_GATE2_CLONE_STARTED_EPOCH="$BEATER_GATE2_CLONE_STARTED_EPOCH" scripts/gate2-outside-run.sh"#,
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(output, "missing fail-fast clone-to-browser command");
 }
 
 #[test]
@@ -1375,6 +1421,40 @@ fn gate2_outside_validator_rejects_weak_terminal_excerpt() {
 }
 
 #[test]
+fn gate2_outside_validator_rejects_weak_llm_observation() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        &format!("- Runner llm.call observation: {LLM_OBSERVATION}"),
+        "- Runner llm.call observation: clicked the trace and it looked good",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "Runner llm.call observation must mention: llm.call, prompt, completion, model, tokens, cost, latency",
+    );
+}
+
+#[test]
+fn gate2_outside_validator_rejects_weak_waterfall_observation() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        &format!("- Runner waterfall observation: {WATERFALL_OBSERVATION}"),
+        "- Runner waterfall observation: opened the second dashboard and it looked good",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "Runner waterfall observation must mention: run, turn, step, tool, MCP",
+    );
+}
+
+#[test]
 fn gate2_outside_validator_rejects_stale_recording_notes() {
     let fixture = ValidatorFixture::new();
     replace(
@@ -1742,10 +1822,7 @@ Status: completed.
 ## Commands
 
 ```bash
-BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)"
-git clone https://github.com/jadenfix/beater.git
-cd beater
-BEATER_GATE2_CLONE_STARTED_EPOCH="$BEATER_GATE2_CLONE_STARTED_EPOCH" scripts/gate2-outside-run.sh
+bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
 ```
 
 The runner completed the flow using only public repository instructions.
@@ -1757,6 +1834,8 @@ The runner completed the flow using only public repository instructions.
 - Screen recording notes: `{notes}`
 - Screen recording SHA256: {RECORDING_SHA}
 - Terminal output excerpt: Gate 2 compose stopwatch passed; Browser recording: passed; Quickstart dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={QUICKSTART_TRACE}; All-kind dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={ALL_KIND_TRACE}
+- Runner llm.call observation: {LLM_OBSERVATION}
+- Runner waterfall observation: {WATERFALL_OBSERVATION}
 {compose_images_excerpt}
 - Quickstart trace ID: {QUICKSTART_TRACE}
 - Quickstart dashboard URL: `http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={QUICKSTART_TRACE}`
@@ -1920,11 +1999,15 @@ fn run_generator_with_attestation(
     output_path: &Path,
     attest: bool,
 ) -> Output {
-    run_generator_with_options(stopwatch_path, output_path, attest, true)
+    run_generator_with_options(stopwatch_path, output_path, attest, true, true)
 }
 
 fn run_generator_without_network_notes(stopwatch_path: &Path, output_path: &Path) -> Output {
-    run_generator_with_options(stopwatch_path, output_path, true, false)
+    run_generator_with_options(stopwatch_path, output_path, true, false, true)
+}
+
+fn run_generator_without_observations(stopwatch_path: &Path, output_path: &Path) -> Output {
+    run_generator_with_options(stopwatch_path, output_path, true, true, false)
 }
 
 fn run_generator_with_options(
@@ -1932,6 +2015,7 @@ fn run_generator_with_options(
     output_path: &Path,
     attest: bool,
     include_network_notes: bool,
+    include_observations: bool,
 ) -> Output {
     let root = repo_root();
     let mut command = Command::new("python3");
@@ -1968,6 +2052,13 @@ fn run_generator_with_options(
     }
     if include_network_notes {
         command.arg("--network-notes").arg("public docs only");
+    }
+    if include_observations {
+        command
+            .arg("--llm-observation")
+            .arg(LLM_OBSERVATION)
+            .arg("--waterfall-observation")
+            .arg(WATERFALL_OBSERVATION);
     }
     command
         .output()

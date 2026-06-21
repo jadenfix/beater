@@ -108,6 +108,10 @@ def build_proof(args, stopwatch_path, stopwatch_text):
     failure_notes = args.failure_notes or "none"
     runner_notes = args.runner_notes or "No extra runner notes."
     network_notes = require_meaningful_arg("--network-notes", args.network_notes)
+    llm_observation = require_meaningful_arg("--llm-observation", args.llm_observation)
+    waterfall_observation = require_meaningful_arg(
+        "--waterfall-observation", args.waterfall_observation
+    )
 
     return f"""# Gate 2 Outside-Person Proof
 
@@ -164,9 +168,7 @@ unaided using public repository instructions.
 ## Commands
 
 ```bash
-BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)"
-git clone https://github.com/jadenfix/beater.git && cd beater
-BEATER_GATE2_CLONE_STARTED_EPOCH="$BEATER_GATE2_CLONE_STARTED_EPOCH" {CANONICAL_COMMAND}
+bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" {CANONICAL_COMMAND}'
 ```
 
 The runner completed the flow using only public repository instructions.
@@ -178,6 +180,8 @@ The runner completed the flow using only public repository instructions.
 - Screen recording notes: `{notes}`
 - Screen recording SHA256: {field_value(stopwatch_text, "Browser recording SHA256", stopwatch_rel)}
 - Terminal output excerpt: {terminal_excerpt}
+- Runner llm.call observation: {llm_observation}
+- Runner waterfall observation: {waterfall_observation}
 - `docker compose images` excerpt: {compose_images_excerpt(stopwatch_text, stopwatch_path)}
 - Quickstart trace ID: {field_value(stopwatch_text, "Quickstart trace", stopwatch_rel)}
 - Quickstart dashboard URL: `{quickstart_dashboard_url}`
@@ -237,6 +241,8 @@ def parse_args():
         help="Required attestation that the runner is outside the project and unaided.",
     )
     parser.add_argument("--network-notes", required=True)
+    parser.add_argument("--llm-observation", required=True)
+    parser.add_argument("--waterfall-observation", required=True)
     parser.add_argument("--terminal-output-excerpt", default="")
     parser.add_argument("--compose-logs-saved", default="")
     parser.add_argument("--failure-notes", default="")

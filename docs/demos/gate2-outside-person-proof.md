@@ -75,11 +75,13 @@ those markers.
 The script fails before Compose startup if local Docker is unavailable, if curl
 is missing, if recording SHA tooling is missing, or if API `8080`, OTLP `4317`,
 or dashboard `3000` are still in use after it removes any previous Beater
-stopwatch project. The stock OpenTelemetry Python snippet runs in the prebuilt
-`otel-python` container, and browser proof runs in the prebuilt `dashboard-e2e`
-container. Remote `DOCKER_HOST` values and remote Docker contexts are rejected
-because the browser proof connects to `127.0.0.1`. For this outside-person proof,
-free those default ports instead of using alternate port environment variables.
+stopwatch project. `python3` is required after the timed run to generate and
+validate the completed proof file. The stock OpenTelemetry Python snippet runs
+in the prebuilt `otel-python` container, and browser proof runs in the prebuilt
+`dashboard-e2e` container. Remote `DOCKER_HOST` values and remote Docker
+contexts are rejected because the browser proof connects to `127.0.0.1`. For
+this outside-person proof, free those default ports instead of using alternate
+port environment variables.
 
 After the script prints the dashboard URLs, the runner must open the
 quickstart dashboard URL in a normal browser, click the quickstart trace, click
@@ -99,6 +101,8 @@ scripts/generate-gate2-outside-proof.py \
   --machine-os "..." \
   --browser "..." \
   --network-notes "..." \
+  --llm-observation "clicked llm.call and saw prompt, completion, model, tokens, cost, and latency" \
+  --waterfall-observation "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting" \
   --preflight-status "passed" \
   --attest-outside-run
 ```
@@ -159,6 +163,8 @@ under `docs/demos/` and must not resolve through symlinks.
 - Screen recording notes: `docs/demos/gate2-compose-browser-demo.md`
 - Screen recording SHA256:
 - Terminal output excerpt:
+- Runner llm.call observation:
+- Runner waterfall observation:
 - `docker compose images` excerpt:
 - Quickstart trace ID:
 - Quickstart dashboard URL: `http://127.0.0.1:3000/...`
