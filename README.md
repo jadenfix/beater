@@ -23,8 +23,8 @@ instrument agent -> inspect trace -> promote failure to dataset -> run evals
 
 This is the public clean-clone path Gate 2 is measured on. Prerequisites:
 Docker Desktop or another local Docker daemon, Docker Compose v2, `git`, `curl`,
-`shasum` or `sha256sum`, and `python3` for post-run proof generation, with
-local ports `8080`, `4317`, and `3000` free. Remote `DOCKER_HOST` values and
+`shasum` or `sha256sum`, and `python3`; local ports `8080`, `4317`, and `3000`
+free. Remote `DOCKER_HOST` values and
 remote Docker contexts are rejected because the browser proof connects to
 `127.0.0.1`.
 The public Compose path uses prebuilt Beater images and digest-pinned
@@ -193,7 +193,8 @@ seconds. It also records time-to-quickstart-click when browser proof is
 enabled. It leaves the dashboard running by default so a human can click
 through the trace.
 Before starting Compose it checks local Docker, Docker Compose, curl, and SHA
-tooling; `python3` is required afterward for proof generation and validation.
+tooling, and it requires `python3` before the timed run so proof generation and
+validation cannot fail late on missing local tooling.
 It removes any previous Beater stopwatch project, then checks the required host
 ports. For outside-person evidence, free the default
 `8080`/`4317`/`3000` ports rather than using alternate ports.
@@ -300,16 +301,19 @@ multi-arch GHCR-image checks, but it is not a runtime handoff proof.
 
 Use [docs/demos/gate2-outside-person-proof.md](docs/demos/gate2-outside-person-proof.md)
 as the required evidence template for that run. After the outside runner has
-completed the stopwatch command, generate the proof from the stopwatch artifact:
+completed the stopwatch command, generate the proof from the stopwatch artifact.
+Before running the command, replace every identity and environment example below
+with the runner's actual values. Do not leave placeholder values such as `...`;
+the generator and validator reject unresolved evidence.
 
 ```bash
 scripts/generate-gate2-outside-proof.py \
-  --runner-name "..." \
-  --relationship "..." \
+  --runner-name "Jane Outside Runner" \
+  --relationship "external evaluator; no Beater maintainer role" \
   --prior-exposure "none" \
-  --machine-os "..." \
-  --browser "..." \
-  --network-notes "..." \
+  --machine-os "Ubuntu 24.04 x86_64" \
+  --browser "Chrome stable" \
+  --network-notes "home Wi-Fi; no VPN" \
   --llm-observation "clicked llm.call and saw prompt, completion, model, tokens, cost, and latency" \
   --waterfall-observation "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting" \
   --preflight-status "passed" \

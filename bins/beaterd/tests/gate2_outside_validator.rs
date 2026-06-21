@@ -73,15 +73,35 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
         "reaches the first trace and quickstart browser click unaided in\n5 minutes or less"
     ));
     assert!(readme.contains("`scripts/check-gate2-public-handoff.py` without `--full-run`"));
-    assert!(readme.contains("`python3` for post-run proof generation"));
+    assert!(readme.contains("and `python3`; local ports"));
+    assert!(readme.contains("requires `python3` before the timed run"));
+    assert!(!readme.contains("`python3` for post-run proof generation"));
+    assert!(!readme.contains("`python3` is required afterward"));
     assert!(readme.contains("--llm-observation"));
     assert!(readme.contains("--waterfall-observation"));
+    assert!(readme.contains("Do not leave placeholder values such as `...`"));
+    assert!(readme.contains(r#"--runner-name "Jane Outside Runner""#));
+    assert!(!readme.contains(r#"--runner-name "...""#));
+    assert!(!readme.contains(r#"--relationship "...""#));
+    assert!(!readme.contains(r#"--machine-os "...""#));
+    assert!(!readme.contains(r#"--browser "...""#));
+    assert!(!readme.contains(r#"--network-notes "...""#));
     let proof_template = fs::read_to_string(root.join("docs/demos/gate2-outside-person-proof.md"))
         .unwrap_or_else(|err| panic!("read outside proof template: {err}"));
     assert!(proof_template.contains("`scripts/check-gate2-public-handoff.py` without `--full-run`"));
-    assert!(proof_template.contains("`python3` is required after the timed run"));
+    assert!(proof_template.contains("requires `python3` before the timed run"));
+    assert!(!proof_template.contains("none / describe"));
+    assert!(!proof_template.contains("`python3` is required after the timed run"));
+    assert!(!proof_template.contains("http://127.0.0.1:3000/..."));
     assert!(proof_template.contains("--llm-observation"));
     assert!(proof_template.contains("--waterfall-observation"));
+    assert!(proof_template.contains("placeholder values such as `...`"));
+    assert!(proof_template.contains(r#"--runner-name "Jane Outside Runner""#));
+    assert!(!proof_template.contains(r#"--runner-name "...""#));
+    assert!(!proof_template.contains(r#"--relationship "...""#));
+    assert!(!proof_template.contains(r#"--machine-os "...""#));
+    assert!(!proof_template.contains(r#"--browser "...""#));
+    assert!(!proof_template.contains(r#"--network-notes "...""#));
 }
 
 #[test]

@@ -9,7 +9,7 @@ outside the project who runs the flow unaided from a fresh clone.
 
 - Name:
 - Organization or relationship to project:
-- Prior Beater repo exposure: none / describe:
+- Prior Beater repo exposure:
 - Date:
 - Machine and OS:
 - Docker version:
@@ -35,7 +35,7 @@ outside the project who runs the flow unaided from a fresh clone.
 - Dashboard e2e image digest:
 - OTEL Python image digest:
 - API endpoint:
-- Dashboard base:
+- Dashboard base: `http://127.0.0.1:3000`
 - Timing start source:
 - Clone started at:
 - Script started at:
@@ -75,11 +75,12 @@ those markers.
 The script fails before Compose startup if local Docker is unavailable, if curl
 is missing, if recording SHA tooling is missing, or if API `8080`, OTLP `4317`,
 or dashboard `3000` are still in use after it removes any previous Beater
-stopwatch project. `python3` is required after the timed run to generate and
-validate the completed proof file. The stock OpenTelemetry Python snippet runs
-in the prebuilt `otel-python` container, and browser proof runs in the prebuilt
-`dashboard-e2e` container. Remote `DOCKER_HOST` values and remote Docker
-contexts are rejected because the browser proof connects to `127.0.0.1`. For
+stopwatch project. It also requires `python3` before the timed run so proof
+generation and validation cannot fail late on missing local tooling. The stock
+OpenTelemetry Python snippet runs in the prebuilt `otel-python` container, and
+browser proof runs in the prebuilt `dashboard-e2e` container. Remote
+`DOCKER_HOST` values and remote Docker contexts are rejected because the browser
+proof connects to `127.0.0.1`. For
 this outside-person proof, free those default ports instead of using alternate
 port environment variables.
 
@@ -91,16 +92,19 @@ run -> turn -> step -> tool -> MCP waterfall. Cleanup can happen after the
 recording.
 
 After the stopwatch command finishes, prefer generating completed evidence from
-the stopwatch proof instead of manually copying fields:
+the stopwatch proof instead of manually copying fields. Replace every identity
+and environment example below with the runner's actual values. Do not leave
+placeholder values such as `...`; the generator and validator reject unresolved
+evidence.
 
 ```bash
 scripts/generate-gate2-outside-proof.py \
-  --runner-name "..." \
-  --relationship "..." \
+  --runner-name "Jane Outside Runner" \
+  --relationship "external evaluator; no Beater maintainer role" \
   --prior-exposure "none" \
-  --machine-os "..." \
-  --browser "..." \
-  --network-notes "..." \
+  --machine-os "Ubuntu 24.04 x86_64" \
+  --browser "Chrome stable" \
+  --network-notes "home Wi-Fi; no VPN" \
   --llm-observation "clicked llm.call and saw prompt, completion, model, tokens, cost, and latency" \
   --waterfall-observation "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting" \
   --preflight-status "passed" \
@@ -167,9 +171,9 @@ under `docs/demos/` and must not resolve through symlinks.
 - Runner waterfall observation:
 - `docker compose images` excerpt:
 - Quickstart trace ID:
-- Quickstart dashboard URL: `http://127.0.0.1:3000/...`
+- Quickstart dashboard URL:
 - All-kind nested trace ID:
-- All-kind dashboard URL: `http://127.0.0.1:3000/...`
+- All-kind dashboard URL:
 - `docker compose` logs saved:
 - Failure notes, if any:
 
