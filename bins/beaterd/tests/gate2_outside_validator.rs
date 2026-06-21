@@ -3131,6 +3131,7 @@ fn run_public_handoff_with_fixture_command(
     registry_path: &Path,
 ) -> Command {
     let root = repo_root();
+    let path_env = path_with_ffprobe_fixture(registry_path);
     let mut command = Command::new("python3");
     command
         .arg(root.join("scripts/check-gate2-public-handoff.py"))
@@ -3141,7 +3142,8 @@ fn run_public_handoff_with_fixture_command(
         .arg(expected_commit)
         .arg("--registry-fixture")
         .arg(registry_path)
-        .current_dir(root);
+        .current_dir(root)
+        .env("PATH", path_env);
     command
 }
 
@@ -3259,6 +3261,17 @@ fn path_with_public_handoff_runtime(runtime: &FakePublicHandoffRuntime) -> Strin
     path_with_dir(Path::new(&runtime.path_env))
 }
 
+fn path_with_ffprobe_fixture(parent: &Path) -> String {
+    let bin = parent.join("bin");
+    fs::create_dir_all(&bin)
+        .unwrap_or_else(|err| panic!("create ffprobe fixture dir {}: {err}", bin.display()));
+    write_executable(
+        &bin.join("ffprobe"),
+        "#!/bin/sh\nprintf 'codec_type=video\\n'\nprintf 'duration=1.25\\n'\n",
+    );
+    path_with_dir(&bin)
+}
+
 fn fake_ffprobe_dir(script: &str) -> TempDir {
     let dir = tempdir("create fake ffprobe PATH");
     write_executable(&dir.path().join("ffprobe"), script);
@@ -3340,12 +3353,16 @@ fn run_outside_wrapper_dry_run(extra_env: Option<(&str, &str)>) -> Output {
 }
 
 fn run_outside_wrapper_dry_run_in_repo(repo: &Path, extra_env: Option<(&str, &str)>) -> Output {
+    let ffprobe =
+        fake_ffprobe_dir("#!/bin/sh\nprintf 'codec_type=video\\n'\nprintf 'duration=1.25\\n'\n");
     let mut command = Command::new("bash");
     command
         .arg(repo.join("scripts/gate2-outside-run.sh"))
         .current_dir(repo);
     clear_outside_env(&mut command);
-    command.env("BEATER_GATE2_OUTSIDE_RUN_DRY_RUN", "1");
+    command
+        .env("PATH", path_with_tempdir(&ffprobe))
+        .env("BEATER_GATE2_OUTSIDE_RUN_DRY_RUN", "1");
     if let Some((name, value)) = extra_env {
         command.env(name, value);
     }
