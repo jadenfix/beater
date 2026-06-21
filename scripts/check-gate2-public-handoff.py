@@ -28,6 +28,14 @@ STOPWATCH_COMPOSE_DOWN = [
     "-v",
     "--remove-orphans",
 ]
+GATE2_SHELL_SCRIPTS = [
+    "scripts/check-openapi-drift.sh",
+    "scripts/gate2-compose-stopwatch.sh",
+    "scripts/gate2-outside-run.sh",
+    "scripts/gate2-proof.sh",
+    "scripts/smoke-compose.sh",
+    "scripts/validate-gate2-outside-proof.sh",
+]
 
 
 def repo_root() -> Path:
@@ -320,11 +328,7 @@ def run_cloned_checks(args: argparse.Namespace, clone_dir: Path) -> None:
         ],
         cwd=clone_dir,
     )
-    for script in [
-        "scripts/gate2-outside-run.sh",
-        "scripts/gate2-compose-stopwatch.sh",
-        "scripts/validate-gate2-outside-proof.sh",
-    ]:
+    for script in GATE2_SHELL_SCRIPTS:
         run(["bash", "-n", script], cwd=clone_dir)
 
     readiness = ["scripts/check-gate2-outside-readiness.py"]

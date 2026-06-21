@@ -240,6 +240,26 @@ fn gate2_public_handoff_verifier_rejects_invalid_stopwatch_shell() {
 }
 
 #[test]
+fn gate2_public_handoff_verifier_rejects_invalid_smoke_shell() {
+    let registry = tempdir("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture_repo = write_public_handoff_fixture_repo();
+    fs::write(
+        fixture_repo.path().join("scripts/smoke-compose.sh"),
+        "#!/usr/bin/env bash\nif true; then\n",
+    )
+    .unwrap_or_else(|err| panic!("write invalid smoke fixture: {err}"));
+    git_success(fixture_repo.path(), &["add", "scripts/smoke-compose.sh"]);
+    git_success(fixture_repo.path(), &["commit", "-m", "break smoke syntax"]);
+    let fixture_head = git_output(fixture_repo.path(), &["rev-parse", "HEAD"]);
+    let source_url = format!("file://{}", fixture_repo.path().display());
+
+    let output = run_public_handoff_with_fixture(&source_url, &fixture_head, registry.path());
+
+    assert_failure(output, "scripts/smoke-compose.sh");
+}
+
+#[test]
 fn gate2_public_handoff_verifier_full_run_rejects_noncanonical_fixture_source() {
     let registry = tempdir("create registry fixture dir");
     let clone_parent = tempdir("create public handoff clone parent");
@@ -1784,8 +1804,11 @@ fn write_public_handoff_fixture_repo() -> TempDir {
     for rel in [
         "scripts/check-gate2-outside-readiness.py",
         "scripts/check-gate2-public-handoff.py",
+        "scripts/check-openapi-drift.sh",
+        "scripts/gate2-proof.sh",
         "scripts/gate2-outside-run.sh",
         "scripts/gate2-compose-stopwatch.sh",
+        "scripts/smoke-compose.sh",
         "scripts/generate-gate2-outside-proof.py",
         "scripts/validate-gate2-outside-proof.sh",
         "docker-compose.yml",

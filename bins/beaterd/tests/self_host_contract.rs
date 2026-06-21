@@ -481,6 +481,21 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(!public_handoff.contains("\"--depth\""));
     assert!(!public_handoff.contains("\"--branch\""));
     assert!(public_handoff.contains("compile(path.read_text(), str(path), 'exec')"));
+    assert!(public_handoff.contains("GATE2_SHELL_SCRIPTS"));
+    assert!(public_handoff.contains("bash\", \"-n\", script"));
+    for script in [
+        "scripts/check-openapi-drift.sh",
+        "scripts/gate2-compose-stopwatch.sh",
+        "scripts/gate2-outside-run.sh",
+        "scripts/gate2-proof.sh",
+        "scripts/smoke-compose.sh",
+        "scripts/validate-gate2-outside-proof.sh",
+    ] {
+        assert!(
+            public_handoff.contains(script),
+            "public handoff verifier must syntax-check {script}"
+        );
+    }
     assert!(public_handoff.contains("main"));
     assert!(public_handoff.contains("public handoff clone is not the expected commit"));
     assert!(public_handoff.contains("scripts/check-gate2-outside-readiness.py"));
