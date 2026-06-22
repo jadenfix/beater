@@ -43,14 +43,14 @@ start from a new or empty parent directory. The command runs
 stopwatch starts, so missing local tooling, remote Docker contexts, and occupied
 default ports fail before the timed attempt. The cloned wrapper repeats those
 checks before Compose startup. As soon as the first
-`Open the dashboard:` quickstart URL appears, open it in a normal browser; do
-not wait for the script to finish. Click the quickstart trace, then click the
-`llm.call` span. You should see the prompt, completion, model, token breakdown,
-cost, and latency. Press Enter in the terminal only after that manual
-click-through is complete; the stopwatch records that as the quickstart-click
-SLO. Then keep the script running for the post-SLO automated browser proof,
-all-kind and recording evidence, open the printed all-kind dashboard URL, and
-verify the run -> turn -> step -> tool -> MCP waterfall. Gate 2 is not closed
+`Open the dashboard:` quickstart URL appears, open that filtered trace-list URL
+in a normal browser; do not wait for the script to finish. Click the quickstart
+trace, then click the `llm.call` span. You should see the prompt, completion,
+model, token breakdown, cost, and latency. Press Enter in the terminal only
+after that manual click-through is complete; the stopwatch records that as the
+quickstart-click SLO. Then keep the script running for the post-SLO automated
+browser proof, all-kind and recording evidence, open the printed all-kind
+dashboard URL, and verify the run -> turn -> step -> tool -> MCP waterfall. Gate 2 is not closed
 until someone outside the project reaches the first trace and confirms the
 quickstart browser click unaided in 5 minutes or less, completes the post-SLO
 all-kind/recording evidence, and fills
@@ -186,13 +186,13 @@ start from a new or empty parent directory. The one-liner runs the public
 `scripts/gate2-outside-local-preflight.sh` before `t="$(date +%s)"`, so missing
 tools, remote Docker contexts, and occupied default ports fail before the timed
 attempt starts.
-As soon as the first `Open the dashboard:` quickstart URL appears, open it in a
-normal browser and click the quickstart trace, then click the `llm.call` span.
-Press Enter in the terminal only after prompt, completion, model, token
-breakdown, cost, and latency are visible. Do not wait for the script to finish;
-it continues with automated browser proof, the all-kind waterfall trace, and the
-recording after the timed manual quickstart click. Keep the command running
-until those post-SLO evidence steps finish.
+As soon as the first `Open the dashboard:` quickstart URL appears, open that
+filtered trace-list URL in a normal browser and click the quickstart trace, then
+click the `llm.call` span. Press Enter in the terminal only after prompt,
+completion, model, token breakdown, cost, and latency are visible. Do not wait
+for the script to finish; it continues with automated browser proof, the
+all-kind waterfall trace, and the recording after the timed manual quickstart
+click. Keep the command running until those post-SLO evidence steps finish.
 
 The outside-run wrapper rejects non-`main` checkouts, non-canonical GitHub
 origins, dirty worktrees, warm-loop reuse, local source builds, alternate ports,

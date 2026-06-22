@@ -1245,6 +1245,9 @@ fn gate2_stopwatch_outside_next_steps_separate_dashboard_targets() {
 
     assert!(script.contains("Open the quickstart URL above in a normal browser now"));
     assert!(script.contains("do not wait for the script to finish"));
+    assert!(script.contains("quickstart_list_url="));
+    assert!(script.contains("kind=llm.call&model=gpt-quickstart&release=$gate2_run_id"));
+    assert!(script.contains("Direct quickstart trace URL:"));
     assert!(script.contains("Gate 2 recording proof requires ffprobe before the stopwatch starts."));
     assert!(script.contains("If another app is listed below, stop that app before rerunning"));
     assert!(script.contains("do not set\n$env_name for outside-person evidence"));
@@ -1252,7 +1255,7 @@ fn gate2_stopwatch_outside_next_steps_separate_dashboard_targets() {
         "Confirm prompt, completion, model, token breakdown, cost, and latency are visible."
     ));
     assert!(script.contains(
-        "If you have not already done so, open $dashboard_url in a normal browser for the quickstart trace."
+        "If you have not already done so, open $quickstart_list_url in a normal browser for the quickstart trace list."
     ));
     assert!(script.contains(
         "Open ${all_kind_dashboard_url:-not requested} in a normal browser for the all-kind waterfall."

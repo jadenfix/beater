@@ -279,6 +279,11 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("gate2_run_id"));
     assert!(stopwatch_script.contains("BEATER_GATE2_RUN_ID"));
     assert!(stopwatch_script.contains("release=$gate2_run_id"));
+    assert!(stopwatch_script.contains("quickstart_list_url="));
+    assert!(stopwatch_script.contains("kind=llm.call&model=gpt-quickstart&release=$gate2_run_id"));
+    assert!(stopwatch_script.contains("Direct quickstart trace URL:"));
+    assert!(stopwatch_script
+        .contains("open $quickstart_list_url in a normal browser for the quickstart trace list"));
     assert!(stopwatch_script.contains("Quickstart release ID"));
     assert!(stopwatch_script.contains("git rev-parse HEAD"));
     assert!(stopwatch_script.contains("git branch --show-current"));

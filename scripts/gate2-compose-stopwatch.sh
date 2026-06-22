@@ -462,10 +462,11 @@ if [[ -z "$trace_id" ]]; then
   exit 1
 fi
 dashboard_url="$dashboard_base_url/?tenant=demo&project=demo&environment=local&trace=$trace_id"
+quickstart_list_url="$dashboard_base_url/?tenant=demo&project=demo&environment=local&kind=llm.call&model=gpt-quickstart&release=$gate2_run_id"
 
-wait_text "$dashboard_url" "Agent Trace Debugger" "dashboard"
-wait_text "$dashboard_url" "five-line-llm-call" "dashboard quickstart trace"
-wait_text "$dashboard_url" "gpt-quickstart" "dashboard model detail"
+wait_text "$quickstart_list_url" "Agent Trace Debugger" "dashboard"
+wait_text "$quickstart_list_url" "five-line-llm-call" "dashboard quickstart trace"
+wait_text "$quickstart_list_url" "gpt-quickstart" "dashboard model detail"
 wait_text "$dashboard_url" "hello from stock OpenTelemetry" "dashboard prompt detail"
 script_to_first_trace_seconds=$(($(date +%s) - start_epoch))
 time_to_first_trace_seconds=$(($(date +%s) - timing_start_epoch))
@@ -477,6 +478,9 @@ cat <<EOF
 Gate 2 first trace visible in ${time_to_first_trace_seconds}s.
 
 Open the dashboard:
+  $quickstart_list_url
+
+Direct quickstart trace URL:
   $dashboard_url
 EOF
 
@@ -667,7 +671,7 @@ if [[ "$outside_wrapper" == "1" ]]; then
   outside_runner_next_steps="$(cat <<EOF
 
 Outside-run next steps:
-  1. If you have not already done so, open $dashboard_url in a normal browser for the quickstart trace.
+  1. If you have not already done so, open $quickstart_list_url in a normal browser for the quickstart trace list.
   2. Click the quickstart trace, then click the llm.call span.
   3. Confirm prompt, completion, model, token breakdown, cost, and latency are visible.
   4. Open ${all_kind_dashboard_url:-not requested} in a normal browser for the all-kind waterfall.
@@ -713,6 +717,9 @@ Time to quickstart browser click:
   $time_to_quickstart_click_display
 
 Open the dashboard:
+  $quickstart_list_url
+
+Direct quickstart trace URL:
   $dashboard_url
 
 All-kind waterfall dashboard:

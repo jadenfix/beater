@@ -94,10 +94,10 @@ port environment variables. If preflight reports another process on a default
 port, stop that app and rerun.
 
 As soon as the first `Open the dashboard:` quickstart URL appears, the runner
-must open it in a normal browser; do not wait for the script to finish. Click
-the quickstart trace, click the `llm.call` span, and capture prompt, completion,
-model, token breakdown, cost, and latency. Press Enter in the terminal only
-after that manual click-through is complete; this records
+must open that filtered trace-list URL in a normal browser; do not wait for the script to finish.
+Click the quickstart trace, click the `llm.call` span, and capture prompt,
+completion, model, token breakdown, cost, and latency. Press Enter in the
+terminal only after that manual click-through is complete; this records
 `Quickstart click source: manual-outside-runner`,
 `Manual quickstart confirmation: yes`, and the 5-minute quickstart-click SLO.
 Then keep the script running for the post-SLO automated browser proof, all-kind
