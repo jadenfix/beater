@@ -159,6 +159,7 @@ fn self_host_files_define_gate_two_compose_surface() {
     for script in [
         "scripts/check-openapi-drift.sh",
         "scripts/gate2-compose-stopwatch.sh",
+        "scripts/gate2-outside-local-preflight.sh",
         "scripts/gate2-outside-run.sh",
         "scripts/gate2-proof.sh",
         "scripts/smoke-compose.sh",
@@ -401,6 +402,28 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_run.contains("scripts/gate2-compose-stopwatch.sh"));
     assert!(outside_run.contains("Gate 2 outside-run wrapper preflight passed"));
 
+    let outside_local_preflight = read(root.join("scripts/gate2-outside-local-preflight.sh"));
+    assert!(outside_local_preflight.contains("require_command git"));
+    assert!(outside_local_preflight.contains("require_command docker"));
+    assert!(outside_local_preflight.contains("require_command curl"));
+    assert!(outside_local_preflight.contains("require_command ffprobe"));
+    assert!(outside_local_preflight.contains("require_python3"));
+    assert!(outside_local_preflight.contains("version 3.9 or newer"));
+    assert!(outside_local_preflight.contains("shasum"));
+    assert!(outside_local_preflight.contains("sha256sum"));
+    assert!(outside_local_preflight.contains("DOCKER_HOST"));
+    assert!(outside_local_preflight.contains("docker_endpoint_is_local"));
+    assert!(outside_local_preflight.contains("docker context inspect"));
+    assert!(outside_local_preflight.contains("Docker Compose v2"));
+    assert!(outside_local_preflight.contains("browser proof uses 127.0.0.1"));
+    assert!(outside_local_preflight.contains("free TCP $port before starting the stopwatch"));
+    for port in ["8080", "4317", "3000"] {
+        assert!(
+            outside_local_preflight.contains(port),
+            "outside local preflight must check TCP {port}"
+        );
+    }
+
     let outside_validator = read(root.join("scripts/validate-gate2-outside-proof.sh"));
     assert!(outside_validator.contains("--allow-pending"));
     assert!(outside_validator.contains("--diagnostic"));
@@ -565,6 +588,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     for script in [
         "scripts/check-openapi-drift.sh",
         "scripts/gate2-compose-stopwatch.sh",
+        "scripts/gate2-outside-local-preflight.sh",
         "scripts/gate2-outside-run.sh",
         "scripts/gate2-proof.sh",
         "scripts/smoke-compose.sh",
@@ -650,6 +674,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
 
     let outside_proof = read(root.join("docs/demos/gate2-outside-person-proof.md"));
     assert!(outside_proof.contains("Status: not yet completed"));
+    assert!(outside_proof.contains("gate2-outside-local-preflight.sh"));
+    assert!(outside_proof.contains("before the stopwatch starts"));
     assert!(outside_proof.contains("scripts/gate2-outside-run.sh"));
     assert!(outside_proof.contains("sets the required proof/browser/recording flags"));
     assert!(outside_proof.contains("Outside-run wrapper:"));
@@ -756,6 +782,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
 
     let readme = read(root.join("README.md"));
     assert!(readme.contains("docs/demos/gate2-outside-person-proof.md"));
+    assert!(readme.contains("gate2-outside-local-preflight.sh"));
+    assert!(readme.contains("before `t=\"$(date +%s)\"`"));
     assert!(readme.contains("scripts/gate2-outside-run.sh"));
     assert!(readme.contains("scripts/check-gate2-public-handoff.py"));
     assert!(readme.contains("uses one\nfresh clone"));

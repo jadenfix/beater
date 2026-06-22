@@ -34,6 +34,8 @@ import {
   formatReleases,
   loadDashboardData,
   spanDepth,
+  spanTokenSummary,
+  spanTokenTotal,
   statusLabel,
   timestampMicros
 } from "../lib/api";
@@ -583,7 +585,7 @@ function SpanDetail({
         </div>
         <div>
           <dt>Tokens</dt>
-          <dd>{tokenSummary(span)}</dd>
+          <dd>{spanTokenSummary(span)}</dd>
         </div>
         <div>
           <dt>Cost</dt>
@@ -897,11 +899,6 @@ function stringAttribute(attributes: unknown, keys: string[]): string | null {
   return null;
 }
 
-function spanTokenTotal(span: CanonicalSpan): number {
-  if (!span.tokens) return 0;
-  return span.tokens.input + span.tokens.output + span.tokens.cache_read + span.tokens.reasoning;
-}
-
 function spanAncestry(span: CanonicalSpan, spans: CanonicalSpan[]): CanonicalSpan[] {
   const byId = new Map(spans.map((candidate) => [candidate.span_id, candidate]));
   const ancestry = [span];
@@ -915,25 +912,6 @@ function spanAncestry(span: CanonicalSpan, spans: CanonicalSpan[]): CanonicalSpa
     parentId = parent.parent_span_id;
   }
   return ancestry;
-}
-
-function tokenSummary(span: CanonicalSpan): string {
-  if (!span.tokens) return "none";
-  const total = span.tokens.input + span.tokens.output + span.tokens.reasoning;
-  const inputLabel = span.kind === "llm.call" ? "prompt" : "input";
-  const outputLabel = span.kind === "llm.call" ? "completion" : "output";
-  const parts = [
-    `${total.toLocaleString("en-US")} total`,
-    `${span.tokens.input.toLocaleString("en-US")} ${inputLabel}`,
-    `${span.tokens.output.toLocaleString("en-US")} ${outputLabel}`
-  ];
-  if (span.tokens.reasoning > 0) {
-    parts.push(`${span.tokens.reasoning.toLocaleString("en-US")} reasoning`);
-  }
-  if (span.tokens.cache_read > 0) {
-    parts.push(`${span.tokens.cache_read.toLocaleString("en-US")} cached`);
-  }
-  return parts.join(", ");
 }
 
 function spanArtifactRefs(span: CanonicalSpan) {

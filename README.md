@@ -33,11 +33,15 @@ third-party service images for deterministic pulls.
 Run this from Bash, zsh, Git Bash, or WSL2 before cloning:
 
 ```bash
-bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
+bash -lc 'curl -fsSL https://raw.githubusercontent.com/jadenfix/beater/main/scripts/gate2-outside-local-preflight.sh | bash && t="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
 ```
 
 Run it from a directory that does not already contain `beater/`; reruns should
-start from a new or empty parent directory. As soon as the first
+start from a new or empty parent directory. The command runs
+`scripts/gate2-outside-local-preflight.sh` from the public repo before the
+stopwatch starts, so missing local tooling, remote Docker contexts, and occupied
+default ports fail before the timed attempt. The cloned wrapper repeats those
+checks before Compose startup. As soon as the first
 `Open the dashboard:` quickstart URL appears, open it in a normal browser; do
 not wait for the script to finish. Click the quickstart trace, then click the
 `llm.call` span. You should see the prompt, completion, model, token breakdown,
@@ -173,11 +177,14 @@ Exact Docker Compose stopwatch proof for the mandate's clean-machine path:
 Run this from Bash, zsh, Git Bash, or WSL2 before cloning:
 
 ```bash
-bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
+bash -lc 'curl -fsSL https://raw.githubusercontent.com/jadenfix/beater/main/scripts/gate2-outside-local-preflight.sh | bash && t="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
 ```
 
 Run it from a directory that does not already contain `beater/`; reruns should
-start from a new or empty parent directory.
+start from a new or empty parent directory. The one-liner runs the public
+`scripts/gate2-outside-local-preflight.sh` before `t="$(date +%s)"`, so missing
+tools, remote Docker contexts, and occupied default ports fail before the timed
+attempt starts.
 As soon as the first `Open the dashboard:` quickstart URL appears, open it in a
 normal browser and click the quickstart trace, then click the `llm.call` span.
 Press Enter in the terminal only after prompt, completion, model, token

@@ -32,6 +32,7 @@ STOPWATCH_COMPOSE_DOWN = [
 GATE2_SHELL_SCRIPTS = [
     "scripts/check-openapi-drift.sh",
     "scripts/gate2-compose-stopwatch.sh",
+    "scripts/gate2-outside-local-preflight.sh",
     "scripts/gate2-outside-run.sh",
     "scripts/gate2-proof.sh",
     "scripts/smoke-compose.sh",

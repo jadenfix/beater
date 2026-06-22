@@ -23,6 +23,7 @@ const WATERFALL_OBSERVATION: &str =
     "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting";
 const OUTSIDE_RUN_ATTESTATION: &str = "I attest that I am not a Beater project maintainer, I received no step-by-step help beyond public repository instructions, I used a fresh clone, and I completed the Gate 2 flow unaided.";
 const DIAGNOSTIC_ATTESTATION: &str = "Diagnostic maintainer full-run auto-confirmed the manual checkpoint; this is not outside-person evidence and cannot close Gate 2.";
+const CANONICAL_OUTSIDE_COMMAND: &str = r#"bash -lc 'curl -fsSL https://raw.githubusercontent.com/jadenfix/beater/main/scripts/gate2-outside-local-preflight.sh | bash && t="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'"#;
 const DRAFT_VALID: &str = "Gate 2 outside-person proof draft is internally consistent";
 const CLOSURE_VALID: &str = "Gate 2 outside-person proof is complete and valid";
 
@@ -73,6 +74,7 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     let readme = fs::read_to_string(root.join("README.md"))
         .unwrap_or_else(|err| panic!("read README.md: {err}"));
     assert!(readme.contains(r#"git clone https://github.com/jadenfix/beater.git && cd beater &&"#));
+    assert!(readme.contains("gate2-outside-local-preflight.sh | bash && t=\"$(date +%s)\""));
     assert!(readme.contains("confirms the\nquickstart browser click unaided in 5"));
     assert!(readme.contains("`scripts/check-gate2-public-handoff.py` without `--full-run`"));
     assert!(readme.contains("and `python3` 3.9+; local ports"));
@@ -98,6 +100,8 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
         .unwrap_or_else(|err| panic!("read outside proof template: {err}"));
     assert!(proof_template.contains("`scripts/check-gate2-public-handoff.py` without `--full-run`"));
     assert!(proof_template.contains("Python 3.9 or newer is required"));
+    assert!(proof_template.contains("before the stopwatch starts"));
+    assert!(proof_template.contains("gate2-outside-local-preflight.sh | bash && t=\"$(date +%s)\""));
     assert!(proof_template.contains("curl\nor `ffprobe` is missing"));
     assert!(proof_template.contains("Docker Compose v2, `curl`, `ffprobe`, local Docker daemon"));
     assert!(proof_template.contains("`ffprobe` playable-video metadata"));
@@ -270,7 +274,7 @@ fn gate2_outside_generator_builds_valid_completed_proof() {
     assert!(generated_text.contains("- Beater image digest: ghcr.io/jadenfix/beater/beaterd@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
     assert!(generated_text.contains("- Dashboard e2e image digest: ghcr.io/jadenfix/beater/dashboard-e2e@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"));
     assert!(generated_text.contains("- OTEL Python image digest: ghcr.io/jadenfix/beater/otel-python@sha256:abababababababababababababababababababababababababababababababab"));
-    assert!(generated_text.contains(r#"bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'"#));
+    assert!(generated_text.contains(CANONICAL_OUTSIDE_COMMAND));
     assert!(!generated_text.contains(r#"BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)""#));
     assert!(generated_text.contains("- Outside-run wrapper: yes"));
     assert!(generated_text.contains("Gate 2 compose stopwatch passed; Browser recording: passed"));
@@ -1721,7 +1725,7 @@ fn gate2_outside_validator_rejects_split_clone_command() {
     let fixture = ValidatorFixture::new();
     replace(
         &fixture.proof_path,
-        r#"bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'"#,
+        CANONICAL_OUTSIDE_COMMAND,
         r#"BEATER_GATE2_CLONE_STARTED_EPOCH="$(date +%s)"
 git clone https://github.com/jadenfix/beater.git && cd beater
 BEATER_GATE2_CLONE_STARTED_EPOCH="$BEATER_GATE2_CLONE_STARTED_EPOCH" scripts/gate2-outside-run.sh"#,
@@ -3148,7 +3152,7 @@ Status: completed.
 ## Commands
 
 ```bash
-bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
+{CANONICAL_OUTSIDE_COMMAND}
 ```
 
 The runner completed the flow using only public repository instructions.
@@ -4161,6 +4165,7 @@ fn write_public_handoff_fixture_repo() -> TempDir {
         "scripts/check-gate2-public-handoff.py",
         "scripts/check-openapi-drift.sh",
         "scripts/gate2-proof.sh",
+        "scripts/gate2-outside-local-preflight.sh",
         "scripts/gate2-outside-run.sh",
         "scripts/gate2-compose-stopwatch.sh",
         "scripts/smoke-compose.sh",

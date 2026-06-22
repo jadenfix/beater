@@ -319,6 +319,30 @@ export function formatLatency(durationMs: number | null | undefined): string {
   return `${(durationMs / 1000).toFixed(2)} s`;
 }
 
+export function spanTokenTotal(span: Pick<CanonicalSpan, "tokens">): number {
+  if (!span.tokens) return 0;
+  return span.tokens.input + span.tokens.output + span.tokens.cache_read + span.tokens.reasoning;
+}
+
+export function spanTokenSummary(span: Pick<CanonicalSpan, "kind" | "tokens">): string {
+  if (!span.tokens) return "none";
+  const total = spanTokenTotal(span);
+  const inputLabel = span.kind === "llm.call" ? "prompt" : "input";
+  const outputLabel = span.kind === "llm.call" ? "completion" : "output";
+  const parts = [
+    `${total.toLocaleString("en-US")} total`,
+    `${span.tokens.input.toLocaleString("en-US")} ${inputLabel}`,
+    `${span.tokens.output.toLocaleString("en-US")} ${outputLabel}`
+  ];
+  if (span.tokens.reasoning > 0) {
+    parts.push(`${span.tokens.reasoning.toLocaleString("en-US")} reasoning`);
+  }
+  if (span.tokens.cache_read > 0) {
+    parts.push(`${span.tokens.cache_read.toLocaleString("en-US")} cached`);
+  }
+  return parts.join(", ");
+}
+
 function formatMilliseconds(ms: number): string {
   if (ms > 0 && ms < 1) return `${ms.toFixed(3)} ms`;
   if (ms > 0 && ms < 10 && !Number.isInteger(ms)) return `${ms.toFixed(1)} ms`;

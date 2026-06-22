@@ -49,11 +49,9 @@ test("dashboard page exposes the trace inspection surface", () => {
   assert.match(page, /className="sr-only"/);
   assert.match(page, /aria-hidden="true"\n                      data-icon=\{icon\.key\}/);
   assert.doesNotMatch(page, /aria-label=\{`\$\{span\.kind\} icon`\}/);
-  assert.match(page, /span\.tokens\.cache_read/);
   assert.match(page, /input \+ output \+ cached \+ reasoning/);
-  assert.match(page, /span\.kind === "llm\.call" \? "prompt" : "input"/);
-  assert.match(page, /span\.kind === "llm\.call" \? "completion" : "output"/);
-  assert.match(page, /parts\.join\(", "\)/);
+  assert.match(page, /spanTokenTotal/);
+  assert.match(page, /spanTokenSummary/);
   assert.doesNotMatch(page, /label: "AI"/);
   assert.doesNotMatch(page, /label: "Fn"/);
   assert.match(page, /data-label="Spans"/);
@@ -242,6 +240,23 @@ test("dashboard time formatters hide invalid backend timing", () => {
   assert.equal(formatLatency(Number.POSITIVE_INFINITY), "open");
   assert.equal(formatLatency(-1), "open");
   assert.equal(formatLatency(999), "999 ms");
+});
+
+test("dashboard token helpers include cached reads in UI totals", () => {
+  const { spanTokenSummary, spanTokenTotal } = loadDashboardApiModule();
+  const span = {
+    kind: "llm.call",
+    tokens: { input: 3, output: 4, cache_read: 8, reasoning: 2 }
+  };
+  const toolSpan = {
+    kind: "tool.call",
+    tokens: { input: 1, output: 2, cache_read: 3, reasoning: 0 }
+  };
+
+  assert.equal(spanTokenTotal(span), 17);
+  assert.equal(spanTokenSummary(span), "17 total, 3 prompt, 4 completion, 2 reasoning, 8 cached");
+  assert.equal(spanTokenSummary(toolSpan), "6 total, 1 input, 2 output, 3 cached");
+  assert.equal(spanTokenSummary({ kind: "llm.call", tokens: null }), "none");
 });
 
 test("dashboard span depth stops on malformed parent cycles", () => {

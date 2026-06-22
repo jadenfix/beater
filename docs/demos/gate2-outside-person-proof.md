@@ -55,7 +55,7 @@ outside the project who runs the flow unaided from a fresh clone.
 ## Commands
 
 ```bash
-bash -lc 't="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
+bash -lc 'curl -fsSL https://raw.githubusercontent.com/jadenfix/beater/main/scripts/gate2-outside-local-preflight.sh | bash && t="$(date +%s)" && git clone https://github.com/jadenfix/beater.git && cd beater && BEATER_GATE2_CLONE_STARTED_EPOCH="$t" scripts/gate2-outside-run.sh'
 ```
 
 No project maintainer may provide step-by-step help beyond public repo docs
@@ -76,7 +76,10 @@ stopwatch proof records
 those markers. The stopwatch proof must also identify itself as an
 outside-run stopwatch source artifact, not an automated local stopwatch proof.
 
-The script fails before Compose startup if local Docker is unavailable, if curl
+The command runs `scripts/gate2-outside-local-preflight.sh` from the public repo
+before the stopwatch starts, so missing local tooling, remote Docker contexts,
+and occupied default ports fail before the timed attempt. The cloned wrapper
+then repeats the same checks. The script fails before Compose startup if local Docker is unavailable, if curl
 or `ffprobe` is missing, if recording SHA tooling is missing, or if API `8080`,
 OTLP `4317`, or dashboard `3000` are still in use after it removes any previous
 Beater stopwatch project. It also requires `python3` before the timed run so
