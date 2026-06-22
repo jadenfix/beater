@@ -654,10 +654,12 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
 test("gate2 confirmation code is fetched only after a browser span click", () => {
   const component = readFileSync(join(root, "app/Gate2Confirmation.tsx"), "utf8");
   assert.match(component, /"use client"/);
-  assert.match(component, /sessionStorage\.setItem\(storageKey\(traceId, spanId\), "clicked"\)/);
-  assert.match(component, /window\.dispatchEvent\(new CustomEvent<ClickDetail>\(CLICK_EVENT/);
+  assert.match(component, /event\.isTrusted/);
+  assert.match(component, /randomHex\(16\)/);
+  assert.match(component, /sessionStorage\.setItem\(storageKey\(traceId, spanId\), JSON\.stringify\(click\)\)/);
+  assert.match(component, /new CustomEvent<ClickDetail>\(CLICK_EVENT/);
   assert.match(component, /fetch\("\/api\/gate2\/confirm"/);
-  assert.match(component, /x-beater-gate2-browser-click/);
+  assert.match(component, /requestedNonce/);
   assert.match(component, /if \(status === "hidden"\) return null/);
   assert.match(component, />Confirm</);
 
@@ -665,5 +667,12 @@ test("gate2 confirmation code is fetched only after a browser span click", () =>
   assert.match(route, /BEATER_GATE2_CONFIRMATION_SALT/);
   assert.match(route, /gate2:\$\{salt\}:\$\{payload\.traceId\}:\$\{payload\.spanId\}/);
   assert.match(route, /cache-control/);
-  assert.match(route, /x-beater-gate2-browser-click/);
+  assert.match(route, /SESSION_COOKIE/);
+  assert.match(route, /sec-fetch-site/);
+  assert.match(route, /USED_NONCES/);
+  assert.match(route, /browser click proof expired/);
+  const proxy = readFileSync(join(root, "proxy.ts"), "utf8");
+  assert.match(proxy, /export function proxy/);
+  assert.match(proxy, /beater_gate2_session/);
+  assert.match(proxy, /httpOnly: true/);
 });

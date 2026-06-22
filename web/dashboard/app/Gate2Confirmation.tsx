@@ -1,12 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const CLICK_EVENT = "beater:gate2-span-click";
 
 type ClickDetail = {
   traceId: string;
   spanId: string;
+  click: BrowserClickProof;
+};
+
+type BrowserClickProof = {
+  nonce: string;
+  capturedAtMs: number;
+  isTrusted: true;
+  button: number;
+  detail: number;
+  clientX: number;
+  clientY: number;
+  screenX: number;
+  screenY: number;
 };
 
 export function Gate2SpanClickTracker() {
@@ -19,8 +32,12 @@ export function Gate2SpanClickTracker() {
       const traceId = anchor.dataset.traceId;
       const spanId = anchor.dataset.spanId;
       if (!traceId || !spanId) return;
-      sessionStorage.setItem(storageKey(traceId, spanId), "clicked");
-      window.dispatchEvent(new CustomEvent<ClickDetail>(CLICK_EVENT, { detail: { traceId, spanId } }));
+      const click = clickProof(event);
+      if (!click) return;
+      sessionStorage.setItem(storageKey(traceId, spanId), JSON.stringify(click));
+      window.dispatchEvent(
+        new CustomEvent<ClickDetail>(CLICK_EVENT, { detail: { traceId, spanId, click } })
+      );
     }
 
     document.addEventListener("click", handleClick, { capture: true });
@@ -40,18 +57,20 @@ export function Gate2ConfirmationCode({
   const [code, setCode] = useState<string | null>(null);
   const [status, setStatus] = useState<"hidden" | "loading" | "ready" | "error">("hidden");
   const key = useMemo(() => storageKey(traceId, spanId), [traceId, spanId]);
+  const requestedNonce = useRef<string | null>(null);
 
-  const loadCode = useCallback(async () => {
+  const loadCode = useCallback(async (click: BrowserClickProof) => {
+    if (requestedNonce.current === click.nonce) return;
+    requestedNonce.current = click.nonce;
     setStatus("loading");
     try {
       const response = await fetch("/api/gate2/confirm", {
         method: "POST",
         cache: "no-store",
         headers: {
-          "content-type": "application/json",
-          "x-beater-gate2-browser-click": "1"
+          "content-type": "application/json"
         },
-        body: JSON.stringify({ traceId, spanId })
+        body: JSON.stringify({ traceId, spanId, click })
       });
       if (!response.ok) throw new Error(`confirmation request failed: ${response.status}`);
       const payload = (await response.json()) as { code?: unknown };
@@ -67,8 +86,9 @@ export function Gate2ConfirmationCode({
   }, [spanId, traceId]);
 
   useEffect(() => {
-    if (sessionStorage.getItem(key) === "clicked") {
-      void loadCode();
+    const storedClick = readStoredClick(key);
+    if (storedClick) {
+      void loadCode(storedClick);
     } else {
       setCode(null);
       setStatus("hidden");
@@ -77,7 +97,7 @@ export function Gate2ConfirmationCode({
     function handleSpanClick(event: Event) {
       const detail = (event as CustomEvent<ClickDetail>).detail;
       if (detail?.traceId === traceId && detail.spanId === spanId) {
-        void loadCode();
+        void loadCode(detail.click);
       }
     }
 
@@ -97,4 +117,54 @@ export function Gate2ConfirmationCode({
 
 function storageKey(traceId: string, spanId: string): string {
   return `beater:gate2:clicked:${traceId}:${spanId}`;
+}
+
+function clickProof(event: MouseEvent): BrowserClickProof | null {
+  if (!event.isTrusted) return null;
+  return {
+    nonce: randomHex(16),
+    capturedAtMs: Date.now(),
+    isTrusted: true,
+    button: event.button,
+    detail: event.detail,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    screenX: event.screenX,
+    screenY: event.screenY
+  };
+}
+
+function randomHex(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function readStoredClick(key: string): BrowserClickProof | null {
+  try {
+    const value = sessionStorage.getItem(key);
+    if (!value) return null;
+    const parsed = JSON.parse(value) as Partial<BrowserClickProof>;
+    if (
+      typeof parsed.nonce === "string" &&
+      /^[0-9a-f]{32}$/.test(parsed.nonce) &&
+      typeof parsed.capturedAtMs === "number" &&
+      parsed.isTrusted === true
+    ) {
+      return {
+        nonce: parsed.nonce,
+        capturedAtMs: parsed.capturedAtMs,
+        isTrusted: true,
+        button: Number(parsed.button ?? 0),
+        detail: Number(parsed.detail ?? 0),
+        clientX: Number(parsed.clientX ?? 0),
+        clientY: Number(parsed.clientY ?? 0),
+        screenX: Number(parsed.screenX ?? 0),
+        screenY: Number(parsed.screenY ?? 0)
+      };
+    }
+  } catch {
+    sessionStorage.removeItem(key);
+  }
+  return null;
 }

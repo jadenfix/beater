@@ -192,8 +192,8 @@ GitHub remote, this proof file's structure, and public multi-arch GHCR images
 for the exact commit. The verifier executes the second clone's
 `scripts/gate2-outside-run.sh` wrapper with the clone-start timestamp captured
 immediately before that second `git clone`, waits until the wrapper prints the
-manual quickstart checkpoint, computes and enters the derived confirmation code
-for diagnostic automation only, and cleans up the `beater-stopwatch` Compose project after the
+manual quickstart checkpoint, uses a browser click to read and enter the confirmation
+code for diagnostic automation only, and cleans up the `beater-stopwatch` Compose project after the
 wrapper exits. It proves the exact public outside-run path and images can run,
 but it is not outside-person evidence and does not close this proof file. Its
 generated report is `Status: diagnostic.` and default outside-person validation

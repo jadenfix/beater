@@ -995,7 +995,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
         outside_proof.contains("waits until the wrapper prints the\nmanual quickstart checkpoint")
     );
     assert!(outside_proof.contains(
-        "computes and enters the derived confirmation code\nfor diagnostic automation only"
+        "uses a browser click to read and enter the confirmation\ncode for diagnostic automation only"
     ));
     assert!(outside_proof.contains("preflights the local runtime"));
     assert!(outside_proof
@@ -1097,7 +1097,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("executes the second clone's\n`scripts/gate2-outside-run.sh` wrapper"));
     assert!(readme.contains("waits until the wrapper prints the\nmanual quickstart checkpoint"));
     assert!(readme.contains(
-        "computes and enters the derived confirmation code\nfor diagnostic automation only"
+        "uses a browser click to read and enter the confirmation\ncode for diagnostic automation only"
     ));
     assert!(readme.contains("preflights the local runtime"));
     assert!(
