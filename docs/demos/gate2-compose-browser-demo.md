@@ -1,5 +1,12 @@
 # Gate 2 Compose Browser Demo
 
+Status: stale pre-hardening capture. This checked-in recording is retained as
+historical evidence only; it is 3.68s long and does not satisfy the current
+8-second reviewability floor enforced by `scripts/gate2-compose-stopwatch.sh`
+and `scripts/validate-gate2-outside-proof.sh`. Regenerate it from the default
+`http://127.0.0.1:3000` compose stopwatch path before using it as Gate 2
+evidence.
+
 Recorded from the Docker Compose stopwatch path using the literal five-line
 stock OpenTelemetry quickstart and the all-kind stock OpenTelemetry agent trace.
 

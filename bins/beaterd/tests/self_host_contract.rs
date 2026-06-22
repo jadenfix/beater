@@ -1017,6 +1017,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
 
     let compose_recording_notes = read(root.join("docs/demos/gate2-compose-browser-demo.md"));
     assert!(compose_recording_notes.contains("# Gate 2 Compose Browser Demo"));
+    assert!(compose_recording_notes.contains("Status: stale pre-hardening capture"));
+    assert!(compose_recording_notes.contains("8-second reviewability floor"));
     assert!(compose_recording_notes.contains("default dashboard URL"));
     assert!(compose_recording_notes.contains("http://127.0.0.1:3000"));
     assert!(compose_recording_notes.contains("gate2-compose-browser-demo.webm"));

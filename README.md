@@ -304,6 +304,12 @@ To write the automated compose stopwatch artifact under `docs/demos/`:
 BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 BEATER_GATE2_RECORD_DEMO=1 KEEP_BEATER_COMPOSE=0 scripts/gate2-compose-stopwatch.sh
 ```
 
+The checked-in compose stopwatch recording is historical until regenerated: the
+current `docs/demos/gate2-compose-browser-demo.webm` predates the hardened
+8-second recording requirement. Default `127.0.0.1:3000` evidence must be
+captured from a run where that port is genuinely Beater, not another local app
+or an alternate-port diagnostic.
+
 Gate 2 still requires an unaided outside-person run before it can be called
 passed. Before handing the repo to the outside runner, a maintainer should run
 the full public handoff verifier after the `container-images` workflow has
