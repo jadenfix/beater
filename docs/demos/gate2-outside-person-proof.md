@@ -36,6 +36,7 @@ outside the project who runs the flow unaided from a fresh clone.
 - OTEL Python image digest:
 - API endpoint:
 - Dashboard base: `http://127.0.0.1:3000`
+- Quickstart release ID:
 - Timing start source:
 - Clone started at:
 - Script started at:
@@ -165,8 +166,9 @@ multi-arch GHCR-image checks, but it is not a runtime handoff proof.
 The validator reads the listed stopwatch proof file, screen-recording notes, and
 `ffprobe` playable-video metadata,
 then cross-checks default API/OTLP/dashboard endpoints, clean-start status,
-browser-proof status, trace IDs, dashboard URLs, SHA-pinned prebuilt GHCR image
-references, prebuilt GHCR image digests, stock quickstart snippet markers, and
+browser-proof status, trace IDs, dashboard URLs, per-run quickstart release ID,
+SHA-pinned prebuilt GHCR image references, structured compose service and
+`proof-image` digest rows, prebuilt GHCR image digests, stock quickstart snippet markers, and
 the tested public GitHub origin, Date-to-clone-start consistency,
 `main` branch, clean-worktree state, and commit SHA. If the proof commit is newer
 than the tested SHA, every later committed change must be under `docs/demos/`;

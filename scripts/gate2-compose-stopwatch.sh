@@ -61,6 +61,7 @@ if [[ -n "$git_worktree_status" ]]; then
 else
   git_worktree_clean="yes"
 fi
+gate2_run_id="${BEATER_GATE2_RUN_ID:-gate2-${git_sha:0:12}-${start_epoch}-$$}"
 os_arch="$(uname -sm 2>/dev/null || echo unknown)"
 docker_version="$(docker --version 2>/dev/null || echo unknown)"
 compose_version="$(docker compose version 2>/dev/null || echo unknown)"
@@ -148,7 +149,7 @@ clean_start() {
   if [[ "$reuse" == "1" ]]; then
     return 0
   fi
-  compose down -v --remove-orphans >/dev/null 2>&1 || true
+  compose down -v --remove-orphans >/dev/null
 }
 
 terminate_tree() {
@@ -449,10 +450,12 @@ run_before_deadline "compose startup ($startup_mode)" compose "${startup_args[@]
 wait_url "$api_url/health" "beaterd"
 wait_url "$dashboard_base_url/?tenant=demo&project=demo&environment=local" "dashboard"
 
-run_before_deadline "five-line OTEL snippet" compose_run_tool otel-python-quickstart
+run_before_deadline "five-line OTEL snippet" compose_run_tool \
+  -e BEATER_GATE2_RUN_ID="$gate2_run_id" \
+  otel-python-quickstart
 
-quickstart_query="$api_url/v1/traces/demo?project_id=demo&environment_id=local&kind=llm.call&model=gpt-quickstart"
-wait_text "$quickstart_query" "gpt-quickstart" "five-line OTEL trace"
+quickstart_query="$api_url/v1/traces/demo?project_id=demo&environment_id=local&kind=llm.call&model=gpt-quickstart&release=$gate2_run_id"
+wait_text "$quickstart_query" "$gate2_run_id" "fresh five-line OTEL trace"
 trace_id="$(curl -fsS "$quickstart_query" | first_trace_id)"
 if [[ -z "$trace_id" ]]; then
   echo "Could not parse quickstart trace_id from $quickstart_query" >&2
@@ -493,6 +496,7 @@ confirm_manual_quickstart_click
 if [[ "$browser_proof" == "1" ]]; then
   run_before_deadline "five-line dashboard browser proof" compose_run_e2e \
     -e BEATER_E2E_QUICKSTART_TRACE_ID="$trace_id" \
+    -e BEATER_E2E_QUICKSTART_RELEASE="$gate2_run_id" \
     -e PLAYWRIGHT_BASE_URL="$e2e_base_url" \
     dashboard-e2e \
     npx playwright test tests/e2e/quickstart.spec.ts
@@ -637,6 +641,7 @@ if [[ "$write_proof" == "1" ]]; then
 - API endpoint: \`$api_url\`
 - OTLP endpoint: \`$otlp_url\`
 - Dashboard base: \`$dashboard_base_url\`
+- Quickstart release ID: \`$gate2_run_id\`
 - Quickstart trace: \`$trace_id\`
 - Quickstart dashboard: $dashboard_url
 - Quickstart browser proof: $quickstart_browser_proof_status

@@ -462,10 +462,12 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   assert.match(recorder, /gate2-browser-demo\.webm/);
   const quickstart = readFileSync(join(root, "tests/e2e/quickstart.spec.ts"), "utf8");
   assert.match(quickstart, /BEATER_E2E_QUICKSTART_TRACE_ID/);
+  assert.match(quickstart, /BEATER_E2E_QUICKSTART_RELEASE/);
   assert.doesNotMatch(quickstart, /BEATER_E2E_TRACE_ID/);
   assert.match(quickstart, /five-line-llm-call/);
   assert.match(quickstart, /gpt-quickstart/);
-  assert.match(quickstart, /page\.goto\("\/\?tenant=demo&project=demo&environment=local&kind=llm\.call&model=gpt-quickstart"\)/);
+  assert.match(quickstart, /releaseParam/);
+  assert.match(quickstart, /encodeURIComponent\(release\)/);
   assert.match(quickstart, /toHaveValue\(""\)/);
   assert.match(quickstart, /placeholder", \/latest: \//);
   assert.match(quickstart, /toHaveCount\(1\)/);

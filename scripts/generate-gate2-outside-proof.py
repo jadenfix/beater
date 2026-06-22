@@ -242,6 +242,7 @@ Status: {status}
 - API endpoint: {field_value(stopwatch_text, "API endpoint", stopwatch_rel)}
 - Dashboard base: {field_value(stopwatch_text, "Dashboard base", stopwatch_rel)}
 - Quickstart snippet: {field_value(stopwatch_text, "Quickstart snippet", stopwatch_rel)}
+- Quickstart release ID: {field_value(stopwatch_text, "Quickstart release ID", stopwatch_rel)}
 - Timing start source: {field_value(stopwatch_text, "Timing start source", stopwatch_rel)}
 - Clone started at: {field_value(stopwatch_text, "Clone started at", stopwatch_rel)}
 - Script started at: {field_value(stopwatch_text, "Script started at", stopwatch_rel)}

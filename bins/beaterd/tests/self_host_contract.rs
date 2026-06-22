@@ -253,6 +253,10 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("confirm_manual_quickstart_click"));
     assert!(stopwatch_script.contains("manual-outside-runner"));
     assert!(stopwatch_script.contains("Manual quickstart confirmation"));
+    assert!(stopwatch_script.contains("gate2_run_id"));
+    assert!(stopwatch_script.contains("BEATER_GATE2_RUN_ID"));
+    assert!(stopwatch_script.contains("release=$gate2_run_id"));
+    assert!(stopwatch_script.contains("Quickstart release ID"));
     assert!(stopwatch_script.contains("git rev-parse HEAD"));
     assert!(stopwatch_script.contains("git branch --show-current"));
     assert!(stopwatch_script.contains("git remote get-url origin"));
@@ -309,6 +313,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("BEATER_GATE2_RECORD_MODE=compose"));
     assert!(stopwatch_script.contains("BEATER_GATE2_OUTSIDE_WRAPPER=\"$outside_wrapper\""));
     assert!(stopwatch_script.contains("BEATER_E2E_QUICKSTART_TRACE_ID"));
+    assert!(stopwatch_script.contains("BEATER_E2E_QUICKSTART_RELEASE"));
     assert!(stopwatch_script.contains("compose_run_e2e"));
     assert!(stopwatch_script.contains("run_args+=(--build)"));
     assert!(stopwatch_script.contains("run_args+=(--pull \"$prebuilt_pull_policy\")"));
@@ -328,7 +333,10 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("PLAYWRIGHT_BASE_URL"));
     assert!(stopwatch_script.contains("BEATER_GATE2_REUSE"));
     assert!(stopwatch_script.contains("clean_start"));
-    assert!(stopwatch_script.contains("compose down -v --remove-orphans"));
+    let clean_start_body = &stopwatch_script[find_required(&stopwatch_script, "clean_start() {")
+        ..find_required(&stopwatch_script, "terminate_tree() {")];
+    assert!(clean_start_body.contains("compose down -v --remove-orphans >/dev/null"));
+    assert!(!clean_start_body.contains("|| true"));
     assert!(!stopwatch_script.contains("venv_dir"));
     assert!(stopwatch_script.contains("docker-compose.prebuilt.yml"));
     assert!(stopwatch_script.contains("BEATER_GATE2_PULL_POLICY"));
@@ -375,6 +383,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_run.contains("require_unset BEATER_DASHBOARD_IMAGE"));
     assert!(outside_run.contains("require_unset BEATER_DASHBOARD_E2E_IMAGE"));
     assert!(outside_run.contains("require_unset BEATER_OTEL_PYTHON_IMAGE"));
+    assert!(outside_run.contains("require_unset BEATER_GATE2_RUN_ID"));
+    assert!(outside_run.contains("fresh per-run quickstart release ID"));
     assert!(outside_run.contains("the wrapper pins beaterd to the checked-out commit SHA"));
     assert!(outside_run.contains("require_unset BEATER_GATE2_STOPWATCH_PROOF"));
     assert!(outside_run.contains("require_unset BEATER_GATE2_RECORD_VIDEO"));
@@ -456,6 +466,14 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_validator.contains("forbid_alternate_evidence(stopwatch_text"));
     assert!(outside_validator.contains("forbid_alternate_evidence(notes_text"));
     assert!(outside_validator.contains("require_equal(\"quickstart trace id\""));
+    assert!(outside_validator.contains("require_quickstart_release_id"));
+    assert!(outside_validator.contains("\"Quickstart release ID\""));
+    assert!(outside_validator.contains("quickstart release ID"));
+    assert!(outside_validator.contains("proof-image"));
+    assert!(outside_validator.contains("service_segments"));
+    assert!(
+        outside_validator.contains("Gate 2 outside-person proof draft is internally consistent")
+    );
     assert!(outside_validator.contains("require_equal(\"quickstart dashboard URL\""));
     assert!(outside_validator.contains("require_equal(\"screen recording sha256\""));
     assert!(outside_validator.contains("require_equal(\"screen recording notes sha256\""));
@@ -487,6 +505,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_generator.contains("Outside-run wrapper"));
     assert!(outside_generator.contains("Quickstart click source"));
     assert!(outside_generator.contains("Manual quickstart confirmation"));
+    assert!(outside_generator.contains("Quickstart release ID"));
     assert!(outside_generator.contains("Git branch"));
     assert!(outside_generator.contains("Git origin"));
     assert!(outside_generator.contains("Git worktree clean"));
@@ -563,6 +582,7 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(public_handoff.contains("BEATER_GATE2_STOPWATCH_PROOF"));
     assert!(public_handoff.contains("BEATER_GATE2_RECORD_VIDEO"));
     assert!(public_handoff.contains("BEATER_GATE2_RECORD_NOTES"));
+    assert!(public_handoff.contains("BEATER_GATE2_RUN_ID"));
     assert!(public_handoff.contains("KEEP_BEATER_COMPOSE"));
     assert!(public_handoff.contains("COMPOSE_PROJECT_NAME"));
     assert!(public_handoff.contains("BEATER_GATE2_EXPECTED_ORIGIN"));
@@ -676,6 +696,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("OTEL Python image digest"));
     assert!(outside_proof.contains("API endpoint"));
     assert!(outside_proof.contains("Dashboard base"));
+    assert!(outside_proof.contains("Quickstart release ID"));
+    assert!(outside_proof.contains("per-run quickstart release ID"));
+    assert!(outside_proof.contains("`proof-image` digest rows"));
     assert!(outside_proof.contains("Timing start source"));
     assert!(outside_proof.contains("Clone started at"));
     assert!(outside_proof.contains("Script-to-first-trace"));
@@ -771,6 +794,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("repo-relative `docs/demos/` artifacts"));
     assert!(readme.contains("prebuilt GHCR image digests"));
     assert!(readme.contains("mismatched image digests"));
+    assert!(readme.contains("BEATER_GATE2_RUN_ID"));
+    assert!(readme.contains("fresh per-run quickstart release ID"));
+    assert!(readme.contains("structured\n`proof-image` rows"));
     assert!(readme.contains("recording notes from a different dashboard session"));
     assert!(readme.contains("playable WebM metadata"));
     assert!(readme.contains("playable WebM capture of\nat least 64 KiB and at least 8 seconds"));
@@ -794,12 +820,15 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(requirements.contains("scripts/check-gate2-outside-readiness.py"));
     assert!(requirements.contains("public-clone handoff verifier"));
     assert!(requirements.contains("requires the clone to match the current commit"));
-    assert!(requirements
-        .contains("alternate-port/image-override/artifact-path/compose-project/teardown evidence"));
+    assert!(requirements.contains(
+        "alternate-port/image-override/artifact-path/compose-project/teardown/run-id evidence"
+    ));
     assert!(requirements.contains("wrapper marker"));
     assert!(requirements.contains("scripts/generate-gate2-outside-proof.py"));
     assert!(requirements.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(requirements.contains("image-digest"));
+    assert!(requirements.contains("quickstart release-ID"));
+    assert!(requirements.contains("structured compose service rows plus `proof-image` digest rows"));
     assert!(requirements.contains("SHA-pinned prebuilt GHCR image references"));
     assert!(requirements.contains("dashboard-e2e"));
     assert!(requirements.contains("otel-python"));
@@ -838,6 +867,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(quickstart.contains("OTLPSpanExporter"));
     assert!(quickstart.contains("five-line-llm-call"));
     assert!(quickstart.contains("gpt-quickstart"));
+    assert!(quickstart.contains("beater.release_id"));
+    assert!(quickstart.contains("BEATER_GATE2_RUN_ID"));
     assert!(!quickstart.contains("beaterctl"));
 
     let python = read(root.join("examples/python/otel_smoke.py"));
@@ -914,6 +945,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(quickstart_e2e.contains("five-line-llm-call"));
     assert!(quickstart_e2e.contains("gpt-quickstart"));
     assert!(quickstart_e2e.contains("kind=llm.call&model=gpt-quickstart"));
+    assert!(quickstart_e2e.contains("BEATER_E2E_QUICKSTART_RELEASE"));
+    assert!(quickstart_e2e.contains("releaseParam"));
     assert!(quickstart_e2e.contains("traceRow.click()"));
     assert!(quickstart_e2e.contains("toHaveURL"));
     assert!(quickstart_e2e.contains("hello from stock OpenTelemetry"));

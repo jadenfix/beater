@@ -275,6 +275,17 @@ def require_trace_id(name: str, value: str, source_name: str) -> None:
         fail(f"{name} in {source_name} must be a lowercase 32-character trace id")
 
 
+def require_quickstart_release_id(value: str, commit_sha: str, source_name: str) -> None:
+    expected_prefix = f"gate2-{commit_sha[:12]}-"
+    if not value.startswith(expected_prefix) or not re.fullmatch(
+        re.escape(expected_prefix) + r"[0-9]+-[0-9]+", value
+    ):
+        fail(
+            f"Quickstart release ID in {source_name} must be a fresh gate2 run id "
+            f"for commit {commit_sha[:12]}"
+        )
+
+
 def require_ghcr_image_digest(
     name: str, value: str, source_name: str, expected_image: str
 ) -> None:
@@ -322,12 +333,33 @@ def require_default_dashboard_url(name: str, value: str, trace_id: str) -> None:
             fail(f"{name} must include {key}={expected}")
 
 
-def require_compose_images_excerpt(value: str, commit_sha: str) -> None:
+def require_compose_images_excerpt(
+    value: str, commit_sha: str, expected_digests: dict[str, str]
+) -> None:
     segments = [segment.strip() for segment in re.split(r"[|\n]", value) if segment.strip()]
-    for image in ["beaterd", "dashboard", "dashboard-e2e", "otel-python"]:
+    service_segments = [
+        segment for segment in segments if not segment.startswith("proof-image ")
+    ]
+    for image, service in [
+        ("beaterd", "beaterd"),
+        ("dashboard", "dashboard"),
+        ("dashboard-e2e", "dashboard-e2e"),
+        ("otel-python", "otel-python"),
+    ]:
         repo = f"ghcr.io/jadenfix/beater/{image}"
-        if not any(repo in segment and commit_sha in segment for segment in segments):
+        if not any(repo in segment and commit_sha in segment for segment in service_segments):
             fail(f"`docker compose images` excerpt must include {repo} tagged with the checked-out commit SHA")
+            continue
+        expected_ref = f"{repo}:{commit_sha}"
+        expected_digest = expected_digests[image]
+        if not any(
+            segment.split()[:4] == ["proof-image", service, expected_ref, expected_digest]
+            for segment in segments
+        ):
+            fail(
+                f"`docker compose images` excerpt must include proof-image row for "
+                f"{repo}:{commit_sha} with digest {expected_digest}"
+            )
 
 
 def require_equal(name: str, outside_value: str, stopwatch_value: str) -> None:
@@ -820,6 +852,7 @@ REQUIRED_PROOF_FIELDS = [
     "OTEL Python image digest",
     "API endpoint",
     "Dashboard base",
+    "Quickstart release ID",
     "Timing start source",
     "Clone started at",
     "Script started at",
@@ -1061,12 +1094,15 @@ if "- [ ]" in text:
 
 forbid_alternate_evidence(text, "outside-person proof")
 compose_images_excerpt = field_value("`docker compose images` excerpt")
-require_compose_images_excerpt(compose_images_excerpt, commit_sha)
 
 quickstart_trace_id = field_value("Quickstart trace ID")
 all_kind_trace_id = field_value("All-kind nested trace ID")
+quickstart_release_id = field_value("Quickstart release ID")
 require_trace_id("Quickstart trace ID", quickstart_trace_id, "outside-person proof")
 require_trace_id("All-kind nested trace ID", all_kind_trace_id, "outside-person proof")
+require_quickstart_release_id(
+    quickstart_release_id, commit_sha, "outside-person proof"
+)
 if quickstart_trace_id == all_kind_trace_id:
     fail("Quickstart trace ID and All-kind nested trace ID must be distinct")
 beater_image_ref = field_value("Beater image reference")
@@ -1125,6 +1161,16 @@ require_ghcr_image_digest(
     otel_python_image_digest,
     "outside-person proof",
     "otel-python",
+)
+require_compose_images_excerpt(
+    compose_images_excerpt,
+    commit_sha,
+    {
+        "beaterd": beater_image_digest,
+        "dashboard": dashboard_image_digest,
+        "dashboard-e2e": dashboard_e2e_image_digest,
+        "otel-python": otel_python_image_digest,
+    },
 )
 quickstart_url = field_value("Quickstart dashboard URL")
 all_kind_url = field_value("All-kind dashboard URL")
@@ -1276,6 +1322,17 @@ if stopwatch_text:
         actual = field_value_from(stopwatch_text, field, "stopwatch proof")
         if actual != expected:
             fail(f"{field} in stopwatch proof must be {expected!r}, got {actual!r}")
+    stopwatch_quickstart_release_id = field_value_from(
+        stopwatch_text, "Quickstart release ID", "stopwatch proof"
+    )
+    require_quickstart_release_id(
+        stopwatch_quickstart_release_id, commit_sha, "stopwatch proof"
+    )
+    require_equal(
+        "quickstart release ID",
+        quickstart_release_id,
+        stopwatch_quickstart_release_id,
+    )
     require_timeline(
         stopwatch_text,
         "stopwatch proof",
@@ -1561,6 +1618,8 @@ if errors:
 
 if diagnostic_mode:
     print(f"Gate 2 diagnostic proof is valid: {proof_path}")
+elif ALLOW_UNTRACKED_ARTIFACTS:
+    print(f"Gate 2 outside-person proof draft is internally consistent: {proof_path}")
 else:
     print(f"Gate 2 outside-person proof is complete and valid: {proof_path}")
 PY

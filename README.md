@@ -191,7 +191,9 @@ origins, dirty worktrees, warm-loop reuse, local source builds, alternate ports,
 mutable pull-policy overrides, prebuilt image overrides, evidence
 artifact path overrides, alternate Compose project names, and teardown overrides,
 then runs the stopwatch script with proof writing, browser proof, and browser recording
-enabled. The clone-start environment variable must be captured before
+enabled. It rejects a pre-set `BEATER_GATE2_RUN_ID`; the stopwatch creates a
+fresh per-run quickstart release ID and filters the five-line trace on that ID
+so stale traces cannot satisfy the proof. The clone-start environment variable must be captured before
 `git clone`, so `Time-to-first-trace` and `Time-to-quickstart-click` include
 clone time. For outside-person evidence, `Time-to-quickstart-click` is captured
 from the runner's Enter confirmation after manually clicking the trace and
@@ -200,8 +202,8 @@ from the runner's Enter confirmation after manually clicking the trace and
 outside-person proof validation rejects evidence without that marker, rejects
 local automated stopwatch footers, requires an outside-run stopwatch source
 artifact marker, and cross-checks the stopwatch branch, origin, and
-worktree-clean status. The script
-first removes any previous Compose project/volumes, then runs
+worktree-clean status. The script first removes any previous Compose
+project/volumes and fails if that clean start does not complete, then runs
 `docker compose up`, sends `examples/python/five_line_otel.py` from the
 prebuilt stock OpenTelemetry Python runner container, waits until the trace is
 visible in `localhost:3000`, and fails if time-to-first-trace exceeds 300
@@ -221,8 +223,8 @@ outside-person evidence.
 By default it uses `docker-compose.prebuilt.yml` and pulls current GHCR images
 published by `.github/workflows/container-images.yml`. The stopwatch script
 pins `beaterd`, `dashboard`, `dashboard-e2e`, and `otel-python` to the checked-out commit SHA
-tags by default, then records the image references and resolved GHCR digests in
-the proof. Set
+tags by default, then records the image references, service rows, and structured
+`proof-image` rows with resolved GHCR digests in the proof. Set
 `BEATER_GATE2_LOCAL_BUILD=1` when you intentionally want to build the server and
 dashboard images from source. Set `BEATER_GATE2_REUSE=1` only for local
 warm-loop debugging. Set `BEATER_GATE2_BROWSER_PROOF=1` to also run the
@@ -359,7 +361,7 @@ mismatched API/dashboard endpoints, non-main or stale commit evidence,
 mismatched SHA-pinned image references, mismatched image digests,
 wrong or missing stock quickstart snippet markers,
 proof dates that do not match the timed clone start,
-compose image excerpts missing runner images,
+compose image excerpts missing runner images or structured `proof-image` rows,
 non-repo-relative `docs/demos/` artifacts, and non-prebuilt GHCR image digests.
 It rejects recording notes from a different dashboard session. It rejects
 uncommitted non-evidence worktree changes at closure. It rejects any screen

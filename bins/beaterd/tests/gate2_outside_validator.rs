@@ -22,6 +22,8 @@ const WATERFALL_OBSERVATION: &str =
     "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting";
 const OUTSIDE_RUN_ATTESTATION: &str = "I attest that I am not a Beater project maintainer, I received no step-by-step help beyond public repository instructions, I used a fresh clone, and I completed the Gate 2 flow unaided.";
 const DIAGNOSTIC_ATTESTATION: &str = "Diagnostic maintainer full-run auto-confirmed the manual checkpoint; this is not outside-person evidence and cannot close Gate 2.";
+const DRAFT_VALID: &str = "Gate 2 outside-person proof draft is internally consistent";
+const CLOSURE_VALID: &str = "Gate 2 outside-person proof is complete and valid";
 
 #[test]
 fn gate2_outside_validator_allows_pending_template_with_allow_pending() {
@@ -162,7 +164,25 @@ fn gate2_outside_validator_accepts_matching_default_port_artifacts() {
 
     let output = run_validator(&fixture.proof_path);
 
-    assert_success(output, "Gate 2 outside-person proof is complete and valid");
+    assert_success(output, DRAFT_VALID);
+}
+
+#[test]
+fn gate2_outside_validator_untracked_escape_does_not_claim_closure() {
+    let fixture = ValidatorFixture::new();
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(DRAFT_VALID),
+        "draft validation must describe itself as non-closure\nstdout:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains(CLOSURE_VALID),
+        "untracked draft validation must not use closure wording\nstdout:\n{stdout}"
+    );
 }
 
 #[test]
@@ -228,10 +248,7 @@ fn gate2_outside_generator_builds_valid_completed_proof() {
     let output = run_generator(&fixture.stopwatch_path, &generated);
 
     assert_success(output, "Wrote Gate 2 outside-person proof");
-    assert_success(
-        run_validator(&generated),
-        "Gate 2 outside-person proof is complete and valid",
-    );
+    assert_success(run_validator(&generated), DRAFT_VALID);
     let generated_text = fs::read_to_string(&generated)
         .unwrap_or_else(|err| panic!("read {}: {err}", generated.display()));
     assert!(generated_text.contains("- Name: Validator Fixture Runner"));
@@ -411,10 +428,7 @@ fn gate2_outside_generator_accepts_prior_exposure_none_and_defaults_run_date() {
     let output = run_generator_with_prior_exposure(&fixture.stopwatch_path, &generated, "none");
 
     assert_success(output, "Wrote Gate 2 outside-person proof");
-    assert_success(
-        run_validator(&generated),
-        "Gate 2 outside-person proof is complete and valid",
-    );
+    assert_success(run_validator(&generated), DRAFT_VALID);
     let generated_text = fs::read_to_string(&generated)
         .unwrap_or_else(|err| panic!("read {}: {err}", generated.display()));
     assert!(generated_text.contains("- Prior Beater repo exposure: none"));
@@ -519,10 +533,7 @@ fn gate2_outside_generator_overwrites_pending_template() {
     let output = run_generator(&fixture.stopwatch_path, &pending);
 
     assert_success(output, "Wrote Gate 2 outside-person proof");
-    assert_success(
-        run_validator(&pending),
-        "Gate 2 outside-person proof is complete and valid",
-    );
+    assert_success(run_validator(&pending), DRAFT_VALID);
 }
 
 #[test]
@@ -1653,6 +1664,44 @@ fn gate2_outside_validator_rejects_missing_quickstart_snippet() {
 }
 
 #[test]
+fn gate2_outside_validator_rejects_mismatched_quickstart_release_id() {
+    let fixture = ValidatorFixture::new();
+    let head = current_head();
+    replace(
+        &fixture.stopwatch_path,
+        &format!("- Quickstart release ID: `{}`", quickstart_release_id()),
+        &format!(
+            "- Quickstart release ID: `gate2-{}-1780000000-99999`",
+            &head[..12]
+        ),
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "quickstart release ID mismatch between proof artifacts",
+    );
+}
+
+#[test]
+fn gate2_outside_validator_rejects_missing_quickstart_release_id() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        &format!("- Quickstart release ID: {}\n", quickstart_release_id()),
+        "",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "missing field in outside-person proof: Quickstart release ID",
+    );
+}
+
+#[test]
 fn gate2_outside_validator_rejects_split_clone_command() {
     let fixture = ValidatorFixture::new();
     replace(
@@ -1826,13 +1875,33 @@ fn gate2_outside_validator_accepts_compose_images_excerpt_from_all_gate2_service
         &fixture.proof_path,
         &compose_images_excerpt_line(),
         &format!(
+            "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-dashboard-e2e-run-1 ghcr.io/jadenfix/beater/dashboard-e2e {commit_sha} | beater-stopwatch-otel-python-quickstart-run-1 ghcr.io/jadenfix/beater/otel-python {commit_sha} | proof-image beaterd ghcr.io/jadenfix/beater/beaterd:{commit_sha} {BEATER_IMAGE_DIGEST} | proof-image dashboard ghcr.io/jadenfix/beater/dashboard:{commit_sha} {DASHBOARD_IMAGE_DIGEST} | proof-image dashboard-e2e ghcr.io/jadenfix/beater/dashboard-e2e:{commit_sha} {DASHBOARD_E2E_IMAGE_DIGEST} | proof-image otel-python ghcr.io/jadenfix/beater/otel-python:{commit_sha} {OTEL_PYTHON_IMAGE_DIGEST}\n"
+        ),
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_success(output, DRAFT_VALID);
+}
+
+#[test]
+fn gate2_outside_validator_rejects_compose_images_without_proof_image_rows() {
+    let fixture = ValidatorFixture::new();
+    let commit_sha = current_head();
+    replace(
+        &fixture.proof_path,
+        &compose_images_excerpt_line(),
+        &format!(
             "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-dashboard-e2e-run-1 ghcr.io/jadenfix/beater/dashboard-e2e {commit_sha} | beater-stopwatch-otel-python-quickstart-run-1 ghcr.io/jadenfix/beater/otel-python {commit_sha}\n"
         ),
     );
 
     let output = run_validator(&fixture.proof_path);
 
-    assert_success(output, "Gate 2 outside-person proof is complete and valid");
+    assert_failure(
+        output,
+        "`docker compose images` excerpt must include proof-image row for ghcr.io/jadenfix/beater/beaterd",
+    );
 }
 
 #[test]
@@ -1843,7 +1912,7 @@ fn gate2_outside_validator_rejects_compose_images_missing_dashboard_e2e() {
         &fixture.proof_path,
         &compose_images_excerpt_line(),
         &format!(
-            "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-otel-python-quickstart-run-1 ghcr.io/jadenfix/beater/otel-python {commit_sha}\n"
+            "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-otel-python-quickstart-run-1 ghcr.io/jadenfix/beater/otel-python {commit_sha} | proof-image beaterd ghcr.io/jadenfix/beater/beaterd:{commit_sha} {BEATER_IMAGE_DIGEST} | proof-image dashboard ghcr.io/jadenfix/beater/dashboard:{commit_sha} {DASHBOARD_IMAGE_DIGEST} | proof-image otel-python ghcr.io/jadenfix/beater/otel-python:{commit_sha} {OTEL_PYTHON_IMAGE_DIGEST}\n"
         ),
     );
 
@@ -1863,7 +1932,7 @@ fn gate2_outside_validator_rejects_compose_images_missing_otel_python() {
         &fixture.proof_path,
         &compose_images_excerpt_line(),
         &format!(
-            "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-dashboard-e2e-run-1 ghcr.io/jadenfix/beater/dashboard-e2e {commit_sha}\n"
+            "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-dashboard-e2e-run-1 ghcr.io/jadenfix/beater/dashboard-e2e {commit_sha} | proof-image beaterd ghcr.io/jadenfix/beater/beaterd:{commit_sha} {BEATER_IMAGE_DIGEST} | proof-image dashboard ghcr.io/jadenfix/beater/dashboard:{commit_sha} {DASHBOARD_IMAGE_DIGEST} | proof-image dashboard-e2e ghcr.io/jadenfix/beater/dashboard-e2e:{commit_sha} {DASHBOARD_E2E_IMAGE_DIGEST}\n"
         ),
     );
 
@@ -1883,7 +1952,7 @@ fn gate2_outside_validator_rejects_compose_images_with_stale_service_tags() {
         &fixture.proof_path,
         &compose_images_excerpt_line(),
         &format!(
-            "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd stale-sha | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard stale-sha | unrelated-image {commit_sha}\n"
+            "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd stale-sha | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard stale-sha | unrelated-image {commit_sha} | proof-image beaterd ghcr.io/jadenfix/beater/beaterd:{commit_sha} {BEATER_IMAGE_DIGEST} | proof-image dashboard ghcr.io/jadenfix/beater/dashboard:{commit_sha} {DASHBOARD_IMAGE_DIGEST} | proof-image dashboard-e2e ghcr.io/jadenfix/beater/dashboard-e2e:{commit_sha} {DASHBOARD_E2E_IMAGE_DIGEST} | proof-image otel-python ghcr.io/jadenfix/beater/otel-python:{commit_sha} {OTEL_PYTHON_IMAGE_DIGEST}\n"
         ),
     );
 
@@ -2127,7 +2196,7 @@ fn gate2_outside_validator_accepts_clone_started_at_script_started() {
 
     let output = run_validator(&fixture.proof_path);
 
-    assert_success(output, "Gate 2 outside-person proof is complete and valid");
+    assert_success(output, DRAFT_VALID);
 }
 
 #[test]
@@ -2293,7 +2362,7 @@ fn gate2_outside_validator_accepts_negated_employee_relationship_disclosure() {
 
     let output = run_validator(&fixture.proof_path);
 
-    assert_success(output, "Gate 2 outside-person proof is complete and valid");
+    assert_success(output, DRAFT_VALID);
 }
 
 #[test]
@@ -2324,7 +2393,7 @@ fn gate2_outside_validator_accepts_prior_exposure_none() {
 
     let output = run_validator(&fixture.proof_path);
 
-    assert_success(output, "Gate 2 outside-person proof is complete and valid");
+    assert_success(output, DRAFT_VALID);
 }
 
 #[test]
@@ -2369,7 +2438,7 @@ fn gate2_outside_validator_accepts_evidence_only_ancestor_closure_repo() {
 
     let output = run_default_validator_in_repo(fixture.path());
 
-    assert_success(output, "Gate 2 outside-person proof is complete and valid");
+    assert_success(output, CLOSURE_VALID);
 }
 
 #[test]
@@ -2975,6 +3044,7 @@ impl ValidatorFixture {
 
 fn outside_proof(stopwatch: &str, recording: &str, notes: &str) -> String {
     let commit_sha = current_head();
+    let quickstart_release_id = quickstart_release_id();
     format!(
         r#"# Gate 2 Outside-Person Proof
 
@@ -3011,6 +3081,7 @@ Status: completed.
 - OTEL Python image digest: {OTEL_PYTHON_IMAGE_DIGEST}
 - API endpoint: http://127.0.0.1:8080
 - Dashboard base: http://127.0.0.1:3000
+- Quickstart release ID: {quickstart_release_id}
 - Timing start source: external-clone
 - Clone started at: 2026-06-20T11:59:55Z
 - Script started at: 2026-06-20T12:00:00Z
@@ -3077,12 +3148,13 @@ The runner completed the flow using only public repository instructions.
 fn compose_images_excerpt_line() -> String {
     let commit_sha = current_head();
     format!(
-        "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-dashboard-e2e-run-1 ghcr.io/jadenfix/beater/dashboard-e2e {commit_sha} | beater-stopwatch-otel-python-quickstart-run-1 ghcr.io/jadenfix/beater/otel-python {commit_sha}\n"
+        "- `docker compose images` excerpt: beater-stopwatch-beaterd-1 ghcr.io/jadenfix/beater/beaterd {commit_sha} | beater-stopwatch-dashboard-1 ghcr.io/jadenfix/beater/dashboard {commit_sha} | beater-stopwatch-dashboard-e2e-run-1 ghcr.io/jadenfix/beater/dashboard-e2e {commit_sha} | beater-stopwatch-otel-python-quickstart-run-1 ghcr.io/jadenfix/beater/otel-python {commit_sha} | proof-image beaterd ghcr.io/jadenfix/beater/beaterd:{commit_sha} {BEATER_IMAGE_DIGEST} | proof-image dashboard ghcr.io/jadenfix/beater/dashboard:{commit_sha} {DASHBOARD_IMAGE_DIGEST} | proof-image dashboard-e2e ghcr.io/jadenfix/beater/dashboard-e2e:{commit_sha} {DASHBOARD_E2E_IMAGE_DIGEST} | proof-image otel-python ghcr.io/jadenfix/beater/otel-python:{commit_sha} {OTEL_PYTHON_IMAGE_DIGEST}\n"
     )
 }
 
 fn stopwatch_proof(recording: &str, notes: &str) -> String {
     let commit_sha = current_head();
+    let quickstart_release_id = quickstart_release_id();
     format!(
         r#"# Gate 2 Compose Stopwatch Proof
 
@@ -3125,6 +3197,7 @@ fn stopwatch_proof(recording: &str, notes: &str) -> String {
 - API endpoint: `http://127.0.0.1:8080`
 - OTLP endpoint: `http://127.0.0.1:4317`
 - Dashboard base: `http://127.0.0.1:3000`
+- Quickstart release ID: `{quickstart_release_id}`
 - Quickstart trace: `{QUICKSTART_TRACE}`
 - Quickstart dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={QUICKSTART_TRACE}
 - Quickstart browser proof: passed
@@ -4054,6 +4127,8 @@ fn write_validator_closure_fixture_repo() -> TempDir {
 
     let tested_sha = git_output(fixture.path(), &["rev-parse", "HEAD"]);
     let current_repo_sha = current_head();
+    let tested_release_id = quickstart_release_id_for(&tested_sha);
+    let current_release_id = quickstart_release_id_for(&current_repo_sha);
     let artifact_rel = "docs/demos/gate2-closure-fixture";
     let artifact_dir = fixture.path().join(artifact_rel);
     fs::create_dir_all(&artifact_dir)
@@ -4069,12 +4144,14 @@ fn write_validator_closure_fixture_repo() -> TempDir {
     let recording_field = format!("{artifact_rel}/recording.webm");
     let notes_field = format!("{artifact_rel}/recording-notes.md");
     let stopwatch_field = format!("{artifact_rel}/stopwatch-proof.md");
-    let stopwatch =
-        stopwatch_proof(&recording_field, &notes_field).replace(&current_repo_sha, &tested_sha);
+    let stopwatch = stopwatch_proof(&recording_field, &notes_field)
+        .replace(&current_repo_sha, &tested_sha)
+        .replace(&current_release_id, &tested_release_id);
     fs::write(artifact_dir.join("stopwatch-proof.md"), stopwatch)
         .unwrap_or_else(|err| panic!("write validator closure stopwatch proof: {err}"));
     let outside = outside_proof(&stopwatch_field, &recording_field, &notes_field)
-        .replace(&current_repo_sha, &tested_sha);
+        .replace(&current_repo_sha, &tested_sha)
+        .replace(&current_release_id, &tested_release_id);
     fs::write(
         fixture
             .path()
@@ -4167,6 +4244,7 @@ cat > docs/demos/gate2-compose-stopwatch.md <<'EOF_PROOF'
 - API endpoint: http://127.0.0.1:8080
 - OTLP endpoint: http://127.0.0.1:4317
 - Dashboard base: http://127.0.0.1:3000
+- Quickstart release ID: gate2-__COMMIT_SHORT__-1780000000-12345
 - Quickstart trace: 11111111111111111111111111111111
 - Quickstart dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace=11111111111111111111111111111111
 - Quickstart browser proof: passed
@@ -4201,7 +4279,7 @@ python3 - "$commit_sha" <<'PY'
 from pathlib import Path
 import sys
 path = Path("docs/demos/gate2-compose-stopwatch.md")
-path.write_text(path.read_text().replace("__COMMIT_SHA__", sys.argv[1]))
+path.write_text(path.read_text().replace("__COMMIT_SHA__", sys.argv[1]).replace("__COMMIT_SHORT__", sys.argv[1][:12]))
 PY
 echo "fixture outside wrapper runtime executed"
 "#,
@@ -4307,6 +4385,15 @@ fn current_head() -> String {
         );
     }
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+fn quickstart_release_id() -> String {
+    let head = current_head();
+    quickstart_release_id_for(&head)
+}
+
+fn quickstart_release_id_for(commit_sha: &str) -> String {
+    format!("gate2-{}-1780000000-12345", &commit_sha[..12])
 }
 
 fn tempdir(context: &str) -> TempDir {

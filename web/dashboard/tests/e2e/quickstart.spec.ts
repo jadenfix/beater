@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 
 test("renders the five-line stock OTLP quickstart trace in a browser", async ({ page }) => {
   const traceId = process.env.BEATER_E2E_QUICKSTART_TRACE_ID;
-  await page.goto("/?tenant=demo&project=demo&environment=local&kind=llm.call&model=gpt-quickstart");
+  const release = process.env.BEATER_E2E_QUICKSTART_RELEASE;
+  const releaseParam = release ? `&release=${encodeURIComponent(release)}` : "";
+  await page.goto(`/?tenant=demo&project=demo&environment=local&kind=llm.call&model=gpt-quickstart${releaseParam}`);
 
   await expect(page.getByRole("heading", { name: "Agent Trace Debugger" })).toBeVisible();
   const traceList = page.getByLabel("Traces");
