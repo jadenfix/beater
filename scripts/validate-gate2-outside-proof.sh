@@ -416,6 +416,17 @@ def require_terminal_excerpt(value: str, quickstart_url: str, all_kind_url: str)
             fail(f"Terminal output excerpt must include {description}: {snippet}")
 
 
+def require_compose_logs_saved(value: str) -> None:
+    normalized = value.lower()
+    if (
+        not value
+        or normalized in {"not saved", "none", "n/a", "na"}
+        or normalized.startswith("not saved")
+        or "not saved" in normalized
+    ):
+        fail("`docker compose` logs saved must identify saved logs for Gate 2 evidence")
+
+
 def require_default_dashboard_url(name: str, value: str, trace_id: str) -> None:
     parsed = urlparse(value)
     if parsed.scheme != "http" or parsed.netloc != "127.0.0.1:3000":
@@ -1347,6 +1358,7 @@ all_kind_url = field_value("All-kind dashboard URL")
 require_default_dashboard_url("Quickstart dashboard URL", quickstart_url, quickstart_trace_id)
 require_default_dashboard_url("All-kind dashboard URL", all_kind_url, all_kind_trace_id)
 require_terminal_excerpt(field_value("Terminal output excerpt"), quickstart_url, all_kind_url)
+require_compose_logs_saved(field_value("`docker compose` logs saved"))
 require_runner_observation(
     "Runner llm.call observation",
     field_value("Runner llm.call observation"),

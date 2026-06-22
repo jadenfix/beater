@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import selectors
 import shutil
 import socket
@@ -43,6 +44,25 @@ MANUAL_CHECKPOINT_MARKER = "Manual outside-run checkpoint:"
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+def field_value_from(path: Path, name: str) -> str:
+    text = path.read_text()
+    matches = re.findall(rf"^- {re.escape(name)}:[ \t]*(.*)$", text, re.MULTILINE)
+    if len(matches) != 1:
+        raise SystemExit(f"{path} must contain exactly one field: {name}")
+    return matches[0].strip().strip("`").strip()
+
+
+def diagnostic_terminal_excerpt(clone_dir: Path) -> str:
+    stopwatch_path = clone_dir / "docs/demos/gate2-compose-stopwatch.md"
+    quickstart_dashboard = field_value_from(stopwatch_path, "Quickstart dashboard")
+    all_kind_dashboard = field_value_from(stopwatch_path, "All-kind dashboard")
+    return (
+        "Gate 2 compose stopwatch passed; Browser recording: passed; "
+        f"Quickstart dashboard: {quickstart_dashboard}; "
+        f"All-kind dashboard: {all_kind_dashboard}"
+    )
 
 
 def run(
@@ -593,8 +613,9 @@ def cleanup_cloned_compose(clone_dir: Path) -> None:
     cleanup_stopwatch_compose(clone_dir, fatal=False)
 
 
-def run_generated_proof_check(clone_dir: Path) -> None:
+def run_generated_proof_check(clone_dir: Path, compose_logs_path: Path) -> None:
     proof_path = "docs/demos/gate2-public-handoff-diagnostic-proof.md"
+    compose_logs_rel = compose_logs_path.relative_to(clone_dir).as_posix()
     print(
         "Validating generated Gate 2 proof from full-run artifacts "
         "(diagnostic only; not outside-person evidence)."
@@ -626,6 +647,10 @@ def run_generated_proof_check(clone_dir: Path) -> None:
                 "outside-person evidence; observed run -> turn -> step -> tool "
                 "-> MCP nesting"
             ),
+            "--terminal-output-excerpt",
+            diagnostic_terminal_excerpt(clone_dir),
+            "--compose-logs-saved",
+            compose_logs_rel,
             "--preflight-status",
             "passed",
             "--diagnostic-report",
@@ -655,10 +680,12 @@ def run_cloned_full_run(
             "Auto-confirming the manual quickstart checkpoint for maintainer "
             "diagnostic full-run only; this is not outside-person evidence."
         )
-        run_with_manual_checkpoint_confirmation(
+        full_run_output = run_with_manual_checkpoint_confirmation(
             ["scripts/gate2-outside-run.sh"], cwd=clone_dir, env=env
         )
-        run_generated_proof_check(clone_dir)
+        compose_logs_path = clone_dir / "docs/demos/gate2-public-handoff-diagnostic-compose.log"
+        compose_logs_path.write_text(full_run_output)
+        run_generated_proof_check(clone_dir, compose_logs_path)
     finally:
         cleanup_cloned_compose(clone_dir)
 

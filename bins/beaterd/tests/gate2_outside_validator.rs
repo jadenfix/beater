@@ -27,6 +27,14 @@ const CANONICAL_OUTSIDE_COMMAND: &str = r#"bash -lc 'curl -fsSL https://raw.gith
 const DRAFT_VALID: &str = "Gate 2 outside-person proof draft is internally consistent";
 const CLOSURE_VALID: &str = "Gate 2 outside-person proof is complete and valid";
 
+fn terminal_output_excerpt() -> String {
+    format!(
+        "Gate 2 compose stopwatch passed; Browser recording: passed; \
+         Quickstart dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={QUICKSTART_TRACE}; \
+         All-kind dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={ALL_KIND_TRACE}"
+    )
+}
+
 #[test]
 fn gate2_outside_validator_allows_pending_template_with_allow_pending() {
     let output = run_default_validator(&["--allow-pending"]);
@@ -86,6 +94,8 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     assert!(!readme.contains("`python3` is required afterward"));
     assert!(readme.contains("--llm-observation"));
     assert!(readme.contains("--waterfall-observation"));
+    assert!(readme.contains("--terminal-output-excerpt"));
+    assert!(readme.contains("--compose-logs-saved"));
     assert!(readme.contains("Do not leave placeholder values such as `...`"));
     assert!(readme.contains("uncommitted non-evidence worktree changes"));
     assert!(readme.contains(r#"--runner-name "Jane Outside Runner""#));
@@ -112,6 +122,8 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     assert!(!proof_template.contains("http://127.0.0.1:3000/..."));
     assert!(proof_template.contains("--llm-observation"));
     assert!(proof_template.contains("--waterfall-observation"));
+    assert!(proof_template.contains("--terminal-output-excerpt"));
+    assert!(proof_template.contains("--compose-logs-saved"));
     assert!(proof_template.contains("placeholder values such as `...`"));
     assert!(proof_template.contains(r#"--runner-name "Jane Outside Runner""#));
     assert!(
@@ -372,6 +384,61 @@ fn gate2_outside_generator_requires_runner_observations() {
 }
 
 #[test]
+fn gate2_outside_generator_requires_terminal_excerpt() {
+    let fixture = ValidatorFixture::new();
+    let generated = fixture
+        .dir
+        .path()
+        .join("missing-terminal-excerpt-generated-proof.md");
+
+    let output = run_generator_without_terminal_excerpt(&fixture.stopwatch_path, &generated);
+
+    assert_failure(output, "--terminal-output-excerpt must be provided");
+    assert!(
+        !generated.exists(),
+        "generator must not write completed proof without terminal excerpt evidence"
+    );
+}
+
+#[test]
+fn gate2_outside_generator_requires_compose_logs_saved() {
+    let fixture = ValidatorFixture::new();
+    let generated = fixture
+        .dir
+        .path()
+        .join("missing-compose-logs-generated-proof.md");
+
+    let output = run_generator_without_compose_logs_saved(&fixture.stopwatch_path, &generated);
+
+    assert_failure(output, "--compose-logs-saved must be provided");
+    assert!(
+        !generated.exists(),
+        "generator must not write completed proof without compose log evidence"
+    );
+}
+
+#[test]
+fn gate2_outside_generator_rejects_unsaved_compose_logs() {
+    let fixture = ValidatorFixture::new();
+    let generated = fixture
+        .dir
+        .path()
+        .join("unsaved-compose-logs-generated-proof.md");
+
+    let output = run_generator_with_compose_logs_saved(
+        &fixture.stopwatch_path,
+        &generated,
+        "not saved; stopwatch proof embeds compose image output",
+    );
+
+    assert_failure(output, "--compose-logs-saved must identify saved logs");
+    assert!(
+        !generated.exists(),
+        "generator must not write completed proof with unsaved compose logs"
+    );
+}
+
+#[test]
 fn gate2_outside_generator_rejects_placeholder_runner_identity() {
     let fixture = ValidatorFixture::new();
     let generated = fixture
@@ -480,6 +547,26 @@ fn gate2_outside_generator_rejects_duplicate_source_field_without_writing() {
     assert!(
         !generated.exists(),
         "generator must not write proof from duplicate source fields"
+    );
+}
+
+#[test]
+fn gate2_outside_generator_rejects_pending_regeneration_stopwatch() {
+    let generated_dir = tempdir("create pending-regeneration generator output dir");
+    let generated = generated_dir.path().join("pending-regeneration-proof.md");
+
+    let output = run_generator(
+        &repo_root().join("docs/demos/gate2-compose-stopwatch.md"),
+        &generated,
+    );
+
+    assert_failure(
+        output,
+        "Browser recording in docs/demos/gate2-compose-stopwatch.md must be 'passed'",
+    );
+    assert!(
+        !generated.exists(),
+        "generator must not write completed proof from stale stopwatch evidence"
     );
 }
 
@@ -2736,6 +2823,23 @@ fn gate2_outside_validator_rejects_weak_terminal_excerpt() {
 }
 
 #[test]
+fn gate2_outside_validator_rejects_unsaved_compose_logs() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.proof_path,
+        "- `docker compose` logs saved: temp fixture",
+        "- `docker compose` logs saved: not saved; stopwatch proof embeds compose image output",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "`docker compose` logs saved must identify saved logs for Gate 2 evidence",
+    );
+}
+
+#[test]
 fn gate2_outside_validator_rejects_weak_llm_observation() {
     let fixture = ValidatorFixture::new();
     replace(
@@ -3566,6 +3670,10 @@ fn run_generator_without_fake_ffprobe(stopwatch_path: &Path, output_path: &Path)
         .arg(LLM_OBSERVATION)
         .arg("--waterfall-observation")
         .arg(WATERFALL_OBSERVATION)
+        .arg("--terminal-output-excerpt")
+        .arg(terminal_output_excerpt())
+        .arg("--compose-logs-saved")
+        .arg("temp fixture")
         .env("PATH", path_with_isolated_tempdir(&path_dir));
     command
         .output()
@@ -3580,6 +3688,8 @@ fn run_generator_with_runner_name(
     run_generator_with_options_and_runner(
         stopwatch_path,
         output_path,
+        true,
+        true,
         true,
         true,
         true,
@@ -3610,6 +3720,10 @@ fn run_generator_with_prior_exposure(
         .arg(LLM_OBSERVATION)
         .arg("--waterfall-observation")
         .arg(WATERFALL_OBSERVATION)
+        .arg("--terminal-output-excerpt")
+        .arg(terminal_output_excerpt())
+        .arg("--compose-logs-saved")
+        .arg("temp fixture")
         .env("PATH", path_with_tempdir(&ffprobe));
     command.output().unwrap_or_else(|err| {
         panic!("run Gate 2 outside proof generator with prior exposure: {err}")
@@ -3633,6 +3747,10 @@ fn run_generator_with_date(stopwatch_path: &Path, output_path: &Path, date: &str
         .arg(LLM_OBSERVATION)
         .arg("--waterfall-observation")
         .arg(WATERFALL_OBSERVATION)
+        .arg("--terminal-output-excerpt")
+        .arg(terminal_output_excerpt())
+        .arg("--compose-logs-saved")
+        .arg("temp fixture")
         .arg("--date")
         .arg(date)
         .env("PATH", path_with_tempdir(&ffprobe));
@@ -3648,12 +3766,73 @@ fn run_generator_with_options(
     include_network_notes: bool,
     include_observations: bool,
 ) -> Output {
+    run_generator_with_evidence_options(
+        stopwatch_path,
+        output_path,
+        attest,
+        include_network_notes,
+        include_observations,
+        true,
+        true,
+    )
+}
+
+fn run_generator_without_terminal_excerpt(stopwatch_path: &Path, output_path: &Path) -> Output {
+    run_generator_with_evidence_options(stopwatch_path, output_path, true, true, true, false, true)
+}
+
+fn run_generator_without_compose_logs_saved(stopwatch_path: &Path, output_path: &Path) -> Output {
+    run_generator_with_evidence_options(stopwatch_path, output_path, true, true, true, true, false)
+}
+
+fn run_generator_with_compose_logs_saved(
+    stopwatch_path: &Path,
+    output_path: &Path,
+    compose_logs_saved: &str,
+) -> Output {
+    let ffprobe =
+        fake_ffprobe_dir("#!/bin/sh\nprintf 'codec_type=video\\n'\nprintf 'duration=12.50\\n'\n");
+    let mut command = generator_command(
+        stopwatch_path,
+        output_path,
+        "Validator Fixture Runner",
+        "Chromium",
+    );
+    command
+        .arg("--attest-outside-run")
+        .arg("--network-notes")
+        .arg("public docs only")
+        .arg("--llm-observation")
+        .arg(LLM_OBSERVATION)
+        .arg("--waterfall-observation")
+        .arg(WATERFALL_OBSERVATION)
+        .arg("--terminal-output-excerpt")
+        .arg(terminal_output_excerpt())
+        .arg("--compose-logs-saved")
+        .arg(compose_logs_saved)
+        .env("PATH", path_with_tempdir(&ffprobe));
+    command
+        .output()
+        .unwrap_or_else(|err| panic!("run Gate 2 outside proof generator with compose logs: {err}"))
+}
+
+fn run_generator_with_evidence_options(
+    stopwatch_path: &Path,
+    output_path: &Path,
+    attest: bool,
+    include_network_notes: bool,
+    include_observations: bool,
+    include_terminal_excerpt: bool,
+    include_compose_logs_saved: bool,
+) -> Output {
     run_generator_with_options_and_runner(
         stopwatch_path,
         output_path,
         attest,
         include_network_notes,
         include_observations,
+        include_terminal_excerpt,
+        include_compose_logs_saved,
         "Validator Fixture Runner",
         "Chromium",
     )
@@ -3665,6 +3844,8 @@ fn run_generator_with_options_and_runner(
     attest: bool,
     include_network_notes: bool,
     include_observations: bool,
+    include_terminal_excerpt: bool,
+    include_compose_logs_saved: bool,
     runner_name: &str,
     browser: &str,
 ) -> Output {
@@ -3684,6 +3865,14 @@ fn run_generator_with_options_and_runner(
             .arg(LLM_OBSERVATION)
             .arg("--waterfall-observation")
             .arg(WATERFALL_OBSERVATION);
+    }
+    if include_terminal_excerpt {
+        command
+            .arg("--terminal-output-excerpt")
+            .arg(terminal_output_excerpt());
+    }
+    if include_compose_logs_saved {
+        command.arg("--compose-logs-saved").arg("temp fixture");
     }
     command
         .output()
@@ -3732,8 +3921,6 @@ fn generator_command_with_prior_exposure(
         .arg(browser)
         .arg("--preflight-status")
         .arg("passed")
-        .arg("--compose-logs-saved")
-        .arg("temp fixture")
         .arg("--failure-notes")
         .arg("none")
         .arg("--runner-notes")

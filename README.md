@@ -352,9 +352,14 @@ as the required evidence template for that run. After the outside runner has
 completed the stopwatch command, generate the proof from the stopwatch artifact.
 Before running the command, replace every identity and environment example below
 with the runner's actual values. Do not leave placeholder values such as `...`;
-the generator and validator reject unresolved evidence.
+the generator and validator reject unresolved evidence. Save the outside-run
+terminal transcript or compose logs, then pass the saved artifact path or
+immutable CI log URL with `--compose-logs-saved`.
 
 ```bash
+quickstart_dashboard="$(sed -n 's/^- Quickstart dashboard: //p' docs/demos/gate2-compose-stopwatch.md)"
+all_kind_dashboard="$(sed -n 's/^- All-kind dashboard: //p' docs/demos/gate2-compose-stopwatch.md)"
+
 scripts/generate-gate2-outside-proof.py \
   --runner-name "Jane Outside Runner" \
   --relationship "external evaluator; no Beater project role" \
@@ -364,6 +369,8 @@ scripts/generate-gate2-outside-proof.py \
   --network-notes "home Wi-Fi; no VPN" \
   --llm-observation "clicked llm.call and saw prompt, completion, model, token breakdown, cost, and latency" \
   --waterfall-observation "opened all-kind trace and saw run -> turn -> step -> tool -> MCP nesting" \
+  --terminal-output-excerpt "Gate 2 compose stopwatch passed; Browser recording: passed; Quickstart dashboard: $quickstart_dashboard; All-kind dashboard: $all_kind_dashboard" \
+  --compose-logs-saved "docs/demos/gate2-outside-compose.log" \
   --preflight-status "passed" \
   --attest-outside-run
 ```

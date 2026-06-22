@@ -757,9 +757,10 @@ Outside-run next steps:
   3. Confirm prompt, completion, model, token breakdown, cost, and latency are visible.
   4. Open ${all_kind_dashboard_url:-not requested} in a normal browser for the all-kind waterfall.
   5. Confirm run -> turn -> step -> tool -> MCP nesting is visible.
-  6. Generate the completed proof with scripts/generate-gate2-outside-proof.py.
-  7. Validate it with scripts/validate-gate2-outside-proof.sh.
-  8. After evidence is captured, clean up with:
+  6. Save the terminal transcript or docker compose logs as evidence.
+  7. Generate the completed proof with scripts/generate-gate2-outside-proof.py.
+  8. Validate it with scripts/validate-gate2-outside-proof.sh.
+  9. After evidence is captured, clean up with:
        docker compose -f docker-compose.prebuilt.yml -p $project down -v --remove-orphans
 EOF
 )"

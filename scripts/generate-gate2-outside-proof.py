@@ -74,6 +74,38 @@ def field_value(source_text, name, source_name):
     return value
 
 
+def require_source_field_equal(source_text, source_name, name, expected):
+    value = field_value(source_text, name, source_name)
+    if value != expected:
+        raise SystemExit(
+            f"{name} in {source_name} must be {expected!r} before generating proof; "
+            f"got {value!r}"
+        )
+    return value
+
+
+def require_source_sha256(source_text, source_name, name):
+    value = field_value(source_text, name, source_name)
+    if not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise SystemExit(
+            f"{name} in {source_name} must be a lowercase 64-character sha256 "
+            "before generating proof"
+        )
+    return value
+
+
+def require_compose_logs_saved_arg(value):
+    cleaned = require_meaningful_arg("--compose-logs-saved", value)
+    normalized = cleaned.lower()
+    if (
+        normalized in {"not saved", "none", "n/a", "na"}
+        or normalized.startswith("not saved")
+        or "not saved" in normalized
+    ):
+        raise SystemExit("--compose-logs-saved must identify saved logs")
+    return cleaned
+
+
 def timestamp_date(source_text, name, source_name):
     value = field_value(source_text, name, source_name)
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value):
@@ -134,20 +166,21 @@ def require_pending_or_force(output_path, force):
 
 def build_proof(args, stopwatch_path, stopwatch_text):
     stopwatch_rel = relative_or_absolute(stopwatch_path)
+    require_source_field_equal(
+        stopwatch_text, stopwatch_rel, "Browser recording", "passed"
+    )
     recording = field_value(stopwatch_text, "Browser recording artifact", stopwatch_rel)
     notes = field_value(stopwatch_text, "Browser recording notes", stopwatch_rel)
+    recording_sha = require_source_sha256(
+        stopwatch_text, stopwatch_rel, "Browser recording SHA256"
+    )
     quickstart_dashboard_url = field_value(stopwatch_text, "Quickstart dashboard", stopwatch_rel)
     all_kind_dashboard_url = field_value(stopwatch_text, "All-kind dashboard", stopwatch_rel)
 
-    terminal_excerpt = (
-        args.terminal_output_excerpt
-        or (
-            "Gate 2 compose stopwatch passed; Browser recording: passed; "
-            f"Quickstart dashboard: {quickstart_dashboard_url}; "
-            f"All-kind dashboard: {all_kind_dashboard_url}"
-        )
+    terminal_excerpt = require_meaningful_arg(
+        "--terminal-output-excerpt", args.terminal_output_excerpt
     )
-    logs_saved = args.compose_logs_saved or "not saved; stopwatch proof embeds compose image output"
+    logs_saved = require_compose_logs_saved_arg(args.compose_logs_saved)
     failure_notes = args.failure_notes or "none"
     runner_notes = args.runner_notes or "No extra runner notes."
     network_notes = require_meaningful_arg("--network-notes", args.network_notes)
@@ -271,7 +304,7 @@ bash -lc 'curl -fsSL https://raw.githubusercontent.com/jadenfix/beater/main/scri
 - Stopwatch proof file: {stopwatch_rel}
 - Screen recording: `{recording}`
 - Screen recording notes: `{notes}`
-- Screen recording SHA256: {field_value(stopwatch_text, "Browser recording SHA256", stopwatch_rel)}
+- Screen recording SHA256: {recording_sha}
 - Terminal output excerpt: {terminal_excerpt}
 - Runner llm.call observation: {llm_observation}
 - Runner waterfall observation: {waterfall_observation}
