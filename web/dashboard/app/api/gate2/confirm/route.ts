@@ -102,8 +102,10 @@ function isClickProof(value: unknown): value is ConfirmationRequest["click"] {
     /^[0-9a-f]{32}$/.test(record.nonce) &&
     Number.isInteger(record.capturedAtMs) &&
     record.isTrusted === true &&
-    finiteNumber(record.button) &&
-    finiteNumber(record.detail) &&
+    record.button === 0 &&
+    typeof record.detail === "number" &&
+    Number.isInteger(record.detail) &&
+    record.detail >= 1 &&
     finiteNumber(record.clientX) &&
     finiteNumber(record.clientY) &&
     finiteNumber(record.screenX) &&

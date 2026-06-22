@@ -1369,6 +1369,20 @@ button:hover {
   letter-spacing: 0;
 }
 
+.confirmation-code[data-confirmation-status="hidden"] dd,
+.confirmation-code[data-confirmation-status="loading"] dd {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.confirmation-code[data-confirmation-status="ready"] dd {
+  color: var(--accent-ink);
+}
+
+.confirmation-code[data-confirmation-status="error"] dd {
+  color: var(--red);
+}
+
 dd {
   color: var(--ink);
   font-size: 13px;

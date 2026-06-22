@@ -105,12 +105,18 @@ export function Gate2ConfirmationCode({
     return () => window.removeEventListener(CLICK_EVENT, handleSpanClick);
   }, [key, loadCode, spanId, traceId]);
 
-  if (status === "hidden") return null;
-
   return (
     <div className="confirmation-code" data-confirmation-status={status}>
       <dt>Confirm</dt>
-      <dd>{status === "ready" && code ? code : status === "error" ? "unavailable" : "loading"}</dd>
+      <dd aria-live="polite">
+        {status === "ready" && code
+          ? code
+          : status === "error"
+            ? "unavailable"
+            : status === "loading"
+              ? "loading"
+              : "pending"}
+      </dd>
     </div>
   );
 }
@@ -121,6 +127,7 @@ function storageKey(traceId: string, spanId: string): string {
 
 function clickProof(event: MouseEvent): BrowserClickProof | null {
   if (!event.isTrusted) return null;
+  if (event.button !== 0 || event.detail < 1) return null;
   return {
     nonce: randomHex(16),
     capturedAtMs: Date.now(),
@@ -149,18 +156,30 @@ function readStoredClick(key: string): BrowserClickProof | null {
       typeof parsed.nonce === "string" &&
       /^[0-9a-f]{32}$/.test(parsed.nonce) &&
       typeof parsed.capturedAtMs === "number" &&
-      parsed.isTrusted === true
+      parsed.isTrusted === true &&
+      parsed.button === 0 &&
+      typeof parsed.detail === "number" &&
+      Number.isInteger(parsed.detail) &&
+      parsed.detail >= 1 &&
+      typeof parsed.clientX === "number" &&
+      Number.isFinite(parsed.clientX) &&
+      typeof parsed.clientY === "number" &&
+      Number.isFinite(parsed.clientY) &&
+      typeof parsed.screenX === "number" &&
+      Number.isFinite(parsed.screenX) &&
+      typeof parsed.screenY === "number" &&
+      Number.isFinite(parsed.screenY)
     ) {
       return {
         nonce: parsed.nonce,
         capturedAtMs: parsed.capturedAtMs,
         isTrusted: true,
-        button: Number(parsed.button ?? 0),
-        detail: Number(parsed.detail ?? 0),
-        clientX: Number(parsed.clientX ?? 0),
-        clientY: Number(parsed.clientY ?? 0),
-        screenX: Number(parsed.screenX ?? 0),
-        screenY: Number(parsed.screenY ?? 0)
+        button: parsed.button,
+        detail: parsed.detail,
+        clientX: parsed.clientX,
+        clientY: parsed.clientY,
+        screenX: parsed.screenX,
+        screenY: parsed.screenY
       };
     }
   } catch {

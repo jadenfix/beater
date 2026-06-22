@@ -96,7 +96,8 @@ function gate2ConfirmBody({
   traceId = "00000000000000000000000000000000",
   spanId = "0000000000000000",
   nonce = "abcdef0123456789abcdef0123456789",
-  capturedAtMs = Date.now()
+  capturedAtMs = Date.now(),
+  click = {}
 } = {}) {
   return {
     traceId,
@@ -110,7 +111,8 @@ function gate2ConfirmBody({
       clientX: 10,
       clientY: 20,
       screenX: 30,
-      screenY: 40
+      screenY: 40,
+      ...click
     }
   };
 }
@@ -746,12 +748,15 @@ test("gate2 confirmation code is fetched only after a browser span click", () =>
   const component = readFileSync(join(root, "app/Gate2Confirmation.tsx"), "utf8");
   assert.match(component, /"use client"/);
   assert.match(component, /event\.isTrusted/);
+  assert.match(component, /event\.button !== 0/);
+  assert.match(component, /event\.detail < 1/);
   assert.match(component, /randomHex\(16\)/);
   assert.match(component, /sessionStorage\.setItem\(storageKey\(traceId, spanId\), JSON\.stringify\(click\)\)/);
   assert.match(component, /new CustomEvent<ClickDetail>\(CLICK_EVENT/);
   assert.match(component, /fetch\("\/api\/gate2\/confirm"/);
   assert.match(component, /requestedNonce/);
-  assert.match(component, /if \(status === "hidden"\) return null/);
+  assert.match(component, /aria-live="polite"/);
+  assert.match(component, /: "pending"/);
   assert.match(component, />Confirm</);
 
   const route = readFileSync(join(root, "app/api/gate2/confirm/route.ts"), "utf8");
@@ -762,6 +767,12 @@ test("gate2 confirmation code is fetched only after a browser span click", () =>
   assert.match(route, /sec-fetch-site/);
   assert.match(route, /USED_NONCES/);
   assert.match(route, /browser click proof expired/);
+  assert.match(route, /record\.button === 0/);
+  assert.match(route, /record\.detail >= 1/);
+  const css = readFileSync(join(root, "app/globals.css"), "utf8");
+  assert.match(css, /\.confirmation-code\[data-confirmation-status="hidden"\] dd/);
+  assert.match(css, /\.confirmation-code\[data-confirmation-status="ready"\] dd/);
+  assert.match(css, /\.confirmation-code\[data-confirmation-status="error"\] dd/);
   const proxy = readFileSync(join(root, "proxy.ts"), "utf8");
   assert.match(proxy, /export function proxy/);
   assert.match(proxy, /beater_gate2_session/);
@@ -795,6 +806,16 @@ test("gate2 confirmation route rejects non-browser requests and nonce replay", a
         body: { error: "traceId, spanId, and browser click proof are required" }
       }
     );
+    const keyboardClickBody = gate2ConfirmBody({ click: { detail: 0 } });
+    assert.deepEqual(await responseJson(await POST(gate2ConfirmRequest({ body: keyboardClickBody }))), {
+      status: 400,
+      body: { error: "traceId, spanId, and browser click proof are required" }
+    });
+    const nonPrimaryClickBody = gate2ConfirmBody({ click: { button: 1 } });
+    assert.deepEqual(await responseJson(await POST(gate2ConfirmRequest({ body: nonPrimaryClickBody }))), {
+      status: 400,
+      body: { error: "traceId, spanId, and browser click proof are required" }
+    });
 
     const body = gate2ConfirmBody();
     const expectedCode = createHash("sha256")
