@@ -111,12 +111,12 @@ async function recordQuickstartFlow(page) {
     .waitFor();
   await detail
     .locator(".io")
-    .filter({ hasText: "Input" })
+    .filter({ hasText: "Prompt" })
     .getByText("hello from stock OpenTelemetry")
     .waitFor();
   await detail
     .locator(".io")
-    .filter({ hasText: "Output" })
+    .filter({ hasText: "Completion" })
     .getByText("hello from Beater")
     .waitFor();
   await page.waitForTimeout(reviewDwellMs);
@@ -161,12 +161,12 @@ async function recordAllKindFlow(page) {
     .waitFor();
   await detail
     .locator(".io")
-    .filter({ hasText: "Input" })
+    .filter({ hasText: "Prompt" })
     .getByText("Can this order be refunded after 31 days?")
     .waitFor();
   await detail
     .locator(".io")
-    .filter({ hasText: "Output" })
+    .filter({ hasText: "Completion" })
     .getByText("Escalate because the order is outside the standard window.")
     .waitFor();
   await page.waitForTimeout(reviewDwellMs);

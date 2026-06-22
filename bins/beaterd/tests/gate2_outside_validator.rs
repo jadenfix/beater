@@ -2529,6 +2529,30 @@ fn gate2_outside_validator_accepts_evidence_only_ancestor_closure_repo() {
 }
 
 #[test]
+fn gate2_outside_validator_rejects_recording_from_tested_commit() {
+    let fixture = write_validator_closure_fixture_repo_with_preseeded_artifacts(true, false);
+
+    let output = run_default_validator_in_repo(fixture.path());
+
+    assert_failure(
+        output,
+        "Screen recording must be regenerated after tested Commit SHA",
+    );
+}
+
+#[test]
+fn gate2_outside_validator_rejects_recording_notes_from_tested_commit() {
+    let fixture = write_validator_closure_fixture_repo_with_preseeded_artifacts(false, true);
+
+    let output = run_default_validator_in_repo(fixture.path());
+
+    assert_failure(
+        output,
+        "Screen recording notes must be regenerated after tested Commit SHA",
+    );
+}
+
+#[test]
 fn gate2_outside_validator_rejects_registry_fixture_env_without_test_marker() {
     let fixture = write_validator_closure_fixture_repo_with_registry_marker(false);
 
@@ -2811,6 +2835,23 @@ fn gate2_outside_validator_rejects_non_compose_recording_notes() {
     assert_failure(
         output,
         "screen recording notes Recording mode must be compose for outside-person proof",
+    );
+}
+
+#[test]
+fn gate2_outside_validator_rejects_recording_notes_without_outside_wrapper_source() {
+    let fixture = ValidatorFixture::new();
+    replace(
+        &fixture.notes_path,
+        "\nThis recording was generated during the outside-person stopwatch path. The completed proof file must pair it with the runner attestation, manual quickstart confirmation, and runner observations.\n",
+        "\n",
+    );
+
+    let output = run_validator(&fixture.proof_path);
+
+    assert_failure(
+        output,
+        "screen recording notes must say the recording was generated during the outside-person stopwatch path",
     );
 }
 
@@ -3391,6 +3432,8 @@ fn recording_notes(recording_name: &str) -> String {
 - Quickstart trace: `{QUICKSTART_TRACE}`
 - All-kind trace: `{ALL_KIND_TRACE}`
 - Shows: open dashboard -> click five-line trace -> click `llm.call` span -> read prompt, completion, model, token breakdown, cost, and latency -> inspect run -> turn -> step -> tool -> MCP waterfall.
+
+This recording was generated during the outside-person stopwatch path. The completed proof file must pair it with the runner attestation, manual quickstart confirmation, and runner observations.
 "#
     )
 }
@@ -4298,6 +4341,21 @@ fn write_validator_closure_fixture_repo() -> TempDir {
 fn write_validator_closure_fixture_repo_with_registry_marker(
     include_registry_marker: bool,
 ) -> TempDir {
+    write_validator_closure_fixture_repo_with_options(include_registry_marker, false, false)
+}
+
+fn write_validator_closure_fixture_repo_with_preseeded_artifacts(
+    recording: bool,
+    notes: bool,
+) -> TempDir {
+    write_validator_closure_fixture_repo_with_options(true, recording, notes)
+}
+
+fn write_validator_closure_fixture_repo_with_options(
+    include_registry_marker: bool,
+    preseed_recording: bool,
+    preseed_notes: bool,
+) -> TempDir {
     let root = repo_root();
     let fixture = tempdir("create validator closure fixture repo");
     copy_fixture_file(
@@ -4311,6 +4369,23 @@ fn write_validator_closure_fixture_repo_with_registry_marker(
             "synthetic validator fixture only\n",
         )
         .unwrap_or_else(|err| panic!("write registry fixture marker: {err}"));
+    }
+    let artifact_rel = "docs/demos/gate2-closure-fixture";
+    let artifact_dir = fixture.path().join(artifact_rel);
+    if preseed_recording || preseed_notes {
+        fs::create_dir_all(&artifact_dir)
+            .unwrap_or_else(|err| panic!("create preseeded validator closure artifact dir: {err}"));
+    }
+    if preseed_recording {
+        fs::write(artifact_dir.join("recording.webm"), recording_bytes())
+            .unwrap_or_else(|err| panic!("write preseeded validator closure recording: {err}"));
+    }
+    if preseed_notes {
+        fs::write(
+            artifact_dir.join("recording-notes.md"),
+            recording_notes("recording.webm"),
+        )
+        .unwrap_or_else(|err| panic!("write preseeded validator closure recording notes: {err}"));
     }
 
     git_success(fixture.path(), &["init"]);
@@ -4327,8 +4402,6 @@ fn write_validator_closure_fixture_repo_with_registry_marker(
     let current_repo_sha = current_head();
     let tested_release_id = quickstart_release_id_for(&tested_sha);
     let current_release_id = quickstart_release_id_for(&current_repo_sha);
-    let artifact_rel = "docs/demos/gate2-closure-fixture";
-    let artifact_dir = fixture.path().join(artifact_rel);
     fs::create_dir_all(&artifact_dir)
         .unwrap_or_else(|err| panic!("create validator closure artifact dir: {err}"));
     fs::write(artifact_dir.join("recording.webm"), recording_bytes())
@@ -4412,6 +4485,8 @@ cat > docs/demos/gate2-compose-browser-demo.md <<'EOF_NOTES'
 - Quickstart trace: `11111111111111111111111111111111`
 - All-kind trace: `22222222222222222222222222222222`
 - Shows: open dashboard -> click five-line trace -> click `llm.call` span -> read prompt, completion, model, token breakdown, cost, and latency -> inspect run -> turn -> step -> tool -> MCP waterfall.
+
+This recording was generated during the outside-person stopwatch path. The completed proof file must pair it with the runner attestation, manual quickstart confirmation, and runner observations.
 EOF_NOTES
 commit_sha="$(git rev-parse HEAD)"
 cat > docs/demos/gate2-compose-stopwatch.md <<'EOF_PROOF'

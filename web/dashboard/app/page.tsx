@@ -537,6 +537,7 @@ function SpanDetail({
   const KindGlyph = icon.Icon;
   const artifacts = spanArtifactRefs(span);
   const ancestry = spanAncestry(span, spans);
+  const ioLabels = spanIoLabels(span.kind);
   return (
     <div className="detail-stack">
       <div className="span-identity">
@@ -615,8 +616,8 @@ function SpanDetail({
           <span>{hasRedactedIo && !query.unmask ? "redacted" : "captured"}</span>
         </div>
         <div className="io-grid">
-          <IoBlock label="Input" value={io?.input} />
-          <IoBlock label="Output" value={io?.output} />
+          <IoBlock label={ioLabels.input} value={io?.input} />
+          <IoBlock label={ioLabels.output} value={io?.output} />
         </div>
       </section>
       <section className="detail-section" aria-label="Artifact references">
@@ -738,6 +739,11 @@ function IoBlock({ label, value }: { label: string; value: SpanIoResponse["input
       <pre>{body}</pre>
     </div>
   );
+}
+
+function spanIoLabels(kind: string): { input: string; output: string } {
+  if (kind === "llm.call") return { input: "Prompt", output: "Completion" };
+  return { input: "Input", output: "Output" };
 }
 
 function JsonPanel({ label, value }: { label: string; value: unknown }) {

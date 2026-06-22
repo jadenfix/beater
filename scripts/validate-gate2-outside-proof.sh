@@ -71,6 +71,9 @@ OUTSIDE_RUN_ATTESTATION = (
     "step-by-step help beyond public repository instructions, I used a fresh "
     "clone, and I completed the Gate 2 flow unaided."
 )
+OUTSIDE_RECORDING_NOTE = (
+    "This recording was generated during the outside-person stopwatch path."
+)
 DIAGNOSTIC_ATTESTATION = (
     "Diagnostic maintainer full-run auto-confirmed the manual checkpoint; "
     "this is not outside-person evidence and cannot close Gate 2."
@@ -488,6 +491,14 @@ def require_recording_shows_full_flow(notes_text: str) -> None:
         )
 
 
+def require_recording_from_outside_wrapper(notes_text: str) -> None:
+    if OUTSIDE_RECORDING_NOTE not in notes_text:
+        fail(
+            "screen recording notes must say the recording was generated "
+            "during the outside-person stopwatch path"
+        )
+
+
 def require_runner_observation(
     field_name: str, value: str, required_fragments: list[str]
 ) -> None:
@@ -819,6 +830,34 @@ def require_committed_clean_path(path: Path, name: str) -> None:
         return
     if status:
         fail(f"{name} must be committed and clean before Gate 2 closure: {rel}")
+
+
+def require_regenerated_after_tested_commit(path: Path, name: str, commit_sha: str) -> None:
+    if ALLOW_UNTRACKED_ARTIFACTS or diagnostic_mode:
+        return
+    try:
+        rel = path.relative_to(repo).as_posix()
+    except ValueError:
+        fail(f"{name} must be inside the repository")
+        return
+    current_head = git_head()
+    if not current_head:
+        fail(f"could not inspect HEAD while checking {name} freshness")
+        return
+    if commit_sha == current_head:
+        fail(f"{name} must be committed after the tested Commit SHA: {rel}")
+        return
+    try:
+        tested_blob = git_output(["rev-parse", f"{commit_sha}:{rel}"])
+    except (OSError, subprocess.CalledProcessError):
+        return
+    try:
+        current_blob = git_output(["rev-parse", f"HEAD:{rel}"])
+    except (OSError, subprocess.CalledProcessError):
+        fail(f"could not inspect committed blob for {name}: {rel}")
+        return
+    if tested_blob == current_blob:
+        fail(f"{name} must be regenerated after tested Commit SHA: {rel}")
 
 
 def validated_artifact_path(value: str, name: str, missing_message: str) -> Optional[Path]:
@@ -1159,6 +1198,10 @@ if worktree_clean != "yes":
 commit_sha = field_value("Commit SHA")
 require_current_or_evidence_only_commit(commit_sha)
 require_no_dirty_non_evidence_worktree()
+if proof_abs.resolve() == default_proof_abs.resolve():
+    require_regenerated_after_tested_commit(
+        proof_abs, "Outside-person proof", commit_sha
+    )
 
 api_endpoint = field_value("API endpoint")
 if api_endpoint != DEFAULT_API_ENDPOINT:
@@ -1337,8 +1380,14 @@ notes_path = (
 )
 if recording_path:
     require_committed_clean_path(recording_path, "Screen recording")
+    require_regenerated_after_tested_commit(
+        recording_path, "Screen recording", commit_sha
+    )
 if notes_path:
     require_committed_clean_path(notes_path, "Screen recording notes")
+    require_regenerated_after_tested_commit(
+        notes_path, "Screen recording notes", commit_sha
+    )
 notes_text = read_validated_text(notes_path, "Screen recording notes") if notes_path else ""
 sha = field_value("Screen recording SHA256")
 if sha and not re.fullmatch(r"[0-9a-f]{64}", sha):
@@ -1388,6 +1437,7 @@ if notes_text:
         "screen recording notes all-kind trace", all_kind_trace_id, notes_all_kind_trace
     )
     require_recording_shows_full_flow(notes_text)
+    require_recording_from_outside_wrapper(notes_text)
 
 require_max_300(
     duration_seconds(text, "Time-to-first-trace", "outside-person proof"),
@@ -1412,6 +1462,9 @@ stopwatch_path = (
 )
 if stopwatch_path:
     require_committed_clean_path(stopwatch_path, "Stopwatch proof file")
+    require_regenerated_after_tested_commit(
+        stopwatch_path, "Stopwatch proof file", commit_sha
+    )
 stopwatch_text = ""
 if stopwatch_path:
     stopwatch_text = read_validated_text(stopwatch_path, "Stopwatch proof file")

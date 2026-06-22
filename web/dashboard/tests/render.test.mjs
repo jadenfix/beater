@@ -61,6 +61,11 @@ test("dashboard page exposes the trace inspection surface", () => {
   assert.match(page, /span-track/);
   assert.match(page, /SpanDetail/);
   assert.match(page, /IoBlock/);
+  assert.match(page, /spanIoLabels/);
+  assert.match(page, /kind === "llm\.call"/);
+  assert.match(page, /input: "Prompt", output: "Completion"/);
+  assert.match(page, /label=\{ioLabels\.input\}/);
+  assert.match(page, /label=\{ioLabels\.output\}/);
   assert.doesNotMatch(page, /Detail sections/);
   assert.doesNotMatch(page, /detail-tabs/);
   assert.match(page, /RedactionControls/);
@@ -472,6 +477,8 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   assert.match(recorder, /12 total, 5 prompt, 7 completion/);
   assert.match(recorder, /33 total, 18 prompt, 11 completion, 4 reasoning/);
   assert.match(recorder, /token breakdown/);
+  assert.match(recorder, /filter\(\{ hasText: "Prompt" \}\)/);
+  assert.match(recorder, /filter\(\{ hasText: "Completion" \}\)/);
   assert.match(recorder, /hello from stock OpenTelemetry/);
   assert.match(recorder, /color\/icon-coded all-kind agent waterfall/);
   assert.match(recorder, /gate2-browser-demo\.webm/);

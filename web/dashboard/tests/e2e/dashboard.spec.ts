@@ -143,21 +143,23 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
     detail.getByLabel("Span metrics").locator("div").filter({ hasText: "Latency" })
   ).toContainText(/(?:\d+ ms|\d+\.\d+ s)/);
   await expect(detail).toContainText("USD 0.002500");
-  await expect(detail.getByRole("heading", { name: "Input" })).toBeVisible();
-  await expect(detail.getByRole("heading", { name: "Output" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "Prompt" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "Completion" })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Attributes", exact: true })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Canonical" })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Unmapped" })).toBeVisible();
-  await expect(detail.getByLabel("Input I/O").locator("pre")).toHaveText(
+  await expect(detail.getByLabel("Prompt I/O").locator("pre")).toHaveText(
     "Can this order be refunded after 31 days?"
   );
-  await expect(detail.getByLabel("Output I/O").locator("pre")).toHaveText(
+  await expect(detail.getByLabel("Completion I/O").locator("pre")).toHaveText(
     "Escalate because the order is outside the standard window."
   );
   await expect(detail).toContainText("Can this order be refunded after 31 days?");
   await expect(detail).toContainText("Escalate because the order is outside the standard window.");
 
   await tool.click();
+  await expect(detail.getByRole("heading", { name: "Input" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "Output" })).toBeVisible();
   await expect(detail.getByLabel("Input I/O").locator("pre")).toHaveText(
     '{\n  "order_id": "ord_123"\n}'
   );

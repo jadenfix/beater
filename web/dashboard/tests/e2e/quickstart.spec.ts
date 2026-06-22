@@ -46,6 +46,8 @@ test("renders the five-line stock OTLP quickstart trace in a browser", async ({ 
     detail.getByLabel("Span metrics").locator("div").filter({ hasText: "Latency" })
   ).toContainText(/(?:\d+ ms|\d+\.\d+ s)/);
   await expect(detail).toContainText("USD 0.001200");
+  await expect(detail.getByRole("heading", { name: "Prompt" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "Completion" })).toBeVisible();
   await expect(detail).toContainText("hello from stock OpenTelemetry");
   await expect(detail).toContainText("hello from Beater");
 });
