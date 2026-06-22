@@ -584,7 +584,10 @@ function SpanDetail({
         </div>
         <div>
           <dt>Tokens</dt>
-          <dd>{spanTokenSummary(span)}</dd>
+          <dd className="token-cell">
+            <span className="token-summary">{spanTokenSummary(span)}</span>
+            <TokenBreakdown span={span} />
+          </dd>
         </div>
         <div>
           <dt>Cost</dt>
@@ -636,7 +639,9 @@ function SpanDetail({
         </div>
         <div>
           <dt>Tokens</dt>
-          <dd>{spanTokenSummary(span)}</dd>
+          <dd>
+            <span>{spanTokenSummary(span)}</span>
+          </dd>
         </div>
         <div>
           <dt>Cost</dt>
@@ -686,6 +691,29 @@ function SpanDetail({
         <JsonPanel label="Unmapped" value={span.unmapped_attrs} />
       </section>
     </div>
+  );
+}
+
+function TokenBreakdown({ span }: { span: Pick<CanonicalSpan, "kind" | "tokens"> }) {
+  if (!span.tokens) return null;
+  const inputLabel = span.kind === "llm.call" ? "Prompt" : "Input";
+  const outputLabel = span.kind === "llm.call" ? "Completion" : "Output";
+  const items = [
+    { label: inputLabel, value: span.tokens.input },
+    { label: outputLabel, value: span.tokens.output },
+    { label: "Reasoning", value: span.tokens.reasoning },
+    { label: "Cached", value: span.tokens.cache_read }
+  ];
+
+  return (
+    <span className="token-breakdown" aria-label="Token breakdown">
+      {items.map((item) => (
+        <span className="token-chip" key={item.label}>
+          <b>{item.label}</b>
+          <span>{item.value.toLocaleString("en-US")}</span>
+        </span>
+      ))}
+    </span>
   );
 }
 

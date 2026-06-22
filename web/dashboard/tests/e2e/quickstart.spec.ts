@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 
 function confirmationCode(traceId: string, spanId: string): string {
   const salt = process.env.BEATER_GATE2_CONFIRMATION_SALT ?? "";
@@ -73,6 +74,12 @@ test("renders the five-line stock OTLP quickstart trace in a browser", async ({ 
   await expect(essentials.locator("div").filter({ hasText: "Tokens" })).toContainText(
     "12 total, 5 prompt, 7 completion"
   );
+  await expectTokenBreakdown(essentials.getByLabel("Token breakdown"), [
+    { label: "Prompt", value: "5" },
+    { label: "Completion", value: "7" },
+    { label: "Reasoning", value: "0" },
+    { label: "Cached", value: "0" }
+  ]);
   await expect(essentials.locator("div").filter({ hasText: "Cost" })).toContainText(
     "USD 0.001200"
   );
@@ -94,3 +101,17 @@ test("renders the five-line stock OTLP quickstart trace in a browser", async ({ 
   await expect(detail).toContainText("hello from stock OpenTelemetry");
   await expect(detail).toContainText("hello from Beater");
 });
+
+async function expectTokenBreakdown(
+  breakdown: Locator,
+  expected: { label: string; value: string }[]
+) {
+  await expect(breakdown.locator(".token-chip")).toHaveCount(expected.length);
+  const actual = await breakdown.locator(".token-chip").evaluateAll((chips) =>
+    chips.map((chip) => ({
+      label: chip.querySelector("b")?.textContent?.trim() ?? "",
+      value: chip.querySelector("span")?.textContent?.trim() ?? ""
+    }))
+  );
+  expect(actual).toEqual(expected);
+}

@@ -132,6 +132,12 @@ async function recordQuickstartFlow(page) {
   const detail = page.getByLabel("Span detail");
   await waitForMetric(detail, "Model", "openai/gpt-quickstart");
   await waitForMetric(detail, "Tokens", "12 total, 5 prompt, 7 completion");
+  await waitForTokenBreakdown(detail, [
+    ["Prompt", "5"],
+    ["Completion", "7"],
+    ["Reasoning", "0"],
+    ["Cached", "0"]
+  ]);
   await waitForMetric(detail, "Cost", "USD 0.001200");
   await waitForMetric(detail, "Latency", /(?:\d+ ms|\d+\.\d+ s)/);
   await waitForMetric(
@@ -182,6 +188,12 @@ async function recordAllKindFlow(page) {
   const detail = page.getByLabel("Span detail");
   await waitForMetric(detail, "Model", "openai/gpt-demo");
   await waitForMetric(detail, "Tokens", "33 total, 18 prompt, 11 completion, 4 reasoning");
+  await waitForTokenBreakdown(detail, [
+    ["Prompt", "18"],
+    ["Completion", "11"],
+    ["Reasoning", "4"],
+    ["Cached", "0"]
+  ]);
   await waitForMetric(detail, "Cost", "USD 0.002500");
   await waitForMetric(detail, "Latency", /(?:\d+ ms|\d+\.\d+ s)/);
   await waitForMetric(
@@ -213,6 +225,31 @@ async function waitForMetric(detail, label, value) {
   const groupLabel = label === "Confirm" ? "Selected span essentials" : "Span metrics";
   const row = detail.getByLabel(groupLabel).locator("div").filter({ hasText: label }).first();
   await row.getByText(value).waitFor();
+}
+
+async function waitForTokenBreakdown(detail, expected) {
+  const breakdown = detail.getByLabel("Token breakdown");
+  await breakdown.waitFor();
+  const expectedPairs = expected.map(([label, value]) => ({ label, value }));
+  const deadline = Date.now() + 10_000;
+  let actual = [];
+  while (Date.now() < deadline) {
+    actual = await tokenBreakdownPairs(breakdown);
+    if (JSON.stringify(actual) === JSON.stringify(expectedPairs)) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(
+    `token breakdown mismatch: expected ${JSON.stringify(expectedPairs)}, got ${JSON.stringify(actual)}`
+  );
+}
+
+async function tokenBreakdownPairs(breakdown) {
+  return breakdown.locator(".token-chip").evaluateAll((chips) =>
+    chips.map((chip) => ({
+      label: chip.querySelector("b")?.textContent?.trim() ?? "",
+      value: chip.querySelector("span")?.textContent?.trim() ?? ""
+    }))
+  );
 }
 
 function allKindNotes(videoSha256) {

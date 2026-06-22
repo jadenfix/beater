@@ -146,6 +146,11 @@ test("dashboard page exposes the trace inspection surface", () => {
   assert.match(page, /input \+ output \+ cached \+ reasoning/);
   assert.match(page, /spanTokenTotal/);
   assert.match(page, /spanTokenSummary/);
+  assert.match(page, /TokenBreakdown/);
+  assert.match(page, /aria-label="Token breakdown"/);
+  assert.match(page, /className="token-chip"/);
+  assert.match(page, /label: "Reasoning", value: span\.tokens\.reasoning/);
+  assert.match(page, /label: "Cached", value: span\.tokens\.cache_read/);
   assert.doesNotMatch(page, /label: "AI"/);
   assert.doesNotMatch(page, /label: "Fn"/);
   assert.match(page, /data-label="Spans"/);
@@ -713,6 +718,7 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   assert.match(recorder, /12 total, 5 prompt, 7 completion/);
   assert.match(recorder, /33 total, 18 prompt, 11 completion, 4 reasoning/);
   assert.match(recorder, /token breakdown/);
+  assert.match(recorder, /waitForTokenBreakdown/);
   assert.match(recorder, /filter\(\{ hasText: "Prompt" \}\)/);
   assert.match(recorder, /filter\(\{ hasText: "Completion" \}\)/);
   assert.match(recorder, /hello from stock OpenTelemetry/);

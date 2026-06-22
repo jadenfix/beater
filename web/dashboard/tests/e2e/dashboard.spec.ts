@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 
 test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", async ({
   page
@@ -149,6 +150,12 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
   await expect(essentials.locator("div").filter({ hasText: "Tokens" })).toContainText(
     "33 total, 18 prompt, 11 completion, 4 reasoning"
   );
+  await expectTokenBreakdown(essentials.getByLabel("Token breakdown"), [
+    { label: "Prompt", value: "18" },
+    { label: "Completion", value: "11" },
+    { label: "Reasoning", value: "4" },
+    { label: "Cached", value: "0" }
+  ]);
   await expect(essentials.locator("div").filter({ hasText: "Cost" })).toContainText(
     "USD 0.002500"
   );
@@ -267,6 +274,13 @@ test("keeps the trace console inside the viewport on desktop and mobile", async 
     await page.setViewportSize(viewport);
     await page.goto(`/?tenant=demo&project=demo&environment=local${traceParam}`);
     await expect(page.getByRole("heading", { name: "Agent Trace Debugger" })).toBeVisible();
+    const waterfall = page.getByLabel("Agent span waterfall");
+    const llm = waterfall
+      .locator('[data-kind="llm.call"]')
+      .filter({ hasText: "call-policy-model" })
+      .first();
+    await llm.click();
+    await expect(page.getByLabel("Span detail").getByLabel("Token breakdown")).toBeVisible();
     const overflow = await page.evaluate(() => ({
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
@@ -284,10 +298,7 @@ test("keeps the trace console inside the viewport on desktop and mobile", async 
     });
 
     if (viewport.width === 390) {
-      const timingLayout = await page
-        .getByLabel("Agent span waterfall")
-        .locator('[data-kind="llm.call"]')
-        .filter({ hasText: "call-policy-model" })
+      const timingLayout = await llm
         .locator(".duration")
         .first()
         .evaluate((node) => {
@@ -311,6 +322,20 @@ test("keeps the trace console inside the viewport on desktop and mobile", async 
     }
   }
 });
+
+async function expectTokenBreakdown(
+  breakdown: Locator,
+  expected: { label: string; value: string }[]
+) {
+  await expect(breakdown.locator(".token-chip")).toHaveCount(expected.length);
+  const actual = await breakdown.locator(".token-chip").evaluateAll((chips) =>
+    chips.map((chip) => ({
+      label: chip.querySelector("b")?.textContent?.trim() ?? "",
+      value: chip.querySelector("span")?.textContent?.trim() ?? ""
+    }))
+  );
+  expect(actual).toEqual(expected);
+}
 
 test("keeps odd metric grids visually closed", async ({ page }) => {
   const traceParam = process.env.BEATER_E2E_TRACE_ID
