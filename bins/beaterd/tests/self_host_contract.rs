@@ -808,6 +808,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_readiness.contains("linux/arm64"));
     assert!(outside_readiness.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(outside_readiness.contains("https://github.com/jadenfix/beater.git"));
+    assert!(outside_readiness.contains("REMOTE_URL_NO_SUFFIX"));
+    assert!(outside_readiness.contains("normalized_github_remote"));
+    assert!(outside_readiness.contains("origin must be {REMOTE_URL} or {REMOTE_URL_NO_SUFFIX}"));
     assert!(outside_readiness.contains("worktree must be clean"));
     assert!(outside_readiness.contains("missing public GHCR manifest"));
     assert!(outside_readiness.contains("--registry-fixture"));

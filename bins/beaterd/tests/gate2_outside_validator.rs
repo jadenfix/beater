@@ -683,6 +683,69 @@ fn gate2_outside_readiness_accepts_fixture_registry_manifests() {
 }
 
 #[test]
+fn gate2_outside_readiness_accepts_github_https_origin_without_git_suffix() {
+    let registry = tempdir("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture = write_public_handoff_fixture_repo();
+    git_success(
+        fixture.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/jadenfix/beater",
+        ],
+    );
+
+    let output = Command::new("python3")
+        .arg(
+            fixture
+                .path()
+                .join("scripts/check-gate2-outside-readiness.py"),
+        )
+        .arg("--registry-fixture")
+        .arg(registry.path())
+        .current_dir(fixture.path())
+        .output()
+        .unwrap_or_else(|err| panic!("run readiness checker with extensionless origin: {err}"));
+
+    assert_success(output, "Gate 2 outside-run readiness passed");
+}
+
+#[test]
+fn gate2_outside_readiness_rejects_github_https_origin_for_wrong_repo() {
+    let registry = tempdir("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture = write_public_handoff_fixture_repo();
+    git_success(
+        fixture.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/jadenfix/not-beater",
+        ],
+    );
+
+    let output = Command::new("python3")
+        .arg(
+            fixture
+                .path()
+                .join("scripts/check-gate2-outside-readiness.py"),
+        )
+        .arg("--registry-fixture")
+        .arg(registry.path())
+        .current_dir(fixture.path())
+        .output()
+        .unwrap_or_else(|err| panic!("run readiness checker with wrong origin: {err}"));
+
+    assert_failure(
+        output,
+        "origin must be https://github.com/jadenfix/beater.git",
+    );
+}
+
+#[test]
 fn gate2_outside_readiness_rejects_missing_image_platform() {
     let registry = tempdir("create registry fixture dir");
     write_registry_fixtures(registry.path());

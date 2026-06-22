@@ -13,6 +13,7 @@ from pathlib import Path
 IMAGE_NAMES = ["beaterd", "dashboard", "dashboard-e2e", "otel-python"]
 EXPECTED_PLATFORMS = ["linux/amd64", "linux/arm64"]
 REMOTE_URL = "https://github.com/jadenfix/beater.git"
+REMOTE_URL_NO_SUFFIX = "https://github.com/jadenfix/beater"
 COMMON_PINNED_THIRD_PARTY_IMAGES = [
     (
         "postgres:17-alpine",
@@ -100,6 +101,13 @@ def current_commit() -> str:
     return commit
 
 
+def normalized_github_remote(url: str) -> str:
+    normalized = url.rstrip("/")
+    if normalized.endswith(".git"):
+        normalized = normalized[:-4]
+    return normalized
+
+
 def require_repo_shape(args: argparse.Namespace) -> None:
     if args.skip_repo_shape:
         return
@@ -109,8 +117,10 @@ def require_repo_shape(args: argparse.Namespace) -> None:
         raise SystemExit(f"Gate 2 outside-run readiness must be checked on main, got {branch!r}")
 
     origin = run_git(["remote", "get-url", "origin"])
-    if origin != REMOTE_URL:
-        raise SystemExit(f"origin must be {REMOTE_URL}, got {origin!r}")
+    if normalized_github_remote(origin) != REMOTE_URL_NO_SUFFIX:
+        raise SystemExit(
+            f"origin must be {REMOTE_URL} or {REMOTE_URL_NO_SUFFIX}, got {origin!r}"
+        )
 
     dirty = run_git(["status", "--porcelain"])
     if dirty and not args.allow_dirty:
