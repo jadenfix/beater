@@ -194,12 +194,27 @@ fn self_host_files_define_gate_two_compose_surface() {
         gate2_workflow.contains("python3 -m py_compile scripts/check-gate2-outside-readiness.py")
     );
     assert!(gate2_workflow.contains("python3 -m py_compile scripts/check-gate2-public-handoff.py"));
+    assert!(gate2_workflow.contains("python3 -m py_compile scripts/check-gate0-foundations.py"));
     assert!(
         gate2_workflow.contains("python3 -m py_compile scripts/generate-gate2-outside-proof.py")
     );
     assert!(gate2_workflow.contains("scripts/validate-gate2-outside-proof.sh --allow-pending"));
+    assert!(gate2_workflow.contains("Gate 0 foundation contract"));
+    assert!(gate2_workflow.contains("scripts/check-gate0-foundations.py"));
     assert!(gate2_workflow.contains("cargo test -p beaterd --test self_host_contract"));
     assert!(gate2_workflow.contains("cargo test -p beaterd --test gate2_outside_validator"));
+
+    let gate0_contract = read(root.join("scripts/check-gate0-foundations.py"));
+    assert!(gate0_contract.contains("cargo\", \"tree\", \"-p\", \"beater-store"));
+    assert!(gate0_contract.contains("beater-store must stay trait/types-only"));
+    assert!(gate0_contract.contains("beater-store-conformance"));
+    assert!(gate0_contract.contains("beater-store-memory"));
+    assert!(gate0_contract.contains("beater-store-sql"));
+    assert!(gate0_contract.contains("metadata: Arc<dyn MetadataStore>"));
+    assert!(gate0_contract.contains("public storage/eval trait methods must use typed errors"));
+    assert!(gate0_contract.contains("Utc::now()"));
+    assert!(gate0_contract.contains("beater-schema must own"));
+    assert!(gate0_contract.contains("Gate 0 foundation contract passed."));
 }
 
 #[test]
