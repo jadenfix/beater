@@ -652,6 +652,82 @@ fn gate2_outside_readiness_rejects_missing_image_platform() {
 }
 
 #[test]
+fn gate2_outside_readiness_rejects_unprofiled_dependency_service() {
+    let registry = tempdir("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture = write_public_handoff_fixture_repo();
+    replace(
+        &fixture.path().join("docker-compose.yml"),
+        "    profiles: [\"deps\"]\n    environment:\n      POSTGRES_DB",
+        "    environment:\n      POSTGRES_DB",
+    );
+
+    let output = run_readiness_in_repo_with_fixture(fixture.path(), registry.path());
+
+    assert_failure(
+        output,
+        "docker-compose.yml service postgres must set profiles ['deps']",
+    );
+}
+
+#[test]
+fn gate2_outside_readiness_rejects_default_service_dependency_on_profiled_deps() {
+    let registry = tempdir("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture = write_public_handoff_fixture_repo();
+    replace(
+        &fixture.path().join("docker-compose.prebuilt.yml"),
+        "    ports:\n      - \"${BEATER_HTTP_PORT:-8080}:8080\"",
+        "    depends_on:\n      postgres:\n        condition: service_healthy\n    ports:\n      - \"${BEATER_HTTP_PORT:-8080}:8080\"",
+    );
+
+    let output = run_readiness_in_repo_with_fixture(fixture.path(), registry.path());
+
+    assert_failure(
+        output,
+        "docker-compose.prebuilt.yml default/timed service beaterd must not depend on profiled third-party service(s): postgres",
+    );
+}
+
+#[test]
+fn gate2_outside_readiness_rejects_default_service_third_party_image() {
+    let registry = tempdir("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture = write_public_handoff_fixture_repo();
+    replace(
+        &fixture.path().join("docker-compose.prebuilt.yml"),
+        "    image: ${BEATER_DASHBOARD_IMAGE:-ghcr.io/jadenfix/beater/dashboard:main}",
+        "    image: postgres:17-alpine@sha256:dc17045ccfd343b49600570ea734b9c4991cf1c3f3302e67df51e3b402dd55c4",
+    );
+
+    let output = run_readiness_in_repo_with_fixture(fixture.path(), registry.path());
+
+    assert_failure(
+        output,
+        "docker-compose.prebuilt.yml default service dashboard must not use third-party image",
+    );
+}
+
+#[test]
+fn gate2_outside_readiness_rejects_extra_unprofiled_service() {
+    let registry = tempdir("create registry fixture dir");
+    write_registry_fixtures(registry.path());
+    let fixture = write_public_handoff_fixture_repo();
+    replace(
+        &fixture.path().join("docker-compose.prebuilt.yml"),
+        "\nvolumes:\n",
+        "\n  adminer:\n    image: adminer:latest\n\nvolumes:\n",
+    );
+
+    let output = run_readiness_in_repo_with_fixture(fixture.path(), registry.path());
+
+    assert_failure(
+        output,
+        "docker-compose.prebuilt.yml default services must be exactly ['beaterd', 'dashboard']",
+    );
+}
+
+#[test]
 fn gate2_outside_readiness_reports_missing_origin_without_traceback() {
     let root = repo_root();
     let fixture = tempdir("create readiness fixture without origin");
@@ -4138,12 +4214,16 @@ fn generator_command_with_prior_exposure(
 
 fn run_readiness_with_fixture(registry_path: &Path) -> Output {
     let root = repo_root();
+    run_readiness_in_repo_with_fixture(&root, registry_path)
+}
+
+fn run_readiness_in_repo_with_fixture(repo: &Path, registry_path: &Path) -> Output {
     Command::new("python3")
-        .arg(root.join("scripts/check-gate2-outside-readiness.py"))
+        .arg(repo.join("scripts/check-gate2-outside-readiness.py"))
         .arg("--skip-repo-shape")
         .arg("--registry-fixture")
         .arg(registry_path)
-        .current_dir(root)
+        .current_dir(repo)
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside readiness checker: {err}"))
 }

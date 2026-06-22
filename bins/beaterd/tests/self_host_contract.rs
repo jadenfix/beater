@@ -632,6 +632,12 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_readiness.contains("COMMON_PINNED_THIRD_PARTY_IMAGES"));
     assert!(outside_readiness.contains("CLICKHOUSE_PINNED_THIRD_PARTY_IMAGE"));
     assert!(outside_readiness.contains("*COMMON_PINNED_THIRD_PARTY_IMAGES"));
+    assert!(outside_readiness.contains("DEFAULT_COMPOSE_SERVICES"));
+    assert!(outside_readiness.contains("PROFILED_THIRD_PARTY_SERVICES"));
+    assert!(outside_readiness.contains("TIMED_COMPOSE_SERVICES"));
+    assert!(outside_readiness.contains("THIRD_PARTY_IMAGE_PREFIXES"));
+    assert!(outside_readiness.contains("require_compose_default_path_contract"));
+    assert!(outside_readiness.contains("default/timed service"));
     assert!(outside_readiness.contains("linux/amd64"));
     assert!(outside_readiness.contains("linux/arm64"));
     assert!(outside_readiness.contains("scripts/validate-gate2-outside-proof.sh"));
@@ -685,6 +691,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(public_handoff.contains("BEATER_GATE2_RUN_ID"));
     assert!(public_handoff.contains("BEATER_GATE2_REGISTRY_FIXTURE_UNSAFE_FOR_TESTS"));
     assert!(public_handoff.contains("KEEP_BEATER_COMPOSE"));
+    assert!(public_handoff.contains("\"COMPOSE_FILE\""));
+    assert!(public_handoff.contains("\"COMPOSE_PROFILES\""));
     let raw_preflight_idx = public_handoff
         .find("run_raw_public_preflight(args)")
         .expect("raw public preflight call in public handoff verifier");

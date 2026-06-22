@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -36,6 +38,43 @@ PINNED_THIRD_PARTY_IMAGES = {
     ],
     "docker-compose.prebuilt.yml": COMMON_PINNED_THIRD_PARTY_IMAGES,
 }
+DEFAULT_COMPOSE_SERVICES = {"beaterd", "dashboard"}
+PROFILED_THIRD_PARTY_SERVICES = {
+    "docker-compose.yml": {
+        "postgres": ["deps"],
+        "nats": ["deps"],
+        "minio": ["deps"],
+        "clickhouse": ["clickhouse"],
+    },
+    "docker-compose.prebuilt.yml": {
+        "postgres": ["deps"],
+        "nats": ["deps"],
+        "minio": ["deps"],
+    },
+}
+TIMED_COMPOSE_SERVICES = {
+    "docker-compose.yml": {
+        "beaterd",
+        "dashboard",
+        "dashboard-e2e",
+        "beaterctl",
+        "otel-python-smoke",
+        "otel-python-quickstart",
+    },
+    "docker-compose.prebuilt.yml": {
+        "beaterd",
+        "dashboard",
+        "dashboard-e2e",
+        "otel-python-smoke",
+        "otel-python-quickstart",
+    },
+}
+THIRD_PARTY_IMAGE_PREFIXES = (
+    "postgres:",
+    "nats:",
+    "minio/",
+    "clickhouse/",
+)
 
 
 def repo_root() -> Path:
@@ -164,6 +203,147 @@ def require_pinned_third_party_images() -> None:
             print(f"ok pinned {compose_name} {image}@{digest}")
 
 
+def line_indent(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def compose_service_blocks(compose_name: str) -> dict[str, list[str]]:
+    services: dict[str, list[str]] = {}
+    current_service: str | None = None
+    in_services = False
+    for line in (repo_root() / compose_name).read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = line_indent(line)
+        if indent == 0:
+            if stripped == "services:":
+                in_services = True
+                current_service = None
+                continue
+            if in_services:
+                break
+        if not in_services:
+            continue
+        service_match = re.fullmatch(r"  ([A-Za-z0-9_.-]+):", line)
+        if service_match:
+            current_service = service_match.group(1)
+            services[current_service] = []
+            continue
+        if current_service is not None:
+            services[current_service].append(line)
+    return services
+
+
+def parse_inline_list(value: str) -> list[str]:
+    value = value.strip()
+    if not value:
+        return []
+    if value.startswith("[") and value.endswith("]"):
+        items = value[1:-1].split(",")
+    else:
+        items = [value]
+    return [item.strip().strip("'\"") for item in items if item.strip()]
+
+
+def service_field_lines(body: list[str], field: str) -> tuple[int, str] | None:
+    prefix = f"    {field}:"
+    for index, line in enumerate(body):
+        if line.startswith(prefix):
+            return index, line[len(prefix) :].strip()
+    return None
+
+
+def service_profiles(body: list[str]) -> list[str]:
+    field = service_field_lines(body, "profiles")
+    if field is None:
+        return []
+    index, value = field
+    profiles = parse_inline_list(value)
+    if profiles:
+        return profiles
+    for line in body[index + 1 :]:
+        if line_indent(line) <= 4:
+            break
+        item = re.fullmatch(r"\s*-\s*([^#]+?)\s*(?:#.*)?", line)
+        if item:
+            profiles.append(item.group(1).strip().strip("'\""))
+    return profiles
+
+
+def service_image(body: list[str]) -> str | None:
+    field = service_field_lines(body, "image")
+    if field is None:
+        return None
+    _, value = field
+    return value
+
+
+def service_depends_on(body: list[str]) -> set[str]:
+    field = service_field_lines(body, "depends_on")
+    if field is None:
+        return set()
+    index, value = field
+    dependencies = set(parse_inline_list(value))
+    for line in body[index + 1 :]:
+        if line_indent(line) <= 4:
+            break
+        list_item = re.fullmatch(r"\s*-\s*([A-Za-z0-9_.-]+)\s*(?:#.*)?", line)
+        mapping_item = re.fullmatch(r"      ([A-Za-z0-9_.-]+):.*", line)
+        if list_item:
+            dependencies.add(list_item.group(1))
+        elif mapping_item:
+            dependencies.add(mapping_item.group(1))
+    return dependencies
+
+
+def uses_third_party_image(image: str | None) -> bool:
+    if image is None:
+        return False
+    return image.startswith(THIRD_PARTY_IMAGE_PREFIXES)
+
+
+def require_compose_default_path_contract() -> None:
+    third_party_services = {
+        service
+        for services in PROFILED_THIRD_PARTY_SERVICES.values()
+        for service in services
+    }
+    for compose_name, expected_profiles in PROFILED_THIRD_PARTY_SERVICES.items():
+        services = compose_service_blocks(compose_name)
+        for service, profiles in expected_profiles.items():
+            actual = service_profiles(services.get(service, []))
+            if actual != profiles:
+                raise SystemExit(
+                    f"{compose_name} service {service} must set profiles {profiles}, got {actual}"
+                )
+        default_services = {
+            service for service, body in services.items() if not service_profiles(body)
+        }
+        if default_services != DEFAULT_COMPOSE_SERVICES:
+            raise SystemExit(
+                f"{compose_name} default services must be exactly "
+                f"{sorted(DEFAULT_COMPOSE_SERVICES)}, got {sorted(default_services)}"
+            )
+        for service in default_services:
+            image = service_image(services[service])
+            if uses_third_party_image(image):
+                raise SystemExit(
+                    f"{compose_name} default service {service} must not use third-party image {image}"
+                )
+        for service in TIMED_COMPOSE_SERVICES[compose_name] & services.keys():
+            dependencies = service_depends_on(services[service])
+            blocked = sorted(dependencies & third_party_services)
+            if blocked:
+                raise SystemExit(
+                    f"{compose_name} default/timed service {service} must not depend on "
+                    f"profiled third-party service(s): {', '.join(blocked)}"
+                )
+        print(
+            f"ok default compose path {compose_name} services {sorted(DEFAULT_COMPOSE_SERVICES)}"
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -197,6 +377,7 @@ def main() -> None:
     commit = current_commit()
     require_repo_shape(args)
     require_pinned_third_party_images()
+    require_compose_default_path_contract()
     validate_outside_proof_template()
     require_registry_images(args, commit)
     print(f"Gate 2 outside-run readiness passed for {commit}")
