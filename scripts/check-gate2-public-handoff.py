@@ -299,6 +299,9 @@ def docker_endpoint_is_local(endpoint: str) -> bool:
         or endpoint == "<no value>"
         or endpoint.startswith("unix://")
         or endpoint.startswith("npipe://")
+        or endpoint.startswith("tcp://localhost:")
+        or endpoint.startswith("tcp://127.")
+        or endpoint.startswith("tcp://[::1]:")
     )
 
 

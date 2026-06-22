@@ -311,6 +311,10 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("require_command curl"));
     assert!(stopwatch_script.contains("shasum or sha256sum"));
     assert!(stopwatch_script.contains("DOCKER_HOST"));
+    assert!(stopwatch_script.contains("docker_endpoint_is_local"));
+    assert!(stopwatch_script.contains("tcp://localhost:"));
+    assert!(stopwatch_script.contains("tcp://127."));
+    assert!(stopwatch_script.contains("tcp://[::1]:"));
     assert!(stopwatch_script.contains("docker context inspect"));
     assert!(stopwatch_script.contains("requires a local Docker context"));
     assert!(!stopwatch_script.contains("require_command python3"));
@@ -699,6 +703,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(public_handoff.contains("shasum or sha256sum"));
     assert!(public_handoff.contains("DOCKER_HOST"));
     assert!(public_handoff.contains("docker_endpoint_is_local"));
+    assert!(public_handoff.contains("tcp://localhost:"));
+    assert!(public_handoff.contains("tcp://127."));
+    assert!(public_handoff.contains("tcp://[::1]:"));
     assert!(public_handoff.contains("require_local_docker_host_env"));
     assert!(public_handoff.contains("require_local_docker_context"));
     assert!(public_handoff.contains("[\"docker\", \"context\", \"inspect\""));

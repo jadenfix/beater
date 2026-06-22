@@ -910,7 +910,7 @@ fn gate2_public_handoff_verifier_full_run_accepts_rewritten_canonical_fixture() 
         &["commit", "-m", "stub stopwatch runtime"],
     );
     let fixture_head = git_output(fixture_repo.path(), &["rev-parse", "HEAD"]);
-    let runtime = fake_public_handoff_runtime(true, "unix:///var/run/docker.sock");
+    let runtime = fake_public_handoff_runtime(true, "tcp://127.0.0.1:2375");
     let fixture_url = format!("file://{}", fixture_repo.path().display());
     let git_rewrite_key = format!("url.{fixture_url}.insteadOf");
     let root = repo_root();
@@ -927,7 +927,7 @@ fn gate2_public_handoff_verifier_full_run_accepts_rewritten_canonical_fixture() 
         .arg("--full-run")
         .current_dir(&root)
         .env("PATH", path_with_public_handoff_runtime(&runtime))
-        .env_remove("DOCKER_HOST")
+        .env("DOCKER_HOST", "tcp://localhost:2375")
         .env("BEATER_GATE2_FIXTURE_FULL_RUN", "1")
         .env("GIT_CONFIG_COUNT", "1")
         .env("GIT_CONFIG_KEY_0", git_rewrite_key)

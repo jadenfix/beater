@@ -442,6 +442,19 @@ port_is_free() {
   return 0
 }
 
+docker_endpoint_is_local() {
+  local endpoint="$1"
+  [[
+    -z "$endpoint" ||
+    "$endpoint" == "<no value>" ||
+    "$endpoint" == unix://* ||
+    "$endpoint" == npipe://* ||
+    "$endpoint" == tcp://localhost:* ||
+    "$endpoint" == tcp://127.* ||
+    "$endpoint" == tcp://[::1]:*
+  ]]
+}
+
 require_free_port() {
   local port="$1"
   local label="$2"
@@ -473,7 +486,7 @@ preflight_prerequisites() {
     echo "Gate 2 recording proof requires ffprobe before the stopwatch starts." >&2
     return 1
   fi
-  if [[ -n "${DOCKER_HOST:-}" && "${DOCKER_HOST:-}" != unix://* && "${DOCKER_HOST:-}" != npipe://* ]]; then
+  if ! docker_endpoint_is_local "${DOCKER_HOST:-}"; then
     echo "Gate 2 outside-person proof requires a local Docker daemon because the browser proof uses 127.0.0.1." >&2
     echo "Unset DOCKER_HOST or switch to a local Docker context and rerun." >&2
     return 1
@@ -488,7 +501,7 @@ preflight_prerequisites() {
   fi
   local docker_context_host
   docker_context_host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$docker_context_host" && "$docker_context_host" != "<no value>" && "$docker_context_host" != unix://* && "$docker_context_host" != npipe://* ]]; then
+  if ! docker_endpoint_is_local "$docker_context_host"; then
     echo "Gate 2 outside-person proof requires a local Docker context because the browser proof uses 127.0.0.1; current Docker endpoint is $docker_context_host." >&2
     return 1
   fi
