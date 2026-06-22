@@ -1203,6 +1203,25 @@ print("fixture_GIT_CONFIG_COUNT=" + fixture_env.get("GIT_CONFIG_COUNT", "unset")
 }
 
 #[test]
+fn gate2_stopwatch_service_image_digest_selects_matching_service_repo_digest() {
+    let repo_digests = format!(
+        "{BEATER_IMAGE_DIGEST}\n{DASHBOARD_IMAGE_DIGEST}\n{}",
+        "ghcr.io/example/unrelated@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    );
+
+    let output = run_service_image_digest_fixture("dashboard", &repo_digests);
+
+    assert_eq!(output, DASHBOARD_IMAGE_DIGEST);
+}
+
+#[test]
+fn gate2_stopwatch_service_image_digest_rejects_wrong_service_repo_digest() {
+    let output = run_service_image_digest_fixture("dashboard", BEATER_IMAGE_DIGEST);
+
+    assert_eq!(output, "unknown");
+}
+
+#[test]
 fn gate2_stopwatch_outside_next_steps_separate_dashboard_targets() {
     let script = fs::read_to_string(repo_root().join("scripts/gate2-compose-stopwatch.sh"))
         .unwrap_or_else(|err| panic!("read Gate 2 compose stopwatch script: {err}"));
@@ -3759,6 +3778,73 @@ fn run_outside_wrapper_real_with_clone_timer_in_repo(repo: &Path, clone_started:
         .env("BEATER_GATE2_CLONE_STARTED_EPOCH", clone_started)
         .output()
         .unwrap_or_else(|err| panic!("run Gate 2 outside wrapper fixture real run: {err}"))
+}
+
+fn run_service_image_digest_fixture(service: &str, repo_digests: &str) -> String {
+    let script_text = fs::read_to_string(repo_root().join("scripts/gate2-compose-stopwatch.sh"))
+        .unwrap_or_else(|err| panic!("read gate2-compose-stopwatch.sh: {err}"));
+    let function_start = script_text
+        .find("service_image_digest() {")
+        .expect("stopwatch script should define service_image_digest");
+    let function_end_marker = "\n}\n\nrequire_command()";
+    let function_end = script_text[function_start..]
+        .find(function_end_marker)
+        .map(|offset| function_start + offset + "\n}\n".len())
+        .expect("service_image_digest should end before require_command");
+    let function = &script_text[function_start..function_end];
+    let mut fixture = String::from("set -euo pipefail\n");
+    fixture.push_str(function);
+    fixture.push_str(
+        r#"
+compose() {
+  if [[ "$#" -eq 3 && "$1" == "images" && "$2" == "-q" && "$3" == "$SERVICE" ]]; then
+    printf '%s\n' image-id
+    return 0
+  fi
+  return 1
+}
+
+docker() {
+  if [[ "$#" -ge 5 && "$1" == "image" && "$2" == "inspect" && "$3" == "--format" ]]; then
+    case "$4" in
+      *RepoDigests*)
+        printf '%s\n' "$REPO_DIGESTS"
+        ;;
+      *Id*)
+        printf '%s\n' "sha256:fallback"
+        ;;
+      *)
+        return 2
+        ;;
+    esac
+    return 0
+  fi
+  return 2
+}
+
+service_image_digest "$SERVICE"
+"#,
+    );
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(fixture)
+        .env("SERVICE", service)
+        .env("REPO_DIGESTS", repo_digests)
+        .current_dir(repo_root())
+        .output()
+        .unwrap_or_else(|err| panic!("run service_image_digest fixture: {err}"));
+
+    if !output.status.success() {
+        panic!(
+            "service_image_digest fixture failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    String::from_utf8(output.stdout)
+        .expect("service_image_digest stdout should be utf-8")
+        .trim()
+        .to_owned()
 }
 
 fn clear_outside_env(command: &mut Command) {

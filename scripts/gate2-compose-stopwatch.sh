@@ -291,7 +291,22 @@ service_image_digest() {
   local image_id
   local repo_digest
   local full_id
+  local expected_repo=""
   local image_ref=""
+  case "$service" in
+    beaterd)
+      expected_repo="ghcr.io/jadenfix/beater/beaterd"
+      ;;
+    dashboard)
+      expected_repo="ghcr.io/jadenfix/beater/dashboard"
+      ;;
+    dashboard-e2e)
+      expected_repo="ghcr.io/jadenfix/beater/dashboard-e2e"
+      ;;
+    otel-python | otel-python-quickstart | otel-python-smoke)
+      expected_repo="ghcr.io/jadenfix/beater/otel-python"
+      ;;
+  esac
   image_id="$(compose images -q "$service" 2>/dev/null | head -n 1 || true)"
   if [[ -z "$image_id" ]]; then
     case "$service" in
@@ -316,9 +331,17 @@ service_image_digest() {
     echo "unknown"
     return
   fi
-  repo_digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id" 2>/dev/null | head -n 1 || true)"
+  repo_digest="$(
+    docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_id" 2>/dev/null \
+      | awk -v prefix="${expected_repo}@sha256:" 'index($0, prefix) == 1 { print; exit }' \
+      || true
+  )"
   if [[ -n "$repo_digest" ]]; then
     echo "$repo_digest"
+    return
+  fi
+  if [[ -n "$expected_repo" ]]; then
+    echo "unknown"
     return
   fi
   full_id="$(docker image inspect --format '{{.Id}}' "$image_id" 2>/dev/null || true)"

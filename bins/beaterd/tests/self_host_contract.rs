@@ -327,6 +327,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("run_with_step_timeout"));
     assert!(stopwatch_script.contains("service_image_digest"));
     assert!(stopwatch_script.contains("docker image inspect"));
+    assert!(stopwatch_script.contains("expected_repo"));
+    assert!(stopwatch_script.contains("awk -v prefix=\"${expected_repo}@sha256:\""));
     assert!(stopwatch_script.contains("Beater image reference"));
     assert!(stopwatch_script.contains("Dashboard image reference"));
     assert!(stopwatch_script.contains("Dashboard e2e image reference"));
