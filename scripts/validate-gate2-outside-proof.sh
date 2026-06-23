@@ -49,6 +49,13 @@ diagnostic_mode = sys.argv[4] == "1"
 proof_path = proof_arg if proof_arg.is_absolute() else repo / proof_arg
 errors: list[str] = []
 
+sys.path.insert(0, str(repo / "scripts"))
+from gate2_proof_observations import (
+    LLM_OBSERVATION_FRAGMENTS,
+    WATERFALL_OBSERVATION_FRAGMENTS,
+    observation_errors,
+)
+
 if not proof_path.exists():
     raise SystemExit(f"missing outside-person proof file: {proof_path}")
 
@@ -570,24 +577,8 @@ def require_recording_from_outside_wrapper(notes_text: str) -> None:
 def require_runner_observation(
     field_name: str, value: str, required_fragments: list[str]
 ) -> None:
-    normalized = value.lower()
-    negated = re.search(
-        r"\b(?:did\s+not|didn't|could\s+not|couldn't|cannot|can't|failed\s+to\s+see|"
-        r"not\s+visible|not\s+shown|not\s+showing|missing|without)\b",
-        normalized,
-    )
-    if negated:
-        fail(f"{field_name} must be a positive observation, not negated evidence")
-    if not re.search(
-        r"\b(?:saw|seen|visible|read|confirmed|verified|opened|clicked|showed|displayed|inspected)\b",
-        normalized,
-    ):
-        fail(f"{field_name} must describe a positive visible observation")
-    missing = [
-        fragment for fragment in required_fragments if fragment.lower() not in normalized
-    ]
-    if missing:
-        fail(f"{field_name} must mention: " + ", ".join(missing))
+    for error in observation_errors(field_name, value, required_fragments):
+        fail(error)
 
 
 EBML_ID = 0x1A45DFA3
@@ -1443,21 +1434,12 @@ require_compose_logs_saved(field_value("`docker compose` logs saved"))
 require_runner_observation(
     "Runner llm.call observation",
     field_value("Runner llm.call observation"),
-    [
-        "llm.call",
-        "prompt",
-        "completion",
-        "model",
-        "token breakdown",
-        "cost",
-        "latency",
-        "confirmation code",
-    ],
+    LLM_OBSERVATION_FRAGMENTS,
 )
 require_runner_observation(
     "Runner waterfall observation",
     field_value("Runner waterfall observation"),
-    ["run", "turn", "step", "tool", "MCP"],
+    WATERFALL_OBSERVATION_FRAGMENTS,
 )
 
 recording = field_value("Screen recording")

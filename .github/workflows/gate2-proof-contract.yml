@@ -46,6 +46,7 @@ jobs:
           python3 -m py_compile scripts/check-gate2-public-handoff.py
           python3 -m py_compile scripts/check-gate0-foundations.py
           python3 -m py_compile scripts/generate-gate2-outside-proof.py
+          python3 -m py_compile scripts/gate2_proof_observations.py
           scripts/validate-gate2-outside-proof.sh --allow-pending
 
       - name: Gate 0 foundation contract

@@ -9,6 +9,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+from gate2_proof_observations import (
+    LLM_OBSERVATION_FRAGMENTS,
+    WATERFALL_OBSERVATION_FRAGMENTS,
+    observation_errors,
+)
+
 
 CANONICAL_COMMAND = "scripts/gate2-outside-run.sh"
 OUTSIDE_RUN_ATTESTATION = (
@@ -64,24 +70,9 @@ def require_date_arg(name, value):
 
 def require_observation_arg(name, value, required_fragments):
     cleaned = require_meaningful_arg(name, value)
-    normalized = cleaned.lower()
-    negated = re.search(
-        r"\b(?:did\s+not|didn't|could\s+not|couldn't|cannot|can't|failed\s+to\s+see|"
-        r"not\s+visible|not\s+shown|not\s+showing|missing|without)\b",
-        normalized,
-    )
-    if negated:
-        raise SystemExit(f"{name} must be a positive observation, not negated evidence")
-    if not re.search(
-        r"\b(?:saw|seen|visible|read|confirmed|verified|opened|clicked|showed|displayed|inspected)\b",
-        normalized,
-    ):
-        raise SystemExit(f"{name} must describe a positive visible observation")
-    missing = [
-        fragment for fragment in required_fragments if fragment.lower() not in normalized
-    ]
-    if missing:
-        raise SystemExit(f"{name} must mention: " + ", ".join(missing))
+    errors = observation_errors(name, cleaned, required_fragments)
+    if errors:
+        raise SystemExit(errors[0])
     return cleaned
 
 
@@ -307,21 +298,12 @@ def build_proof(args, stopwatch_path, stopwatch_text):
     llm_observation = require_observation_arg(
         "--llm-observation",
         args.llm_observation,
-        [
-            "llm.call",
-            "prompt",
-            "completion",
-            "model",
-            "token breakdown",
-            "cost",
-            "latency",
-            "confirmation code",
-        ],
+        LLM_OBSERVATION_FRAGMENTS,
     )
     waterfall_observation = require_observation_arg(
         "--waterfall-observation",
         args.waterfall_observation,
-        ["run", "turn", "step", "tool", "MCP"],
+        WATERFALL_OBSERVATION_FRAGMENTS,
     )
     runner_name = require_meaningful_arg("--runner-name", args.runner_name)
     relationship = require_meaningful_arg("--relationship", args.relationship)

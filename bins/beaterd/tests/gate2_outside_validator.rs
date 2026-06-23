@@ -5601,6 +5601,7 @@ fn write_public_handoff_fixture_repo() -> TempDir {
         "scripts/gate2-compose-stopwatch.sh",
         "scripts/smoke-compose.sh",
         "scripts/generate-gate2-outside-proof.py",
+        "scripts/gate2_proof_observations.py",
         "scripts/validate-gate2-outside-proof.sh",
         "README.md",
         "docker-compose.yml",
@@ -5660,6 +5661,7 @@ fn write_validator_closure_fixture_repo_with_options(
         fixture.path(),
         "scripts/validate-gate2-outside-proof.sh",
     );
+    copy_fixture_file(&root, fixture.path(), "scripts/gate2_proof_observations.py");
     if include_registry_marker {
         fs::write(
             fixture.path().join(".gate2-registry-fixture-ok-for-tests"),

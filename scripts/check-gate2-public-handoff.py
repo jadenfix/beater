@@ -857,6 +857,7 @@ def run_cloned_checks(args: argparse.Namespace, clone_dir: Path) -> None:
             "scripts/check-gate2-outside-readiness.py",
             "scripts/check-gate2-public-handoff.py",
             "scripts/generate-gate2-outside-proof.py",
+            "scripts/gate2_proof_observations.py",
         ],
         cwd=clone_dir,
     )
