@@ -1,18 +1,22 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-export const GATE2_SESSION_COOKIE = "beater_gate2_session";
+import {
+  GATE2_SESSION_COOKIE,
+  GATE2_SESSION_MAX_AGE_SECONDS,
+  isGate2SessionId
+} from "./lib/gate2-session";
 
 export function proxy(request: NextRequest) {
   const response = NextResponse.next();
   const existing = request.cookies.get(GATE2_SESSION_COOKIE)?.value;
-  if (!existing || !/^[0-9a-f]{32}$/.test(existing)) {
+  if (!isGate2SessionId(existing)) {
     response.cookies.set({
       name: GATE2_SESSION_COOKIE,
       value: crypto.randomUUID().replaceAll("-", ""),
       httpOnly: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60
+      maxAge: GATE2_SESSION_MAX_AGE_SECONDS
     });
   }
   return response;

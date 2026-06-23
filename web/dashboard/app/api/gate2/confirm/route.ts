@@ -1,15 +1,16 @@
 import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 
+import { GATE2_SESSION_COOKIE, isGate2SessionId } from "../../../../lib/gate2-session";
+
 export const dynamic = "force-dynamic";
 
-const SESSION_COOKIE = "beater_gate2_session";
 const CLICK_MAX_AGE_MS = 60_000;
 const USED_NONCES = new Map<string, number>();
 
 export async function POST(request: NextRequest) {
-  const sessionId = request.cookies.get(SESSION_COOKIE)?.value;
-  if (!sessionId || !/^[0-9a-f]{32}$/.test(sessionId)) {
+  const sessionId = request.cookies.get(GATE2_SESSION_COOKIE)?.value;
+  if (!isGate2SessionId(sessionId)) {
     return Response.json({ error: "missing browser session" }, { status: 403 });
   }
   const origin = request.headers.get("origin");

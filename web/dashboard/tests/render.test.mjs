@@ -8,6 +8,28 @@ import ts from "typescript";
 
 const root = new URL("..", import.meta.url).pathname;
 
+function loadGate2SessionModule(context = {}) {
+  const source = readFileSync(join(root, "lib/gate2-session.ts"), "utf8");
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022
+    }
+  });
+  const module = { exports: {} };
+  vm.runInNewContext(
+    outputText,
+    {
+      exports: module.exports,
+      module,
+      ...context
+    },
+    { filename: "lib/gate2-session.ts" }
+  );
+  return module.exports;
+}
+
 function loadDashboardApiModule(context = {}) {
   const source = readFileSync(join(root, "lib/api.ts"), "utf8");
   const { outputText } = ts.transpileModule(source, {
@@ -52,6 +74,7 @@ function loadGate2ConfirmRouteModule(context = {}) {
       URL,
       require(specifier) {
         if (specifier === "node:crypto") return { createHash };
+        if (specifier === "../../../../lib/gate2-session") return loadGate2SessionModule(context);
         throw new Error(`unexpected route test import: ${specifier}`);
       },
       ...context
@@ -68,6 +91,7 @@ function gate2ConfirmRequest({
   fetchMetadata = true,
   body = gate2ConfirmBody()
 } = {}) {
+  const { GATE2_SESSION_COOKIE } = loadGate2SessionModule();
   const headers = new Map();
   if (origin) headers.set("origin", origin);
   if (host) headers.set("host", host);
@@ -80,7 +104,7 @@ function gate2ConfirmRequest({
     url: "http://localhost:3000/api/gate2/confirm",
     cookies: {
       get(name) {
-        return name === "beater_gate2_session" && session ? { value: session } : undefined;
+        return name === GATE2_SESSION_COOKIE && session ? { value: session } : undefined;
       }
     },
     headers: {
@@ -776,22 +800,29 @@ test("gate2 confirmation code is fetched only after a browser span click", () =>
   assert.match(component, />Confirm</);
 
   const route = readFileSync(join(root, "app/api/gate2/confirm/route.ts"), "utf8");
+  const session = readFileSync(join(root, "lib/gate2-session.ts"), "utf8");
   assert.match(route, /BEATER_GATE2_CONFIRMATION_SALT/);
   assert.match(route, /gate2:\$\{salt\}:\$\{payload\.traceId\}:\$\{payload\.spanId\}/);
   assert.match(route, /cache-control/);
-  assert.match(route, /SESSION_COOKIE/);
+  assert.match(route, /GATE2_SESSION_COOKIE/);
+  assert.match(route, /isGate2SessionId/);
   assert.match(route, /sec-fetch-site/);
   assert.match(route, /USED_NONCES/);
   assert.match(route, /browser click proof expired/);
   assert.match(route, /record\.button === 0/);
   assert.match(route, /record\.detail >= 1/);
+  assert.match(session, /GATE2_SESSION_COOKIE = "beater_gate2_session"/);
+  assert.match(session, /GATE2_SESSION_MAX_AGE_SECONDS = 60 \* 60/);
+  assert.match(session, /isGate2SessionId/);
   const css = readFileSync(join(root, "app/globals.css"), "utf8");
   assert.match(css, /\.confirmation-code\[data-confirmation-status="hidden"\] dd/);
   assert.match(css, /\.confirmation-code\[data-confirmation-status="ready"\] dd/);
   assert.match(css, /\.confirmation-code\[data-confirmation-status="error"\] dd/);
   const proxy = readFileSync(join(root, "proxy.ts"), "utf8");
   assert.match(proxy, /export function proxy/);
-  assert.match(proxy, /beater_gate2_session/);
+  assert.match(proxy, /GATE2_SESSION_COOKIE/);
+  assert.match(proxy, /GATE2_SESSION_MAX_AGE_SECONDS/);
+  assert.match(proxy, /isGate2SessionId/);
   assert.match(proxy, /httpOnly: true/);
 });
 
