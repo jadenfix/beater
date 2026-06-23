@@ -45,6 +45,15 @@ function loadGate2ClickProofModule(context = {}) {
   return loadTsModule("lib/gate2-click-proof.ts", { context });
 }
 
+function loadGate2ConfirmationRequestModule(context = {}) {
+  return loadTsModule("lib/gate2-confirmation-request.ts", {
+    context,
+    requireMap: {
+      "./gate2-click-proof": () => loadGate2ClickProofModule(context)
+    }
+  });
+}
+
 function loadGate2ConfirmationContractModule(context = {}) {
   return loadTsModule("lib/gate2-confirmation-contract.ts", { context });
 }
@@ -79,6 +88,8 @@ function loadGate2ConfirmRouteModule(context = {}) {
       "node:crypto": { createHash },
       "../../../../lib/gate2-click-proof": () => loadGate2ClickProofModule(context),
       "../../../../lib/gate2-confirmation": () => loadGate2ConfirmationModule(context),
+      "../../../../lib/gate2-confirmation-request": () =>
+        loadGate2ConfirmationRequestModule(context),
       "../../../../lib/gate2-session": () => loadGate2SessionModule(context)
     }
   });
@@ -796,9 +807,11 @@ test("gate2 confirmation code is fetched only after a browser span click", () =>
   const confirmation = readFileSync(join(root, "lib/gate2-confirmation.ts"), "utf8");
   const confirmationContract = readFileSync(join(root, "lib/gate2-confirmation-contract.ts"), "utf8");
   const clickProof = readFileSync(join(root, "lib/gate2-click-proof.ts"), "utf8");
+  const confirmationRequest = readFileSync(join(root, "lib/gate2-confirmation-request.ts"), "utf8");
   const session = readFileSync(join(root, "lib/gate2-session.ts"), "utf8");
   assert.match(route, /gate2ConfirmationCode/);
-  assert.match(route, /isBrowserClickProof/);
+  assert.match(route, /isGate2ConfirmationRequest/);
+  assert.doesNotMatch(route, /isBrowserClickProof/);
   assert.match(route, /cache-control/);
   assert.match(route, /GATE2_SESSION_COOKIE/);
   assert.match(route, /isGate2SessionId/);
@@ -808,6 +821,11 @@ test("gate2 confirmation code is fetched only after a browser span click", () =>
   assert.match(clickProof, /record\.button === 0/);
   assert.match(clickProof, /record\.detail >= 1/);
   assert.match(clickProof, /GATE2_CLICK_PROOF_NONCE = \/\^\[0-9a-f\]\{32\}\$\//);
+  assert.match(confirmationRequest, /Gate2ConfirmationRequest/);
+  assert.match(confirmationRequest, /isGate2ConfirmationRequest/);
+  assert.match(confirmationRequest, /isBrowserClickProof\(record\.click\)/);
+  assert.match(confirmationRequest, /GATE2_TRACE_ID = \/\^\[0-9a-f\]\{32\}\$\//);
+  assert.match(confirmationRequest, /GATE2_SPAN_ID = \/\^\[0-9a-f\]\{16\}\$\//);
   assert.match(confirmationContract, /GATE2_CONFIRMATION_SALT_ENV = "BEATER_GATE2_CONFIRMATION_SALT"/);
   assert.match(confirmationContract, /GATE2_CONFIRMATION_HASH_PREFIX = "gate2"/);
   assert.match(confirmationContract, /GATE2_CONFIRMATION_CODE = \/\^\[0-9A-F\]\{8\}\$\//);

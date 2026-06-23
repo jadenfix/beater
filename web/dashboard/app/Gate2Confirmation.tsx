@@ -4,14 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isBrowserClickProof, type BrowserClickProof } from "../lib/gate2-click-proof";
 import { GATE2_CONFIRMATION_CODE } from "../lib/gate2-confirmation-contract";
+import {
+  isGate2SpanId,
+  isGate2TraceId,
+  type Gate2ConfirmationRequest
+} from "../lib/gate2-confirmation-request";
 
 const CLICK_EVENT = "beater:gate2-span-click";
 
-type ClickDetail = {
-  traceId: string;
-  spanId: string;
-  click: BrowserClickProof;
-};
+type ClickDetail = Gate2ConfirmationRequest;
 
 export function Gate2SpanClickTracker() {
   useEffect(() => {
@@ -22,7 +23,7 @@ export function Gate2SpanClickTracker() {
       if (!anchor) return;
       const traceId = anchor.dataset.traceId;
       const spanId = anchor.dataset.spanId;
-      if (!traceId || !spanId) return;
+      if (!isGate2TraceId(traceId) || !isGate2SpanId(spanId)) return;
       const click = clickProof(event);
       if (!click) return;
       sessionStorage.setItem(storageKey(traceId, spanId), JSON.stringify(click));

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { gate2ConfirmationCode } from "../../../../lib/gate2-confirmation";
-import { isBrowserClickProof, type BrowserClickProof } from "../../../../lib/gate2-click-proof";
+import { isGate2ConfirmationRequest } from "../../../../lib/gate2-confirmation-request";
 import { GATE2_SESSION_COOKIE, isGate2SessionId } from "../../../../lib/gate2-session";
 
 export const dynamic = "force-dynamic";
@@ -34,13 +34,19 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "invalid json body" }, { status: 400 });
   }
 
-  if (!isConfirmationRequest(payload)) {
-    return Response.json({ error: "traceId, spanId, and browser click proof are required" }, { status: 400 });
+  if (!isGate2ConfirmationRequest(payload)) {
+    return Response.json(
+      { error: "traceId, spanId, and browser click proof are required" },
+      { status: 400 }
+    );
   }
 
   const now = Date.now();
   pruneUsedNonces(now);
-  if (now - payload.click.capturedAtMs > CLICK_MAX_AGE_MS || payload.click.capturedAtMs - now > 5_000) {
+  if (
+    now - payload.click.capturedAtMs > CLICK_MAX_AGE_MS ||
+    payload.click.capturedAtMs - now > 5_000
+  ) {
     return Response.json({ error: "browser click proof expired" }, { status: 403 });
   }
   const nonceKey = createHash("sha256")
@@ -60,25 +66,6 @@ export async function POST(request: NextRequest) {
         "cache-control": "no-store"
       }
     }
-  );
-}
-
-type ConfirmationRequest = {
-  traceId: string;
-  spanId: string;
-  click: BrowserClickProof;
-};
-
-function isConfirmationRequest(value: unknown): value is ConfirmationRequest {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  const click = record.click;
-  return (
-    typeof record.traceId === "string" &&
-    /^[0-9a-f]{32}$/.test(record.traceId) &&
-    typeof record.spanId === "string" &&
-    /^[0-9a-f]{16}$/.test(record.spanId) &&
-    isBrowserClickProof(click)
   );
 }
 
