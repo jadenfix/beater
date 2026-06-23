@@ -19,12 +19,19 @@ const quickstartTraceId =
   process.env.BEATER_E2E_QUICKSTART_TRACE_ID ??
   (mode === "quickstart" ? process.env.BEATER_E2E_TRACE_ID : undefined);
 const quickstartRelease = process.env.BEATER_E2E_QUICKSTART_RELEASE;
+const redactionTraceId =
+  process.env.BEATER_E2E_REDACTION_TRACE_ID ??
+  (mode === "redaction" ? process.env.BEATER_E2E_TRACE_ID : undefined);
+const redactionSpanId = process.env.BEATER_E2E_REDACTION_SPAN_ID;
+const redactionRelease = process.env.BEATER_E2E_REDACTION_RELEASE;
 const gate2ConfirmationSalt = process.env.BEATER_GATE2_CONFIRMATION_SALT ?? "";
 const demoDir = resolve(repoRoot, "docs/demos");
 const scratchDir = resolve(dashboardRoot, "test-results/gate2-demo-video");
 const minimumRecordingMs = 9000;
 const llmReviewDwellMs = 4500;
 const toolReviewDwellMs = 2500;
+const redactionReviewDwellMs = 3000;
+const redactionUnmaskReason = "gate2-redaction-review";
 const videoPath = outputPath(
   process.env.BEATER_GATE2_RECORD_VIDEO,
   mode === "compose" ? "gate2-compose-browser-demo.webm" : "gate2-browser-demo.webm"
@@ -68,8 +75,11 @@ const recordingStartedAt = Date.now();
 if (mode === "compose") {
   await recordQuickstartFlow(page);
   await recordAllKindFlow(page);
+  await recordRedactionFlow(page);
 } else if (mode === "quickstart") {
   await recordQuickstartFlow(page);
+} else if (mode === "redaction") {
+  await recordRedactionFlow(page);
 } else if (mode === "all-kind") {
   await recordAllKindFlow(page);
 } else {
@@ -93,7 +103,9 @@ await writeFile(
     ? composeNotes(videoSha256)
     : mode === "quickstart"
       ? quickstartNotes(videoSha256)
-      : allKindNotes(videoSha256)
+      : mode === "redaction"
+        ? redactionNotes(videoSha256)
+        : allKindNotes(videoSha256)
 );
 
 console.log(`Recorded Gate 2 browser demo to ${videoPath}`);
@@ -117,6 +129,10 @@ async function selectedSpanId(locator) {
 
 function quickstartReleaseQueryParam() {
   return quickstartRelease ? `&release=${encodeURIComponent(quickstartRelease)}` : "";
+}
+
+function redactionReleaseQueryParam() {
+  return redactionRelease ? `&release=${encodeURIComponent(redactionRelease)}` : "";
 }
 
 async function recordQuickstartFlow(page) {
@@ -238,6 +254,47 @@ async function recordAllKindFlow(page) {
   await page.waitForTimeout(toolReviewDwellMs);
 }
 
+async function recordRedactionFlow(page) {
+  const traceParam = redactionTraceId
+    ? `&trace=${encodeURIComponent(redactionTraceId)}`
+    : `&kind=llm.call&model=gpt-redaction${redactionReleaseQueryParam()}`;
+  await page.goto(`${baseUrl}/?tenant=demo&project=demo&environment=local${traceParam}`);
+  await page.getByRole("heading", { name: "Agent Trace Debugger" }).waitFor();
+  const waterfall = page.getByLabel("Agent span waterfall");
+  const llm = redactionSpanId
+    ? waterfall.locator(`[data-span-id="${redactionSpanId}"]`)
+    : spanRow(waterfall, "llm.call", "sensitive-redaction-review");
+  await llm.getByText("sensitive-redaction-review").waitFor();
+  await requireAttribute(llm, "data-kind", "llm.call");
+  await requireAttribute(llm, "data-depth", "0");
+  await llm.click();
+  const detail = page.getByLabel("Span detail");
+  await waitForMetric(detail, "Model", "openai/gpt-redaction");
+  await detail.getByLabel("Span I/O").getByText("redacted").waitFor();
+  await detail
+    .locator(".io.redacted")
+    .filter({ hasText: "Prompt" })
+    .getByText("redacted by policy")
+    .waitFor();
+  await detail
+    .locator(".io.redacted")
+    .filter({ hasText: "Completion" })
+    .getByText("redacted by policy")
+    .waitFor();
+  const unmaskForm = detail.getByLabel("Unmask redacted I/O");
+  await unmaskForm.getByLabel("Reason").fill(redactionUnmaskReason);
+  await page.waitForTimeout(redactionReviewDwellMs);
+  await unmaskForm.getByRole("button", { name: "Unmask" }).click();
+  await detail.getByText("Unmask requested").waitFor();
+  await detail.getByText(redactionUnmaskReason).waitFor();
+  await detail.getByText("customer SSN 123-45-6789").waitFor();
+  await detail.getByText("privacy review before replay").waitFor();
+  await page.waitForTimeout(redactionReviewDwellMs);
+  await detail.getByRole("link", { name: "Redacted view" }).click();
+  await detail.getByLabel("Span I/O").getByText("redacted").waitFor();
+  await page.waitForTimeout(redactionReviewDwellMs);
+}
+
 function spanRow(waterfall, kind, name) {
   return waterfall.locator(`[data-kind="${kind}"]`).filter({ hasText: name }).first();
 }
@@ -334,10 +391,35 @@ BEATER_GATE2_WRITE_PROOF=1 BEATER_GATE2_BROWSER_PROOF=1 BEATER_GATE2_RECORD_DEMO
 `;
 }
 
+function redactionNotes(videoSha256) {
+  const traceParam = redactionTraceId
+    ? `&trace=${encodeURIComponent(redactionTraceId)}`
+    : `&kind=llm.call&model=gpt-redaction${redactionReleaseQueryParam()}`;
+  return `# Gate 2 Browser Demo
+
+Recorded from the Gate 2 sensitive native trace used to prove redacted I/O controls.
+
+- Artifact: \`gate2-browser-demo.webm\`
+- SHA256: \`${videoSha256}\`
+- Recording mode: redaction
+- Dashboard: \`${baseUrl}/?tenant=demo&project=demo&environment=local${traceParam}\`
+- Redaction trace: \`${redactionTraceId ?? "latest matching redaction trace"}\`
+- Redaction unmask reason: \`${redactionUnmaskReason}\`
+- Shows: click sensitive \`llm.call\` span, confirm prompt/completion are redacted by default, enter an unmask reason, inspect unmasked prompt/completion, then return to Redacted view.
+
+Regenerate with:
+
+\`\`\`bash
+BEATER_E2E_REDACTION_TRACE_ID=<redaction-trace-id> BEATER_GATE2_RECORD_MODE=redaction npm run record:gate2
+\`\`\`
+`;
+}
+
 function composeNotes(videoSha256) {
   const quickstartTrace = quickstartTraceId ?? "latest matching quickstart trace";
   const quickstartReleaseLabel = quickstartRelease ?? "not provided";
   const allKindTrace = allKindTraceId ?? "latest matching all-kind trace";
+  const redactionTrace = redactionTraceId ?? "latest matching redaction trace";
   const defaultDashboardBase = "http://127.0.0.1:3000";
   const portNote =
     publicDashboardBase === defaultDashboardBase
@@ -360,7 +442,9 @@ stock OpenTelemetry quickstart and the all-kind stock OpenTelemetry agent trace.
 - Quickstart release ID: \`${quickstartReleaseLabel}\`
 - Quickstart trace: \`${quickstartTrace}\`
 - All-kind trace: \`${allKindTrace}\`
-- Shows: open dashboard -> click five-line trace -> click \`llm.call\` span -> read prompt, completion, model, token breakdown, cost, latency, and confirmation code -> inspect run -> turn -> step -> tool -> MCP waterfall.
+- Redaction trace: \`${redactionTrace}\`
+- Redaction unmask reason: \`${redactionUnmaskReason}\`
+- Shows: open dashboard -> click five-line trace -> click \`llm.call\` span -> read prompt, completion, model, token breakdown, cost, latency, and confirmation code -> inspect run -> turn -> step -> tool -> MCP waterfall -> open sensitive \`llm.call\` trace -> confirm redacted prompt/completion -> enter unmask reason -> inspect unmasked I/O -> return to Redacted view.
 
 ${portNote}
 

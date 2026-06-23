@@ -116,8 +116,10 @@ records `Quickstart click source: manual-outside-runner`,
 the 5-minute quickstart-click SLO.
 Then keep the script running for the post-SLO automated browser proof, all-kind
 trace, and recording evidence, open the all-kind dashboard URL, and capture the
-run -> turn -> step -> tool -> MCP waterfall. Cleanup can happen after the
-recording.
+run -> turn -> step -> tool -> MCP waterfall. The same post-SLO proof seeds a
+sensitive native `llm.call` trace, verifies prompt/completion are redacted by
+default, submits the required unmask reason, verifies unmasked I/O, and returns
+to Redacted view. Cleanup can happen after the recording.
 
 After the stopwatch command finishes, use the prefilled
 `scripts/generate-gate2-outside-proof.py --print-command` output printed in the
@@ -214,6 +216,8 @@ The validator reads the listed stopwatch proof file, screen-recording notes, and
 then cross-checks default API/OTLP/dashboard endpoints, clean-start status,
 browser-proof status, trace IDs, dashboard URLs, per-run quickstart release ID,
 the same quickstart release ID in the screen-recording notes,
+redacted-I/O browser proof status, redaction trace ID, redaction span ID,
+redaction dashboard URL, redaction unmask reason,
 SHA-pinned prebuilt GHCR image references, structured compose service and
 `proof-image` digest rows, prebuilt GHCR image digests bound to the public GHCR
 manifest digest set for the exact SHA tag, stock quickstart snippet markers, and
@@ -231,7 +235,8 @@ requires the recording notes to declare `Recording mode: compose`, the matching
 quickstart release ID, and describe
 the full click-through: quickstart trace, `llm.call`, prompt, completion, model,
 token breakdown, cost, latency, confirmation code, and run -> turn -> step ->
-tool -> MCP waterfall.
+tool -> MCP waterfall, plus the sensitive `llm.call` redacted prompt/completion,
+unmask reason, unmasked I/O, and Redacted view.
 Stopwatch, recording, notes, and saved compose-log paths must be repo-relative
 paths under `docs/demos/` and must not resolve through symlinks. Saved
 compose-log evidence must be a committed/clean file at closure, or an immutable
@@ -253,6 +258,11 @@ GitHub Actions run/job URL under
 - Quickstart dashboard URL:
 - All-kind nested trace ID:
 - All-kind dashboard URL:
+- Redaction browser proof:
+- Redaction trace ID:
+- Redaction span ID:
+- Redaction dashboard URL:
+- Redaction unmask reason:
 - `docker compose` logs saved: repo-relative committed/clean non-symlink `docs/demos/` log file or immutable GitHub Actions run/job URL
 - Failure notes, if any:
 
@@ -274,8 +284,10 @@ GitHub Actions run/job URL under
       breakdown, cost, latency, and confirmation code.
 - [ ] The all-kind trace rendered run -> turn -> step -> tool -> MCP nesting in
       the waterfall.
-- [ ] The browser proof passed for both the quickstart trace and all-kind
-      waterfall.
+- [ ] The redacted-I/O browser proof showed redacted defaults, reasoned unmask,
+      unmasked I/O, and Redacted view.
+- [ ] The browser proof passed for the quickstart trace, all-kind waterfall,
+      and redacted-I/O controls.
 - [ ] The stopwatch script generated and reported the browser recording.
 - [ ] A screen recording of the full flow is committed under `docs/demos/`.
 - [ ] The runner completed the flow using only public repository instructions.

@@ -47,8 +47,9 @@ copy the code from terminal logs or generated files.
 ## Post-SLO Evidence
 
 After the timed click is recorded, leave the command running. It will run the
-browser proof, generate the all-kind waterfall trace, record the browser video,
-and save `docs/demos/gate2-outside-compose.log`.
+browser proof, generate the all-kind waterfall trace, seed a sensitive redacted
+I/O trace, record the browser video, and save
+`docs/demos/gate2-outside-compose.log`.
 
 Open the printed all-kind dashboard URL and confirm the waterfall shows:
 
@@ -56,13 +57,17 @@ Open the printed all-kind dashboard URL and confirm the waterfall shows:
 run -> turn -> step -> tool -> MCP
 ```
 
+The automated browser proof and recording also cover the printed redaction
+dashboard URL: prompt/completion are redacted by default, the unmask reason is
+submitted, unmasked I/O appears, and Redacted view is restored.
+
 ## Proof Handoff
 
 After the command exits, use the printed
 `scripts/generate-gate2-outside-proof.py --print-command` output. Replace every `...` field with real runner values, then run it.
 The generated proof must keep the stopwatch's fresh quickstart release ID,
-trace IDs, span ID, and manual confirmation source; validation rejects stale or
-mismatched values.
+trace IDs, span IDs, redaction unmask reason, and manual confirmation source;
+validation rejects stale or mismatched values.
 
 Commit the evidence before validation:
 

@@ -11,6 +11,7 @@ api_url="http://$http_addr"
 grpc_url="http://$grpc_addr"
 dashboard_url="http://$dashboard_host:$dashboard_port"
 venv_dir="${BEATER_GATE2_VENV:-/tmp/beater-gate2-otel-venv}"
+redaction_release_id="${BEATER_GATE2_REDACTION_RELEASE:-gate2-redaction-$(date +%s)-$$}"
 all_kinds=(
   agent.run
   agent.turn
@@ -140,6 +141,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT="$grpc_url" \
 quickstart_trace_query="$api_url/v1/traces/demo?project_id=demo&environment_id=local&kind=llm.call&model=gpt-quickstart"
 wait_text "$quickstart_trace_query" "gpt-quickstart" "five-line stock Python OTLP trace"
 quickstart_trace_id="$(curl -fsS "$quickstart_trace_query" | first_trace_id)"
+redaction_seed="$(python3 "$root/scripts/seed-gate2-redaction-trace.py" \
+  --api-url "$api_url" \
+  --release-id "$redaction_release_id")"
+redaction_trace_id="$(printf '%s' "$redaction_seed" | json_field trace_id)"
+redaction_span_id="$(printf '%s' "$redaction_seed" | json_field span_id)"
 
 (
   cd "$root/web/dashboard"
@@ -165,6 +171,7 @@ require_text "$api_url/v1/traces/demo/$trace_id" "beaterctl otlp smoke"
 require_text "$api_url/openapi.json" "min_cost_micros"
 python_trace_api="$api_url/v1/traces/demo/$python_trace_id"
 python_trace_dashboard="$dashboard_url/?tenant=demo&project=demo&environment=local&trace=$python_trace_id"
+redaction_trace_dashboard="$dashboard_url/?tenant=demo&project=demo&environment=local&trace=$redaction_trace_id&span=$redaction_span_id"
 for kind in "${all_kinds[@]}"; do
   wait_text "$python_trace_api" "$kind" "Python all-kind API trace"
 done
@@ -173,6 +180,8 @@ wait_text "$python_trace_dashboard" "call-policy-model" "dashboard llm.call row"
 for kind in "${all_kinds[@]}"; do
   wait_text "$python_trace_dashboard" "$kind" "dashboard all-kind waterfall"
 done
+wait_text "$redaction_trace_dashboard" "sensitive-redaction-review" "dashboard redaction trace"
+wait_text "$redaction_trace_dashboard" "[redacted]" "dashboard redacted I/O"
 
 if [[ "${BEATER_GATE2_SKIP_BROWSER:-0}" != "1" ]]; then
   (
@@ -184,8 +193,18 @@ if [[ "${BEATER_GATE2_SKIP_BROWSER:-0}" != "1" ]]; then
       npx playwright test tests/e2e/dashboard.spec.ts
     BEATER_E2E_QUICKSTART_TRACE_ID="$quickstart_trace_id" PLAYWRIGHT_BASE_URL="$dashboard_url" \
       npm run test:e2e:quickstart
+    BEATER_E2E_REDACTION_TRACE_ID="$redaction_trace_id" \
+      BEATER_E2E_REDACTION_SPAN_ID="$redaction_span_id" \
+      BEATER_E2E_REDACTION_RELEASE="$redaction_release_id" \
+      PLAYWRIGHT_BASE_URL="$dashboard_url" \
+      npx playwright test tests/e2e/redaction.spec.ts
     if [[ "${BEATER_GATE2_RECORD_DEMO:-0}" == "1" ]]; then
-      BEATER_E2E_TRACE_ID="$python_trace_id" PLAYWRIGHT_BASE_URL="$dashboard_url" npm run record:gate2
+      BEATER_E2E_TRACE_ID="$python_trace_id" \
+        BEATER_E2E_REDACTION_TRACE_ID="$redaction_trace_id" \
+        BEATER_E2E_REDACTION_SPAN_ID="$redaction_span_id" \
+        BEATER_E2E_REDACTION_RELEASE="$redaction_release_id" \
+        PLAYWRIGHT_BASE_URL="$dashboard_url" \
+        npm run record:gate2
     fi
   )
 fi
@@ -210,4 +229,7 @@ Python all-kind trace:
 
 Five-line quickstart trace:
   $dashboard_url/?tenant=demo&project=demo&environment=local&trace=$quickstart_trace_id
+
+Redacted I/O trace:
+  $redaction_trace_dashboard
 EOF

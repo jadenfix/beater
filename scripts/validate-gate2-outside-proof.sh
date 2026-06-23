@@ -538,6 +538,9 @@ def require_recording_shows_full_flow(notes_text: str) -> None:
         "latency",
         "confirmation code",
         "run -> turn -> step -> tool -> MCP",
+        "redacted prompt/completion",
+        "unmask reason",
+        "Redacted view",
     ]
     missing = [fragment for fragment in required_fragments if fragment not in shows]
     if missing:
@@ -1074,6 +1077,11 @@ REQUIRED_PROOF_FIELDS = [
     "Quickstart dashboard URL",
     "All-kind nested trace ID",
     "All-kind dashboard URL",
+    "Redaction browser proof",
+    "Redaction trace ID",
+    "Redaction span ID",
+    "Redaction dashboard URL",
+    "Redaction unmask reason",
     "`docker compose` logs saved",
     "Failure notes, if any",
 ]
@@ -1293,10 +1301,20 @@ compose_images_excerpt = field_value("`docker compose images` excerpt")
 quickstart_trace_id = field_value("Quickstart trace ID")
 quickstart_span_id = field_value("Quickstart span ID")
 all_kind_trace_id = field_value("All-kind nested trace ID")
+redaction_browser_proof = field_value("Redaction browser proof")
+redaction_trace_id = field_value("Redaction trace ID")
+redaction_span_id = field_value("Redaction span ID")
+redaction_unmask_reason = field_value("Redaction unmask reason")
 quickstart_release_id = field_value("Quickstart release ID")
 require_trace_id("Quickstart trace ID", quickstart_trace_id, "outside-person proof")
 require_span_id("Quickstart span ID", quickstart_span_id, "outside-person proof")
 require_trace_id("All-kind nested trace ID", all_kind_trace_id, "outside-person proof")
+if redaction_browser_proof != "passed":
+    fail("Redaction browser proof must be passed")
+require_trace_id("Redaction trace ID", redaction_trace_id, "outside-person proof")
+require_span_id("Redaction span ID", redaction_span_id, "outside-person proof")
+if redaction_unmask_reason != "gate2-redaction-review":
+    fail("Redaction unmask reason must be gate2-redaction-review")
 require_confirmation_code(
     "Manual confirmation code",
     manual_confirmation_code,
@@ -1310,6 +1328,8 @@ require_quickstart_release_id(
 )
 if quickstart_trace_id == all_kind_trace_id:
     fail("Quickstart trace ID and All-kind nested trace ID must be distinct")
+if redaction_trace_id in {quickstart_trace_id, all_kind_trace_id}:
+    fail("Redaction trace ID must be distinct from quickstart and all-kind traces")
 image_refs = {
     image.image_name: field_value(image.proof_ref_field) for image in GATE2_IMAGES
 }
@@ -1344,8 +1364,10 @@ require_compose_images_excerpt(
 )
 quickstart_url = field_value("Quickstart dashboard URL")
 all_kind_url = field_value("All-kind dashboard URL")
+redaction_url = field_value("Redaction dashboard URL")
 require_default_dashboard_url("Quickstart dashboard URL", quickstart_url, quickstart_trace_id)
 require_default_dashboard_url("All-kind dashboard URL", all_kind_url, all_kind_trace_id)
+require_default_dashboard_url("Redaction dashboard URL", redaction_url, redaction_trace_id)
 require_terminal_excerpt(field_value("Terminal output excerpt"), quickstart_url, all_kind_url)
 require_compose_logs_saved(field_value("`docker compose` logs saved"))
 require_runner_observation(
@@ -1418,6 +1440,12 @@ if notes_text:
     notes_all_kind_trace = field_value_from(
         notes_text, "All-kind trace", "screen recording notes"
     )
+    notes_redaction_trace = field_value_from(
+        notes_text, "Redaction trace", "screen recording notes"
+    )
+    notes_redaction_unmask_reason = field_value_from(
+        notes_text, "Redaction unmask reason", "screen recording notes"
+    )
     if recording and notes_artifact != Path(recording).name:
         fail("screen recording notes artifact must match the screen recording filename")
     require_equal("screen recording notes sha256", sha, notes_sha)
@@ -1440,6 +1468,7 @@ if notes_text:
         "Quickstart trace", notes_quickstart_trace, "screen recording notes"
     )
     require_trace_id("All-kind trace", notes_all_kind_trace, "screen recording notes")
+    require_trace_id("Redaction trace", notes_redaction_trace, "screen recording notes")
     require_equal(
         "screen recording notes quickstart trace",
         quickstart_trace_id,
@@ -1447,6 +1476,16 @@ if notes_text:
     )
     require_equal(
         "screen recording notes all-kind trace", all_kind_trace_id, notes_all_kind_trace
+    )
+    require_equal(
+        "screen recording notes redaction trace",
+        redaction_trace_id,
+        notes_redaction_trace,
+    )
+    require_equal(
+        "screen recording notes redaction unmask reason",
+        redaction_unmask_reason,
+        notes_redaction_unmask_reason,
     )
     require_recording_shows_full_flow(notes_text)
     require_recording_from_outside_wrapper(notes_text)
@@ -1503,6 +1542,7 @@ if stopwatch_text:
         ("Compose project", "beater-stopwatch"),
         ("Quickstart browser proof", "passed"),
         ("All-kind waterfall browser proof", "passed"),
+        ("Redaction browser proof", "passed"),
         ("Browser recording", "passed"),
         ("Quickstart click source", "manual-outside-runner"),
         ("Manual quickstart confirmation", "yes"),
@@ -1599,6 +1639,15 @@ if stopwatch_text:
     stopwatch_all_kind_trace = field_value_from(
         stopwatch_text, "All-kind nested trace", "stopwatch proof"
     )
+    stopwatch_redaction_trace = field_value_from(
+        stopwatch_text, "Redaction trace", "stopwatch proof"
+    )
+    stopwatch_redaction_span = field_value_from(
+        stopwatch_text, "Redaction span", "stopwatch proof"
+    )
+    stopwatch_redaction_unmask_reason = field_value_from(
+        stopwatch_text, "Redaction unmask reason", "stopwatch proof"
+    )
     require_trace_id("Quickstart trace", stopwatch_quickstart_trace, "stopwatch proof")
     require_span_id("Quickstart span", stopwatch_quickstart_span, "stopwatch proof")
     require_confirmation_salt(
@@ -1607,6 +1656,8 @@ if stopwatch_text:
         "stopwatch proof",
     )
     require_trace_id("All-kind nested trace", stopwatch_all_kind_trace, "stopwatch proof")
+    require_trace_id("Redaction trace", stopwatch_redaction_trace, "stopwatch proof")
+    require_span_id("Redaction span", stopwatch_redaction_span, "stopwatch proof")
     require_confirmation_code(
         "Manual confirmation code",
         stopwatch_manual_confirmation_code,
@@ -1628,6 +1679,13 @@ if stopwatch_text:
         stopwatch_manual_confirmation_salt,
     )
     require_equal("all-kind trace id", all_kind_trace_id, stopwatch_all_kind_trace)
+    require_equal("redaction trace id", redaction_trace_id, stopwatch_redaction_trace)
+    require_equal("redaction span id", redaction_span_id, stopwatch_redaction_span)
+    require_equal(
+        "redaction unmask reason",
+        redaction_unmask_reason,
+        stopwatch_redaction_unmask_reason,
+    )
 
     stopwatch_quickstart_url = field_value_from(
         stopwatch_text, "Quickstart dashboard", "stopwatch proof"
@@ -1635,14 +1693,21 @@ if stopwatch_text:
     stopwatch_all_kind_url = field_value_from(
         stopwatch_text, "All-kind dashboard", "stopwatch proof"
     )
+    stopwatch_redaction_url = field_value_from(
+        stopwatch_text, "Redaction dashboard", "stopwatch proof"
+    )
     require_default_dashboard_url(
         "Quickstart dashboard", stopwatch_quickstart_url, stopwatch_quickstart_trace
     )
     require_default_dashboard_url(
         "All-kind dashboard", stopwatch_all_kind_url, stopwatch_all_kind_trace
     )
+    require_default_dashboard_url(
+        "Redaction dashboard", stopwatch_redaction_url, stopwatch_redaction_trace
+    )
     require_equal("quickstart dashboard URL", quickstart_url, stopwatch_quickstart_url)
     require_equal("all-kind dashboard URL", all_kind_url, stopwatch_all_kind_url)
+    require_equal("redaction dashboard URL", redaction_url, stopwatch_redaction_url)
 
     stopwatch_api_endpoint = field_value_from(
         stopwatch_text, "API endpoint", "stopwatch proof"

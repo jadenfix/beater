@@ -530,7 +530,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("tcp://[::1]:"));
     assert!(stopwatch_script.contains("docker context inspect"));
     assert!(stopwatch_script.contains("requires a local Docker context"));
-    assert!(!stopwatch_script.contains("require_command python3"));
+    assert!(stopwatch_script.contains("require_command python3"));
+    assert!(stopwatch_script.contains("scripts/seed-gate2-redaction-trace.py"));
     assert!(!stopwatch_script.contains("python3 -m venv"));
     assert!(!stopwatch_script.contains("pip --version"));
     assert!(!stopwatch_script.contains("require_command npm"));
@@ -603,7 +604,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(stopwatch_script.contains("npx playwright test tests/e2e/quickstart.spec.ts"));
     assert!(stopwatch_script.contains("npx playwright test tests/e2e/dashboard.spec.ts"));
     assert!(stopwatch_script.contains("all_kind_trace_id"));
-    assert!(stopwatch_script.contains("all-kind nested agent waterfall"));
+    assert!(stopwatch_script.contains("redacted-I/O controls"));
+    assert!(stopwatch_script.contains("all-kind nested agent"));
+    assert!(stopwatch_script.contains("waterfall in the same proof run"));
     assert!(stopwatch_script.contains("PLAYWRIGHT_BASE_URL"));
     assert!(stopwatch_script.contains("BEATER_GATE2_REUSE"));
     assert!(stopwatch_script.contains("clean_start"));

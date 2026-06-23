@@ -179,6 +179,9 @@ def print_prefilled_command(args, stopwatch_path, output_path, stopwatch_text):
     require_source_field_equal(
         stopwatch_text, stopwatch_rel, "Browser recording", "passed"
     )
+    require_source_field_equal(
+        stopwatch_text, stopwatch_rel, "Redaction browser proof", "passed"
+    )
     compose_logs_saved = compose_logs_from_stopwatch(stopwatch_text, stopwatch_rel)
     terminal_excerpt = terminal_output_excerpt_from_stopwatch(stopwatch_text, stopwatch_rel)
     command = [
@@ -255,6 +258,17 @@ def build_proof(args, stopwatch_path, stopwatch_text):
     notes = field_value(stopwatch_text, "Browser recording notes", stopwatch_rel)
     recording_sha = require_source_sha256(
         stopwatch_text, stopwatch_rel, "Browser recording SHA256"
+    )
+    require_source_field_equal(
+        stopwatch_text, stopwatch_rel, "Redaction browser proof", "passed"
+    )
+    redaction_trace_id = field_value(stopwatch_text, "Redaction trace", stopwatch_rel)
+    redaction_span_id = field_value(stopwatch_text, "Redaction span", stopwatch_rel)
+    redaction_dashboard_url = field_value(
+        stopwatch_text, "Redaction dashboard", stopwatch_rel
+    )
+    redaction_unmask_reason = field_value(
+        stopwatch_text, "Redaction unmask reason", stopwatch_rel
     )
     quickstart_dashboard_url = field_value(stopwatch_text, "Quickstart dashboard", stopwatch_rel)
     all_kind_dashboard_url = field_value(stopwatch_text, "All-kind dashboard", stopwatch_rel)
@@ -408,6 +422,11 @@ Status: {status}
 - Quickstart dashboard URL: `{quickstart_dashboard_url}`
 - All-kind nested trace ID: {field_value(stopwatch_text, "All-kind nested trace", stopwatch_rel)}
 - All-kind dashboard URL: `{all_kind_dashboard_url}`
+- Redaction browser proof: {field_value(stopwatch_text, "Redaction browser proof", stopwatch_rel)}
+- Redaction trace ID: {redaction_trace_id}
+- Redaction span ID: {redaction_span_id}
+- Redaction dashboard URL: `{redaction_dashboard_url}`
+- Redaction unmask reason: {redaction_unmask_reason}
 - `docker compose` logs saved: {logs_saved}
 - Failure notes, if any: {failure_notes}
 
@@ -426,7 +445,8 @@ Status: {status}
 - [x] The five-line stock OpenTelemetry trace appeared in `localhost:3000`.
 - [x] Clicking the `llm.call` span showed prompt, completion, model, token breakdown, cost, latency, and confirmation code.
 - [x] The all-kind trace rendered run -> turn -> step -> tool -> MCP nesting in the waterfall.
-- [x] The browser proof passed for both the quickstart trace and all-kind waterfall.
+- [x] The redacted-I/O browser proof showed redacted defaults, reasoned unmask, and Redacted view.
+- [x] The browser proof passed for the quickstart trace, all-kind waterfall, and redacted-I/O controls.
 - [x] The stopwatch script generated and reported the browser recording.
 {recording_checklist}
 {runner_checklist}

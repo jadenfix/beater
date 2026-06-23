@@ -43,6 +43,7 @@ deadline_epoch=$((timing_start_epoch + 300))
 started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 quickstart_browser_proof_status="not requested"
 waterfall_browser_proof_status="not requested"
+redaction_browser_proof_status="not requested"
 record_demo_status="not requested"
 record_demo_sha256="not requested"
 compose_logs_artifact="not requested"
@@ -56,6 +57,10 @@ manual_quickstart_confirmation_salt="not requested"
 quickstart_span_id=""
 all_kind_trace_id=""
 all_kind_dashboard_url=""
+redaction_trace_id=""
+redaction_span_id=""
+redaction_dashboard_url=""
+redaction_unmask_reason="not requested"
 outside_runner_next_steps=""
 e2e_base_url="http://dashboard:3000"
 git_sha="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -259,6 +264,10 @@ wait_text() {
     fi
     sleep 2
   done
+}
+
+json_field() {
+  python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
 }
 
 confirm_manual_quickstart_click() {
@@ -543,6 +552,7 @@ EOF
 preflight_prerequisites() {
   require_command docker
   require_command curl
+  require_command python3
   if ! command -v shasum >/dev/null 2>&1 && ! command -v sha256sum >/dev/null 2>&1; then
     echo "Gate 2 stopwatch requires shasum or sha256sum before the stopwatch starts." >&2
     return 1
@@ -666,6 +676,24 @@ if [[ "$browser_proof" == "1" ]]; then
     fi
   fi
 
+  redaction_seed="$(python3 scripts/seed-gate2-redaction-trace.py \
+    --api-url "$api_url" \
+    --release-id "$gate2_run_id")"
+  redaction_trace_id="$(printf '%s' "$redaction_seed" | json_field trace_id)"
+  redaction_span_id="$(printf '%s' "$redaction_seed" | json_field span_id)"
+  redaction_unmask_reason="$(printf '%s' "$redaction_seed" | json_field unmask_reason)"
+  redaction_dashboard_url="$dashboard_base_url/?tenant=demo&project=demo&environment=local&trace=$redaction_trace_id&span=$redaction_span_id"
+  run_with_step_timeout "wait for dashboard redacted I/O trace" wait_text "$redaction_dashboard_url" "sensitive-redaction-review" "dashboard redacted I/O trace"
+  run_with_step_timeout "wait for dashboard redacted I/O marker" wait_text "$redaction_dashboard_url" "[redacted]" "dashboard redacted I/O marker"
+  run_with_step_timeout "redacted I/O browser proof" compose_run_e2e \
+    -e BEATER_E2E_REDACTION_TRACE_ID="$redaction_trace_id" \
+    -e BEATER_E2E_REDACTION_SPAN_ID="$redaction_span_id" \
+    -e BEATER_E2E_REDACTION_RELEASE="$gate2_run_id" \
+    -e PLAYWRIGHT_BASE_URL="$e2e_base_url" \
+    dashboard-e2e \
+    npx playwright test tests/e2e/redaction.spec.ts
+  redaction_browser_proof_status="passed"
+
   run_with_step_timeout "stock Python all-kind OTEL fixture" compose_run_tool otel-python-smoke
 
   all_kind_query="$api_url/v1/traces/demo?project_id=demo&environment_id=local&kind=llm.call&model=gpt-demo&release=compose-demo"
@@ -693,6 +721,9 @@ if [[ "$browser_proof" == "1" ]]; then
       -e BEATER_E2E_QUICKSTART_TRACE_ID="$trace_id" \
       -e BEATER_E2E_QUICKSTART_RELEASE="$gate2_run_id" \
       -e BEATER_E2E_ALL_KIND_TRACE_ID="$all_kind_trace_id" \
+      -e BEATER_E2E_REDACTION_TRACE_ID="$redaction_trace_id" \
+      -e BEATER_E2E_REDACTION_SPAN_ID="$redaction_span_id" \
+      -e BEATER_E2E_REDACTION_RELEASE="$gate2_run_id" \
       -e BEATER_GATE2_RECORD_VIDEO="$record_demo_video" \
       -e BEATER_GATE2_RECORD_NOTES="$record_demo_notes" \
       -e PLAYWRIGHT_BASE_URL="$e2e_base_url" \
@@ -814,6 +845,11 @@ if [[ "$write_proof" == "1" ]]; then
 - All-kind nested trace: \`${all_kind_trace_id:-not requested}\`
 - All-kind dashboard: ${all_kind_dashboard_url:-not requested}
 - All-kind waterfall browser proof: $waterfall_browser_proof_status
+- Redaction browser proof: $redaction_browser_proof_status
+- Redaction trace: \`${redaction_trace_id:-not requested}\`
+- Redaction span: \`${redaction_span_id:-not requested}\`
+- Redaction dashboard: ${redaction_dashboard_url:-not requested}
+- Redaction unmask reason: $redaction_unmask_reason
 - Browser recording: $record_demo_status
 - Browser recording artifact: \`$([[ "$record_demo" == "1" ]] && echo "$record_demo_video" || echo "not requested")\`
 - Browser recording notes: \`$([[ "$record_demo" == "1" ]] && echo "$record_demo_notes" || echo "not requested")\`
@@ -839,14 +875,15 @@ Outside-run next steps:
   3. Confirm prompt, completion, model, token breakdown, cost, latency, and the confirmation code are visible.
   4. Open ${all_kind_dashboard_url:-not requested} in a normal browser for the all-kind waterfall.
   5. Confirm run -> turn -> step -> tool -> MCP nesting is visible.
-  6. Use the saved docker compose logs artifact as evidence: $compose_logs_artifact
-  7. Generate the completed proof from this prefilled command:
+  6. Review ${redaction_dashboard_url:-not requested} for redacted I/O and the reasoned unmask browser proof.
+  7. Use the saved docker compose logs artifact as evidence: $compose_logs_artifact
+  8. Generate the completed proof from this prefilled command:
 $outside_proof_command
-  8. Commit the evidence before closure validation:
+  9. Commit the evidence before closure validation:
        git add docs/demos/gate2-outside-person-proof.md docs/demos/gate2-compose-stopwatch.md docs/demos/gate2-compose-browser-demo.webm docs/demos/gate2-compose-browser-demo.md docs/demos/gate2-outside-compose.log
        git commit -m "add gate2 outside proof"
-  9. Validate it with scripts/validate-gate2-outside-proof.sh.
-  10. After evidence is captured, clean up with:
+  10. Validate it with scripts/validate-gate2-outside-proof.sh.
+  11. After evidence is captured, clean up with:
        docker compose -f docker-compose.prebuilt.yml -p $project down -v --remove-orphans
 EOF
 )"
@@ -862,10 +899,10 @@ pulling prebuilt GHCR images.
 Set BEATER_GATE2_REUSE=1 to skip the pre-run Compose down/volume removal and
 state cleanup for local warm-loop debugging only.
 Set BEATER_GATE2_BROWSER_PROOF=1 to run the Playwright browser proof for the
-five-line quickstart trace and all-kind nested agent waterfall in the same proof
-run.
+five-line quickstart trace, redacted-I/O controls, and all-kind nested agent
+waterfall in the same proof run.
 Set BEATER_GATE2_RECORD_DEMO=1 to record the quickstart click-through and
-all-kind waterfall browser proof as a committed demo artifact.
+all-kind waterfall plus redaction browser proof as a committed demo artifact.
 Set BEATER_GATE2_POST_SLO_TIMEOUT_SECONDS to control each post-SLO evidence
 step timeout after the five-line trace and quickstart click have passed.
 EOF
@@ -892,6 +929,9 @@ Direct quickstart trace URL:
 
 All-kind waterfall dashboard:
   ${all_kind_dashboard_url:-not requested}
+
+Redacted I/O dashboard:
+  ${redaction_dashboard_url:-not requested}
 
 Browser recording:
   $record_demo_status

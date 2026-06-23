@@ -63,8 +63,10 @@ model, token breakdown, cost, latency, and the `Confirm` code. Type that
 confirmation code in the terminal and press Enter only after that manual
 click-through is complete; the stopwatch records that as the quickstart-click
 SLO. Then keep the script running for the post-SLO automated
-browser proof, all-kind and recording evidence, open the printed all-kind
-dashboard URL, and verify the run -> turn -> step -> tool -> MCP waterfall. Gate 2 is not closed
+browser proof, all-kind, redaction, and recording evidence. Open the printed
+all-kind dashboard URL and verify the run -> turn -> step -> tool -> MCP
+waterfall; the automated proof also seeds a sensitive trace and records
+redacted defaults, reasoned unmask, unmasked I/O, and Redacted view. Gate 2 is not closed
 until someone outside the project reaches the first trace and confirms the
 quickstart browser click unaided in 5 minutes or less, completes the post-SLO
 all-kind/recording evidence, and fills
@@ -211,9 +213,9 @@ remaining seconds in the 5-minute clone-to-click SLO. Type the `Confirm` code
 shown in the selected span detail and press Enter only after prompt,
 completion, model, token breakdown, cost, latency, and the code are visible.
 Do not wait for the script to finish; it continues with automated browser
-proof, the all-kind waterfall trace, and the recording after the timed manual
-quickstart click. Keep the command running until those post-SLO evidence steps
-finish.
+proof, the all-kind waterfall trace, redacted-I/O proof, and the recording
+after the timed manual quickstart click. Keep the command running until those
+post-SLO evidence steps finish.
 
 The outside-run wrapper rejects non-`main` checkouts, non-canonical GitHub
 origins, dirty worktrees, warm-loop reuse, local source builds, alternate ports,
@@ -263,13 +265,15 @@ exact checked-out SHA tag. Set
 `BEATER_GATE2_LOCAL_BUILD=1` when you intentionally want to build the server and
 dashboard images from source. Set `BEATER_GATE2_REUSE=1` only for local
 warm-loop debugging. Set `BEATER_GATE2_BROWSER_PROOF=1` to also run the
-prebuilt `dashboard-e2e` Playwright browser proof for both the five-line trace
-and the all-kind nested agent waterfall in the same proof run. The five-minute
+prebuilt `dashboard-e2e` Playwright browser proof for the five-line trace,
+redacted-I/O unmask controls, and the all-kind nested agent waterfall in the
+same proof run. The five-minute
 SLO is enforced for time-to-first-trace and, in outside-run mode, the manual
 quickstart click confirmation; all-kind and recording steps run afterward with
 per-step timeouts. Set
 `BEATER_GATE2_RECORD_DEMO=1` to write `docs/demos/gate2-compose-browser-demo.webm`
-and its SHA-pinned notes from the same browser session.
+and its SHA-pinned notes from the same browser session, including the redaction
+trace and unmask reason.
 
 The five-line snippet is intentionally plain OpenTelemetry. To run the exact
 manual step after `docker compose up -d --build`, install stock OTEL packages

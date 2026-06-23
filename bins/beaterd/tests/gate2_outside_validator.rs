@@ -10,6 +10,9 @@ use tempfile::TempDir;
 const QUICKSTART_TRACE: &str = "11111111111111111111111111111111";
 const QUICKSTART_SPAN: &str = "aaaaaaaaaaaaaaaa";
 const ALL_KIND_TRACE: &str = "22222222222222222222222222222222";
+const REDACTION_TRACE: &str = "33333333333333333333333333333333";
+const REDACTION_SPAN: &str = "bbbbbbbbbbbbbbbb";
+const REDACTION_UNMASK_REASON: &str = "gate2-redaction-review";
 const MANUAL_CONFIRMATION_CODE: &str = "682ABA78";
 const MANUAL_CONFIRMATION_SALT: &str = "gate2-test-salt-123";
 const MANUAL_CONFIRMATION_SOURCE: &str = "browser-selected-llm-detail";
@@ -2047,6 +2050,10 @@ fn gate2_stopwatch_outside_next_steps_separate_dashboard_targets() {
         "Open ${all_kind_dashboard_url:-not requested} in a normal browser for the all-kind waterfall."
     ));
     assert!(script.contains("Confirm run -> turn -> step -> tool -> MCP nesting is visible."));
+    assert!(script.contains("scripts/seed-gate2-redaction-trace.py"));
+    assert!(script.contains("redacted I/O browser proof"));
+    assert!(script.contains("Redaction browser proof: $redaction_browser_proof_status"));
+    assert!(script.contains("Review ${redaction_dashboard_url:-not requested} for redacted I/O"));
     assert!(script.contains("BEATER_GATE2_COMPOSE_LOGS"));
     assert!(script.contains("save_compose_logs()"));
     assert!(script.contains("logs --no-color --timestamps"));
@@ -4373,6 +4380,11 @@ The runner completed the flow using only public repository instructions.
 - Quickstart dashboard URL: `http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={QUICKSTART_TRACE}`
 - All-kind nested trace ID: {ALL_KIND_TRACE}
 - All-kind dashboard URL: `http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={ALL_KIND_TRACE}`
+- Redaction browser proof: passed
+- Redaction trace ID: {REDACTION_TRACE}
+- Redaction span ID: {REDACTION_SPAN}
+- Redaction dashboard URL: `http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={REDACTION_TRACE}&span={REDACTION_SPAN}`
+- Redaction unmask reason: {REDACTION_UNMASK_REASON}
 - `docker compose` logs saved: {compose_log}
 - Failure notes, if any: none
 
@@ -4390,7 +4402,8 @@ The runner completed the flow using only public repository instructions.
 - [x] The five-line stock OpenTelemetry trace appeared in `localhost:3000`.
 - [x] Clicking the `llm.call` span showed prompt, completion, model, token breakdown, cost, latency, and confirmation code.
 - [x] The all-kind trace rendered run -> turn -> step -> tool -> MCP nesting in the waterfall.
-- [x] The browser proof passed for both the quickstart trace and all-kind waterfall.
+- [x] The redacted-I/O browser proof showed redacted defaults, reasoned unmask, and Redacted view.
+- [x] The browser proof passed for the quickstart trace, all-kind waterfall, and redacted-I/O controls.
 - [x] The stopwatch script generated and reported the browser recording.
 - [x] A screen recording of the full flow is committed under `docs/demos/`.
 - [x] The runner completed the flow using only public repository instructions.
@@ -4463,6 +4476,11 @@ fn stopwatch_proof(recording: &str, notes: &str, compose_logs: &str) -> String {
 - All-kind nested trace: `{ALL_KIND_TRACE}`
 - All-kind dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={ALL_KIND_TRACE}
 - All-kind waterfall browser proof: passed
+- Redaction browser proof: passed
+- Redaction trace: `{REDACTION_TRACE}`
+- Redaction span: `{REDACTION_SPAN}`
+- Redaction dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace={REDACTION_TRACE}&span={REDACTION_SPAN}
+- Redaction unmask reason: {REDACTION_UNMASK_REASON}
 - Browser recording: passed
 - Browser recording artifact: `{recording}`
 - Browser recording notes: `{notes}`
@@ -4507,7 +4525,9 @@ fn recording_notes_for_commit(recording_name: &str, commit_sha: &str) -> String 
 - Quickstart release ID: `{quickstart_release_id}`
 - Quickstart trace: `{QUICKSTART_TRACE}`
 - All-kind trace: `{ALL_KIND_TRACE}`
-- Shows: open dashboard -> click five-line trace -> click `llm.call` span -> read prompt, completion, model, token breakdown, cost, latency, and confirmation code -> inspect run -> turn -> step -> tool -> MCP waterfall.
+- Redaction trace: `{REDACTION_TRACE}`
+- Redaction unmask reason: `{REDACTION_UNMASK_REASON}`
+- Shows: open dashboard -> click five-line trace -> click `llm.call` span -> read prompt, completion, model, token breakdown, cost, latency, and confirmation code -> inspect run -> turn -> step -> tool -> MCP waterfall -> open sensitive `llm.call` trace -> confirm redacted prompt/completion -> enter unmask reason -> inspect unmasked I/O -> return to Redacted view.
 
 This recording was generated during the outside-person stopwatch path. The completed proof file must pair it with the runner attestation, manual quickstart confirmation, and runner observations.
 "#
@@ -5625,6 +5645,7 @@ fn write_public_handoff_fixture_repo() -> TempDir {
         "scripts/smoke-compose.sh",
         "scripts/generate-gate2-outside-proof.py",
         "scripts/gate2_proof_contract.py",
+        "scripts/seed-gate2-redaction-trace.py",
         "scripts/validate-gate2-outside-proof.sh",
         "README.md",
         "docker-compose.yml",
@@ -5788,6 +5809,12 @@ mkdir -p docs/demos
 # - Manual confirmation source: $manual_confirmation_source
 # - Manual confirmation code: $manual_quickstart_confirmation_code
 # - Manual confirmation salt: \`$manual_quickstart_confirmation_salt\`
+# python3 scripts/seed-gate2-redaction-trace.py
+# - Redaction browser proof: $redaction_browser_proof_status
+# - Redaction trace: \`${redaction_trace_id:-not requested}\`
+# - Redaction span: \`${redaction_span_id:-not requested}\`
+# - Redaction unmask reason: $redaction_unmask_reason
+# redacted I/O browser proof
 cat <<'EOF_PROMPT'
 Manual outside-run checkpoint:
   ${remaining}s remain in the 5-minute clone-to-click SLO.
@@ -5853,7 +5880,9 @@ cat > docs/demos/gate2-compose-browser-demo.md <<'EOF_NOTES'
 - Quickstart release ID: `gate2-__COMMIT_SHORT__-1780000000-12345`
 - Quickstart trace: `11111111111111111111111111111111`
 - All-kind trace: `22222222222222222222222222222222`
-- Shows: open dashboard -> click five-line trace -> click `llm.call` span -> read prompt, completion, model, token breakdown, cost, latency, and confirmation code -> inspect run -> turn -> step -> tool -> MCP waterfall.
+- Redaction trace: `33333333333333333333333333333333`
+- Redaction unmask reason: `gate2-redaction-review`
+- Shows: open dashboard -> click five-line trace -> click `llm.call` span -> read prompt, completion, model, token breakdown, cost, latency, and confirmation code -> inspect run -> turn -> step -> tool -> MCP waterfall -> open sensitive `llm.call` trace -> confirm redacted prompt/completion -> enter unmask reason -> inspect unmasked I/O -> return to Redacted view.
 
 This recording was generated during the outside-person stopwatch path. The completed proof file must pair it with the runner attestation, manual quickstart confirmation, and runner observations.
 EOF_NOTES
@@ -5911,6 +5940,11 @@ cat > docs/demos/gate2-compose-stopwatch.md <<'EOF_PROOF'
 - All-kind nested trace: 22222222222222222222222222222222
 - All-kind dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace=22222222222222222222222222222222
 - All-kind waterfall browser proof: passed
+- Redaction browser proof: passed
+- Redaction trace: 33333333333333333333333333333333
+- Redaction span: bbbbbbbbbbbbbbbb
+- Redaction dashboard: http://127.0.0.1:3000/?tenant=demo&project=demo&environment=local&trace=33333333333333333333333333333333&span=bbbbbbbbbbbbbbbb
+- Redaction unmask reason: gate2-redaction-review
 - Browser recording: passed
 - Browser recording artifact: docs/demos/gate2-compose-browser-demo.webm
 - Browser recording notes: docs/demos/gate2-compose-browser-demo.md

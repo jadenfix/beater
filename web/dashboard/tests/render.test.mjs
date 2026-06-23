@@ -328,6 +328,9 @@ test("local Gate 2 proof serves standalone CSS assets", () => {
   assert.match(proof, /npm run build/);
   assert.ok(proof.includes(".next/standalone/.next/static"));
   assert.ok(proof.includes("cp -R .next/static .next/standalone/.next/static"));
+  assert.match(proof, /seed-gate2-redaction-trace\.py/);
+  assert.match(proof, /tests\/e2e\/redaction\.spec\.ts/);
+  assert.match(proof, /BEATER_E2E_REDACTION_TRACE_ID/);
 });
 
 test("dashboard client uses public beater read endpoints", () => {
@@ -783,6 +786,9 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   assert.match(recorder, /BEATER_E2E_QUICKSTART_RELEASE/);
   assert.match(recorder, /recordQuickstartFlow/);
   assert.match(recorder, /recordAllKindFlow/);
+  assert.match(recorder, /recordRedactionFlow/);
+  assert.match(recorder, /BEATER_E2E_REDACTION_TRACE_ID/);
+  assert.match(recorder, /redactionUnmaskReason = "gate2-redaction-review"/);
   assert.match(recorder, /quickstartNotes/);
   assert.match(recorder, /Quickstart release ID/);
   assert.match(recorder, /literal five-line stock OpenTelemetry quickstart trace/);
@@ -808,7 +814,16 @@ test("browser proof covers all canonical span kinds and can record a demo", () =
   assert.match(recorder, /filter\(\{ hasText: "Completion" \}\)/);
   assert.match(recorder, /hello from stock OpenTelemetry/);
   assert.match(recorder, /color\/icon-coded all-kind agent waterfall/);
+  assert.match(recorder, /redacted prompt\/completion/);
+  assert.match(recorder, /Redacted view/);
   assert.match(recorder, /gate2-browser-demo\.webm/);
+  const redaction = readFileSync(join(root, "tests/e2e/redaction.spec.ts"), "utf8");
+  assert.match(redaction, /BEATER_E2E_REDACTION_TRACE_ID/);
+  assert.match(redaction, /BEATER_E2E_REDACTION_SPAN_ID/);
+  assert.match(redaction, /gpt-redaction/);
+  assert.match(redaction, /gate2-redaction-review/);
+  assert.match(redaction, /not\.toContainText\(rawCard\)/);
+  assert.match(redaction, /Redacted view/);
   const quickstart = readFileSync(join(root, "tests/e2e/quickstart.spec.ts"), "utf8");
   assert.match(quickstart, /BEATER_E2E_QUICKSTART_TRACE_ID/);
   assert.match(quickstart, /import \{ expectTokenBreakdown \} from "\.\/token-breakdown"/);
