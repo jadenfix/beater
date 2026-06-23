@@ -39,6 +39,17 @@ def clean_value(value):
     return value.strip().strip("`").strip()
 
 
+def markdown_field_values(source_text, name):
+    return [
+        clean_value(match)
+        for match in re.findall(
+            r"^- " + re.escape(name) + r":[ \t]*(.*)$",
+            source_text,
+            re.MULTILINE,
+        )
+    ]
+
+
 def contains_placeholder_fragment(value):
     return bool(EMBEDDED_PLACEHOLDER.search(value))
 

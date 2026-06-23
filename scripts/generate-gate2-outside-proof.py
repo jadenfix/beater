@@ -18,6 +18,7 @@ from gate2_proof_contract import (
     contains_placeholder_fragment,
     is_unresolved_argument,
     is_unresolved_marker,
+    markdown_field_values,
     observation_errors,
 )
 
@@ -64,14 +65,12 @@ def require_observation_arg(name, value, required_fragments):
 
 
 def field_value(source_text, name, source_name):
-    matches = re.findall(
-        r"^- " + re.escape(name) + r":[ \t]*(.*)$", source_text, re.MULTILINE
-    )
+    matches = markdown_field_values(source_text, name)
     if not matches:
         raise SystemExit(f"missing field in {source_name}: {name}")
     if len(matches) > 1:
         raise SystemExit(f"duplicate field in {source_name}: {name}")
-    value = clean_value(matches[0])
+    value = matches[0]
     if is_unresolved_marker(value):
         raise SystemExit(f"unusable field in {source_name}: {name}={value!r}")
     if contains_placeholder_fragment(value):

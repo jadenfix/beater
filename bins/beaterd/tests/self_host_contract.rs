@@ -661,7 +661,9 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_validator.contains("\"Manual confirmation source\""));
     assert!(outside_validator
         .contains("Manual confirmation source must be browser-selected-llm-detail"));
-    assert!(outside_validator.contains(":[ \\t]*(.*)$"));
+    assert!(outside_validator.contains("markdown_field_values"));
+    let gate2_proof_contract = read(root.join("scripts/gate2_proof_contract.py"));
+    assert!(gate2_proof_contract.contains(":[ \\t]*(.*)$"));
     assert!(outside_validator.contains("BEATER_GATE2_REUSE=1"));
     assert!(outside_validator.contains("BEATER_DASHBOARD_PORT="));
     assert!(outside_validator.contains("COMPOSE_FILE="));

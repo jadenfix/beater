@@ -56,6 +56,7 @@ from gate2_proof_contract import (
     WATERFALL_OBSERVATION_FRAGMENTS,
     contains_placeholder_fragment,
     is_unresolved_marker,
+    markdown_field_values,
     observation_errors,
 )
 
@@ -126,18 +127,14 @@ def require_snippet(snippet: str, description: str) -> None:
         fail(f"missing {description}: {snippet}")
 
 
-def clean_value(value: str) -> str:
-    return value.strip().strip("`").strip()
-
-
 def field_value_from(source_text: str, name: str, source_name: str) -> str:
-    matches = re.findall(rf"^- {re.escape(name)}:[ \t]*(.*)$", source_text, re.MULTILINE)
+    matches = markdown_field_values(source_text, name)
     if not matches:
         fail(f"missing field in {source_name}: {name}")
         return ""
     if len(matches) > 1:
         fail(f"duplicate field in {source_name}: {name}")
-    return clean_value(matches[0])
+    return matches[0]
 
 
 def field_value(name: str) -> str:

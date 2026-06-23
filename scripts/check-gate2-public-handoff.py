@@ -8,9 +8,15 @@ import selectors
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from gate2_proof_contract import markdown_field_values
 
 
 REMOTE_URL = "https://github.com/jadenfix/beater.git"
@@ -170,10 +176,10 @@ def repo_root() -> Path:
 
 def field_value_from(path: Path, name: str) -> str:
     text = path.read_text()
-    matches = re.findall(rf"^- {re.escape(name)}:[ \t]*(.*)$", text, re.MULTILINE)
+    matches = markdown_field_values(text, name)
     if len(matches) != 1:
         raise SystemExit(f"{path} must contain exactly one field: {name}")
-    return matches[0].strip().strip("`").strip()
+    return matches[0]
 
 
 def diagnostic_terminal_excerpt(clone_dir: Path) -> str:
