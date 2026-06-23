@@ -49,6 +49,7 @@ diagnostic_mode = sys.argv[4] == "1"
 proof_path = proof_arg if proof_arg.is_absolute() else repo / proof_arg
 errors: list[str] = []
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(repo / "scripts"))
 from gate2_proof_observations import (
     LLM_OBSERVATION_FRAGMENTS,

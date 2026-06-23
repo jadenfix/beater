@@ -9,6 +9,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.dont_write_bytecode = True
+
 from gate2_proof_observations import (
     LLM_OBSERVATION_FRAGMENTS,
     WATERFALL_OBSERVATION_FRAGMENTS,

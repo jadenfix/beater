@@ -3339,6 +3339,10 @@ fn gate2_outside_validator_accepts_evidence_only_ancestor_closure_repo() {
     let output = run_default_validator_in_repo(fixture.path());
 
     assert_success(output, CLOSURE_VALID);
+    assert!(
+        !fixture.path().join("scripts/__pycache__").exists(),
+        "validator helper imports must not dirty closure fixture repos with Python bytecode"
+    );
 }
 
 #[test]
