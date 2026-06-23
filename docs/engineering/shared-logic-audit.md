@@ -55,6 +55,10 @@ contracts narrow, shared, and testable.
   for search, archive, dataset, and experiment integrations. The public
   constructors delegate through that path, and a regression test pins default
   optional-service behavior.
+- `beater_store::query_runs_by_materializing_spans` now owns the local
+  SQLite/memory run-summary fallback and names it as materialized-span behavior,
+  so future ClickHouse work has a clear backend-aggregation boundary instead of
+  inheriting duplicated dev-store rollup logic.
 
 ## Keep Independent
 
@@ -122,6 +126,10 @@ contracts narrow, shared, and testable.
   live-smoke tests, and API tests. Move only the stable test-support pieces
   (`smoke_ids`, metadata values, smoke export construction) into `beater-otlp`;
   keep endpoint assertions local to each runtime.
+- `TraceStore::query_runs` is still only proven through the SQLite/memory
+  materialized-span fallback. A ClickHouse-scale implementation must aggregate
+  runs, model/release/cost/latency filters, and stable pagination in the backend
+  rather than calling the fallback helper.
 
 ## Next Shared-Logic Targets
 
@@ -140,6 +148,9 @@ contracts narrow, shared, and testable.
   `test_support`; extract shared canonical span assembly and retry accounting.
 - Store helpers: add small shared helpers for span storage identity and trace
   span ordering while leaving SQLite and memory persistence mechanics separate.
+- TraceStore scale contract: add a ClickHouse-oriented run query conformance
+  suite that rejects span materialization on normal `query_runs` paths and pins
+  stable cursor behavior under equal timestamps.
 - Eval context: introduce a typed `TraceEvalContext` builder so latency/cost
   evaluators, alerts, datasets, and experiments depend on one trace metric shape.
 - API route parsing: add typed path/query helpers for `TenantId`, `ProjectId`,

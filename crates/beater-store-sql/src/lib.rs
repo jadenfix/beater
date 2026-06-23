@@ -4,13 +4,13 @@ use beater_core::{
     SystemClock, TenantId, Timestamp, TraceId,
 };
 use beater_schema::{
-    filter_run_summaries, roll_up_runs, span_summary, CanonicalSpan, CanonicalTraceBatch,
-    RawEnvelope, RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
+    span_summary, CanonicalSpan, CanonicalTraceBatch, RawEnvelope, RunFilter, RunSummary,
+    SpanFilter, SpanSummary, TraceView, WriteAck,
 };
 use beater_store::{
-    page_vec, EnvironmentMetadata, MetadataStore, OrganizationMetadata, ProjectMetadata,
-    QuotaDecision, QuotaLimiter, QuotaReservationRequest, RoleBinding, StoreError, StoreResult,
-    TraceStore,
+    page_vec, query_runs_by_materializing_spans, EnvironmentMetadata, MetadataStore,
+    OrganizationMetadata, ProjectMetadata, QuotaDecision, QuotaLimiter, QuotaReservationRequest,
+    RoleBinding, StoreError, StoreResult, TraceStore,
 };
 use chrono::DateTime;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
@@ -827,27 +827,7 @@ impl TraceStore for SqliteTraceStore {
         filter: RunFilter,
         page: PageRequest,
     ) -> StoreResult<Page<RunSummary>> {
-        let spans = self
-            .query_spans(
-                tenant.clone(),
-                SpanFilter {
-                    project_id: filter.project_id.clone(),
-                    environment_id: filter.environment_id.clone(),
-                    trace_id: filter.trace_id.clone(),
-                    span_id: None,
-                    kind: None,
-                    status: None,
-                },
-                PageRequest {
-                    limit: u32::MAX,
-                    cursor: None,
-                },
-            )
-            .await?
-            .items;
-
-        let runs = filter_run_summaries(roll_up_runs(tenant, spans.clone()), &spans, &filter);
-        Ok(page_vec(runs, page))
+        query_runs_by_materializing_spans(self, tenant, filter, page).await
     }
 
     async fn query_spans(

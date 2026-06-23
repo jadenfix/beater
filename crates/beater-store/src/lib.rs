@@ -4,8 +4,8 @@ use beater_core::{
     Timestamp, TraceId,
 };
 use beater_schema::{
-    ArtifactRef, CanonicalTraceBatch, RawEnvelope, RunFilter, RunSummary, SpanFilter, SpanSummary,
-    TraceView, WriteAck,
+    filter_run_summaries, roll_up_runs, ArtifactRef, CanonicalTraceBatch, RawEnvelope, RunFilter,
+    RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
 };
 use std::collections::BTreeSet;
 
@@ -82,6 +82,41 @@ pub trait TraceStore: Send + Sync {
         filter: SpanFilter,
         page: PageRequest,
     ) -> StoreResult<Page<SpanSummary>>;
+}
+
+/// Development fallback for trace stores that cannot aggregate run summaries in
+/// the backend. Production OLAP stores should implement `query_runs` with
+/// backend aggregation instead of materializing all matching spans.
+pub async fn query_runs_by_materializing_spans<S>(
+    store: &S,
+    tenant: TenantId,
+    filter: RunFilter,
+    page: PageRequest,
+) -> StoreResult<Page<RunSummary>>
+where
+    S: TraceStore + ?Sized,
+{
+    let spans = store
+        .query_spans(
+            tenant.clone(),
+            SpanFilter {
+                project_id: filter.project_id.clone(),
+                environment_id: filter.environment_id.clone(),
+                trace_id: filter.trace_id.clone(),
+                span_id: None,
+                kind: None,
+                status: None,
+            },
+            PageRequest {
+                limit: u32::MAX,
+                cursor: None,
+            },
+        )
+        .await?
+        .items;
+
+    let runs = filter_run_summaries(roll_up_runs(tenant, spans.clone()), &spans, &filter);
+    Ok(page_vec(runs, page))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

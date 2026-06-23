@@ -419,6 +419,13 @@ Backends:
 
 Product code depends on `TraceStore`, not concrete backend crates.
 
+SQLite and memory stores may use
+`beater_store::query_runs_by_materializing_spans` as a dev/local fallback. That
+helper intentionally reads matching spans and rolls up run summaries in Rust.
+ClickHouse or any hosted hot-store backend must not use that fallback for normal
+paths; it must aggregate run summaries, run-level filters, and pagination in the
+backend over tenant-leading sort keys.
+
 ### 7.2 Data Planes
 
 | Plane | Default OSS | Hosted scale | Purpose |
