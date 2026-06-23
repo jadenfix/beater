@@ -74,10 +74,9 @@ The generated proof must keep the stopwatch's fresh quickstart release ID,
 trace IDs, span IDs, redaction unmask reason, and manual confirmation source;
 validation rejects stale or mismatched values.
 
-Commit the evidence before validation:
+From the same `beater/` clone, commit the evidence before validation:
 
 ```bash
-cd ./beater
 git add docs/demos/gate2-outside-person-proof.md \
   docs/demos/gate2-compose-stopwatch.md \
   docs/demos/gate2-compose-browser-demo.webm \

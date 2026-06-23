@@ -729,6 +729,22 @@ def require_file_contains(
             )
 
 
+def require_file_lacks(
+    clone_dir: Path,
+    rel: str,
+    snippets: list[str],
+    *,
+    contract: str,
+) -> None:
+    path = clone_dir / rel
+    text = path.read_text()
+    for snippet in snippets:
+        if snippet in text:
+            raise SystemExit(
+                f"{rel} must not contain {contract} for outside runners: {snippet!r}"
+            )
+
+
 def require_public_handoff_timing_guard(clone_dir: Path) -> None:
     require_file_contains(
         clone_dir,
@@ -747,6 +763,7 @@ def require_public_handoff_timing_guard(clone_dir: Path) -> None:
             "scripts/generate-gate2-outside-proof.py --print-command",
             "ready-to-edit command",
             "cd ./beater",
+            "from the same `beater/` clone",
             "git add docs/demos/gate2-outside-person-proof.md",
             'git commit -m "add gate2 outside proof"',
         ],
@@ -772,6 +789,7 @@ def require_public_handoff_timing_guard(clone_dir: Path) -> None:
             "scripts/generate-gate2-outside-proof.py --print-command",
             "ready-to-edit command",
             "cd ./beater",
+            "stay in the `beater/` clone",
             "git add docs/demos/gate2-outside-person-proof.md",
             'git commit -m "add gate2 outside proof"',
         ],
@@ -818,6 +836,7 @@ def require_public_handoff_timing_guard(clone_dir: Path) -> None:
             "fresh quickstart release ID",
             "manual confirmation source",
             "redaction unmask reason",
+            "From the same `beater/` clone",
             "git add docs/demos/gate2-outside-person-proof.md",
             'git commit -m "add gate2 outside proof"',
             "scripts/validate-gate2-outside-proof.sh",
@@ -826,6 +845,17 @@ def require_public_handoff_timing_guard(clone_dir: Path) -> None:
         contract="one-screen outside-runner card",
         normalize_whitespace=True,
     )
+    for rel in [
+        "README.md",
+        "docs/demos/gate2-outside-person-proof.md",
+        "docs/demos/gate2-outside-runner-card.md",
+    ]:
+        require_file_lacks(
+            clone_dir,
+            rel,
+            ["cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md"],
+            contract="a repeated cd before the evidence commit snippet",
+        )
     require_file_contains(
         clone_dir,
         "scripts/gate2-compose-stopwatch.sh",

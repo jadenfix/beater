@@ -152,7 +152,8 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     assert!(readme.contains("git add docs/demos/gate2-outside-person-proof.md"));
     assert!(readme.contains("run `cd ./beater`"));
     assert!(readme.contains("cd ./beater\nscripts/generate-gate2-outside-proof.py --print-command"));
-    assert!(readme.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md"));
+    assert!(readme.contains("from the same `beater/` clone"));
+    assert!(!readme.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md"));
     assert!(readme.contains("git commit -m \"add gate2 outside proof\""));
     assert!(readme.contains("repo-relative, committed/clean"));
     assert!(readme.contains("non-symlink file under"));
@@ -206,8 +207,9 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     assert!(proof_template.contains("Run `cd ./beater`"));
     assert!(proof_template
         .contains("cd ./beater\nscripts/generate-gate2-outside-proof.py --print-command"));
+    assert!(proof_template.contains("stay in the `beater/`\nclone"));
     assert!(
-        proof_template.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md")
+        !proof_template.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md")
     );
     assert!(proof_template.contains("git commit -m \"add gate2 outside proof\""));
     assert!(proof_template.contains("repo-relative"));
@@ -263,7 +265,8 @@ fn gate2_outside_docs_use_fail_fast_clone_command() {
     assert!(runner_card.contains("run -> turn -> step -> tool -> MCP"));
     assert!(runner_card.contains("scripts/generate-gate2-outside-proof.py --print-command"));
     assert!(runner_card.contains("Run `cd ./beater`"));
-    assert!(runner_card.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md"));
+    assert!(runner_card.contains("From the same `beater/` clone"));
+    assert!(!runner_card.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md"));
     assert!(runner_card.contains("Replace every"));
     assert!(runner_card.contains("`...` field"));
     assert!(runner_card.contains("fresh quickstart release ID"));

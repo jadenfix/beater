@@ -431,10 +431,9 @@ scripts/generate-gate2-outside-proof.py \
   --attest-outside-run
 ```
 
-Then validate it with:
+Then, from the same `beater/` clone, commit the evidence and validate it with:
 
 ```bash
-cd ./beater
 git add docs/demos/gate2-outside-person-proof.md \
   docs/demos/gate2-compose-stopwatch.md \
   docs/demos/gate2-compose-browser-demo.webm \

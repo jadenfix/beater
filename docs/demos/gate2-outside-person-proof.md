@@ -169,10 +169,10 @@ scripts/generate-gate2-outside-proof.py \
   --attest-outside-run
 ```
 
-After replacing this template with completed evidence, run:
+After replacing this template with completed evidence, stay in the `beater/`
+clone and run:
 
 ```bash
-cd ./beater
 git add docs/demos/gate2-outside-person-proof.md \
   docs/demos/gate2-compose-stopwatch.md \
   docs/demos/gate2-compose-browser-demo.webm \

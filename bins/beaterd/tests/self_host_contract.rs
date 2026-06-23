@@ -1108,6 +1108,10 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(outside_proof.contains("scripts/validate-gate2-outside-proof.sh"));
     assert!(outside_proof.contains("scripts/generate-gate2-outside-proof.py"));
     assert!(outside_proof.contains("Run `cd ./beater`"));
+    assert!(outside_proof.contains("stay in the `beater/`\nclone"));
+    assert!(
+        !outside_proof.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md")
+    );
     assert!(outside_proof.contains("--attest-outside-run"));
     assert!(outside_proof.contains("Docker Compose version"));
     assert!(outside_proof.contains("scripts/check-gate2-public-handoff.py"));
@@ -1235,6 +1239,8 @@ fn clean_clone_smoke_uses_stock_otel_and_browser_visible_trace() {
     assert!(readme.contains("GIT_CONFIG_COUNT=0 git rev-parse HEAD"));
     assert!(readme.contains("cd ./beater"));
     assert!(readme.contains("run `cd ./beater`"));
+    assert!(readme.contains("from the same `beater/` clone"));
+    assert!(!readme.contains("cd ./beater\ngit add docs/demos/gate2-outside-person-proof.md"));
     assert!(readme.contains("unpublished SHA-tagged GHCR images"));
     assert!(!readme.contains("gate2-outside-local-preflight.sh | bash"));
     assert!(readme.contains("under `bash -o pipefail -lc` before any clone"));
