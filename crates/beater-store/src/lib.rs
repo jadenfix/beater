@@ -35,6 +35,19 @@ impl StoreError {
     }
 }
 
+/// Lock a [`Mutex`](std::sync::Mutex), mapping a poisoned lock into a
+/// [`StoreError::backend`] tagged with `what` (e.g. `"sqlite connection"`) so the
+/// originating store is identifiable in the message. Centralizes the
+/// `lock().map_err(...)` boilerplate every backend's guard accessor repeated.
+pub fn lock_poisoned<'a, T>(
+    mutex: &'a std::sync::Mutex<T>,
+    what: &str,
+) -> StoreResult<std::sync::MutexGuard<'a, T>> {
+    mutex
+        .lock()
+        .map_err(|err| StoreError::backend(format!("{what} mutex poisoned: {err}")))
+}
+
 /// Maps a fallible `anyhow` result into a [`StoreResult`] backend error.
 pub trait IntoStoreResult<T> {
     fn into_store(self) -> StoreResult<T>;

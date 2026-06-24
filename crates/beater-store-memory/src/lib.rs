@@ -5,7 +5,7 @@ use beater_schema::{
     RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
 };
 use beater_store::{
-    page_vec, query_runs_by_materializing_spans, EnvironmentMetadata, MetadataStore,
+    lock_poisoned, page_vec, query_runs_by_materializing_spans, EnvironmentMetadata, MetadataStore,
     OrganizationMetadata, ProjectMetadata, QuotaDecision, QuotaLimiter, QuotaReservationRequest,
     RoleBinding, StoreError, StoreResult, TraceStore,
 };
@@ -59,9 +59,7 @@ impl InMemoryTraceStore {
     }
 
     fn lock(&self) -> StoreResult<std::sync::MutexGuard<'_, InMemoryTraceState>> {
-        self.state.lock().map_err(|err| {
-            StoreError::backend(format!("in-memory trace store mutex poisoned: {err}"))
-        })
+        lock_poisoned(&self.state, "in-memory trace store")
     }
 }
 
@@ -71,9 +69,7 @@ impl InMemoryMetadataStore {
     }
 
     fn lock(&self) -> StoreResult<std::sync::MutexGuard<'_, InMemoryMetadataState>> {
-        self.state
-            .lock()
-            .map_err(|err| StoreError::backend(format!("metadata store mutex poisoned: {err}")))
+        lock_poisoned(&self.state, "metadata store")
     }
 }
 
@@ -83,9 +79,7 @@ impl InMemoryQuotaLimiter {
     }
 
     fn lock(&self) -> StoreResult<std::sync::MutexGuard<'_, InMemoryQuotaState>> {
-        self.state
-            .lock()
-            .map_err(|err| StoreError::backend(format!("quota limiter mutex poisoned: {err}")))
+        lock_poisoned(&self.state, "quota limiter")
     }
 }
 

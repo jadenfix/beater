@@ -8,7 +8,7 @@ use beater_schema::{
     SpanFilter, SpanSummary, TraceView, WriteAck,
 };
 use beater_store::{
-    page_vec, query_runs_by_materializing_spans, EnvironmentMetadata, MetadataStore,
+    lock_poisoned, page_vec, query_runs_by_materializing_spans, EnvironmentMetadata, MetadataStore,
     OrganizationMetadata, ProjectMetadata, QuotaDecision, QuotaLimiter, QuotaReservationRequest,
     RoleBinding, StoreError, StoreResult, TraceStore,
 };
@@ -216,9 +216,7 @@ impl SqliteQuotaLimiter {
     }
 
     fn lock(&self) -> StoreResult<std::sync::MutexGuard<'_, Connection>> {
-        self.connection
-            .lock()
-            .map_err(|err| StoreError::backend(format!("quota sqlite mutex poisoned: {err}")))
+        lock_poisoned(&self.connection, "quota sqlite")
     }
 }
 
@@ -373,9 +371,7 @@ impl SqliteMetadataStore {
     }
 
     fn lock(&self) -> StoreResult<std::sync::MutexGuard<'_, Connection>> {
-        self.connection
-            .lock()
-            .map_err(|err| StoreError::backend(format!("metadata sqlite mutex poisoned: {err}")))
+        lock_poisoned(&self.connection, "metadata sqlite")
     }
 }
 
@@ -694,9 +690,7 @@ impl SqliteTraceStore {
     }
 
     fn lock(&self) -> StoreResult<std::sync::MutexGuard<'_, Connection>> {
-        self.connection
-            .lock()
-            .map_err(|err| StoreError::backend(format!("sqlite connection mutex poisoned: {err}")))
+        lock_poisoned(&self.connection, "sqlite connection")
     }
 }
 
