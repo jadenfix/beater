@@ -113,6 +113,10 @@ struct Args {
     test_trace_store_fail_write_while_path: Option<PathBuf>,
     #[arg(long, hide = true, env = "BEATER_TEST_HTTP_TRACE_STORE_URL")]
     test_http_trace_store_url: Option<String>,
+    /// Opt in to anonymous self-host usage telemetry. Off by default (R12.5):
+    /// a self-hosted beaterd makes no outbound telemetry call unless this is set.
+    #[arg(long, env = beater_core::SelfHostTelemetryConfig::ENV_VAR)]
+    self_host_telemetry: bool,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -142,6 +146,13 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     if args.test_http_trace_store_url.is_some() && !cfg!(debug_assertions) {
         anyhow::bail!("--test-http-trace-store-url is only supported in debug/test builds");
+    }
+    // R12.5: self-host telemetry is opt-out. With the flag unset, this resolves
+    // to disabled and beaterd makes no outbound telemetry call.
+    let telemetry = beater_core::SelfHostTelemetryConfig::new(args.self_host_telemetry);
+    match telemetry.endpoint() {
+        Some(endpoint) => eprintln!("self-host telemetry enabled (opt-in); reporting to {endpoint}"),
+        None => eprintln!("self-host telemetry disabled (opt-out default); no outbound reporting"),
     }
     let trace_db_path = args.data_dir.join("traces.sqlite");
     let quota_path = args

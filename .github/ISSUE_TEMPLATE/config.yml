@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing guide
+    url: https://github.com/jadenfix/beater/blob/main/CONTRIBUTING.md
+    about: How to set up local dev and follow the contract-is-the-source-of-truth workflow.
+  - name: Governance and no-rug-pull promise
+    url: https://github.com/jadenfix/beater/blob/main/GOVERNANCE.md
+    about: How Beater is governed and our durability commitments.

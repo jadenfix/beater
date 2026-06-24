@@ -39,6 +39,26 @@ serde_json.workspace = true
 tokio.workspace = true
 tonic.workspace = true
 
+[features]
+# R1.2: the future service split is logical, not operational. The all-in-one
+# `beaterd` is the only mandatory deployment. Optional thin role binaries are
+# gated behind this feature and are NOT built by default, so a self-host never
+# has to run a multi-service topology.
+default = []
+thin-bins = []
+
+# Optional thin role binaries (R1.2). They share the same crate but are only
+# compiled when the `thin-bins` feature is enabled, proving the split is opt-in.
+[[bin]]
+name = "beater-ingestd"
+path = "src/bin/beater-ingestd.rs"
+required-features = ["thin-bins"]
+
+[[bin]]
+name = "beater-queryd"
+path = "src/bin/beater-queryd.rs"
+required-features = ["thin-bins"]
+
 [dev-dependencies]
 beater-replay = { path = "../../crates/beater-replay" }
 opentelemetry-proto.workspace = true

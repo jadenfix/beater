@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a capability or improvement for Beater.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Note: the HTTP API, SDKs, MCP tools, CLI, and docs
+        are all generated from one contract (`sdks/openapi/beater-api.json`). If
+        your request touches a `/v1` endpoint, it must follow the contract
+        workflow in `CONTRIBUTING.md`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and what is missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would the API/SDK/CLI/UX look like?
+    validations:
+      required: true
+  - type: dropdown
+    id: contract
+    attributes:
+      label: Does this change the `/v1` contract?
+      description: New or changed endpoint, request/response type, span kind, or attribute.
+      options:
+        - "No"
+        - "Yes (will follow the CONTRIBUTING.md contract workflow)"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
