@@ -1,0 +1,49 @@
+name: apple-container-build
+
+# Build (and smoke-run) the beaterd image with Apple's native `container` runtime
+# on an Apple-silicon macOS runner. Mirrors the Docker build, proving the same
+# Dockerfile is portable across both runtimes. Apple `container` requires
+# macOS 26 + Apple silicon (https://github.com/apple/container).
+on:
+  push:
+    branches: [main, apple-container]
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "scripts/container-runtime.sh"
+      - "scripts/build-image.sh"
+      - "scripts/run-beaterd.sh"
+      - ".github/workflows/apple-container-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Apple `container` needs macOS 26 on Apple silicon. Pin when the GA label
+    # is available; macos-26 is the arm64 image.
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Apple container
+        run: |
+          set -euo pipefail
+          url="$(curl -fsSL https://api.github.com/repos/apple/container/releases/latest \
+            | grep -oE 'https://[^"]+\.pkg' | head -1)"
+          echo "Installing $url"
+          curl -fsSL "$url" -o /tmp/container.pkg
+          sudo installer -pkg /tmp/container.pkg -target /
+          container --version
+
+      - name: Start container system
+        run: container system start
+
+      - name: Build beaterd image on Apple container
+        run: BEATER_CONTAINER_RUNTIME=container scripts/build-image.sh beaterd:ci
+
+      - name: Smoke-run beaterd on Apple container
+        run: BEATER_CONTAINER_RUNTIME=container scripts/run-beaterd.sh beaterd:ci
+
+      - name: Stop system
+        if: always()
+        run: container system stop || true
