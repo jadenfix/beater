@@ -60,6 +60,10 @@ docs/EvaluatorKindOneOf2.md
 docs/EvaluatorKindOneOf3.md
 docs/EvaluatorKindOneOf4.md
 docs/EvaluatorKindOneOf5.md
+docs/EvaluatorKindOneOf6.md
+docs/EvaluatorKindOneOf7.md
+docs/EvaluatorKindOneOf8.md
+docs/EvaluatorKindOneOf9.md
 docs/EvaluatorLane.md
 docs/EvaluatorSpec.md
 docs/ExperimentComparison.md
@@ -213,6 +217,10 @@ src/models/evaluator_kind_one_of_2.rs
 src/models/evaluator_kind_one_of_3.rs
 src/models/evaluator_kind_one_of_4.rs
 src/models/evaluator_kind_one_of_5.rs
+src/models/evaluator_kind_one_of_6.rs
+src/models/evaluator_kind_one_of_7.rs
+src/models/evaluator_kind_one_of_8.rs
+src/models/evaluator_kind_one_of_9.rs
 src/models/evaluator_lane.rs
 src/models/evaluator_spec.rs
 src/models/experiment_comparison.rs

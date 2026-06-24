@@ -91,6 +91,14 @@ template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf_4>(const web::json::va
 template bool EvaluatorKind::fromMultiPart<EvaluatorKind_oneOf_4>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
 template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf_5>(const web::json::value& json);
 template bool EvaluatorKind::fromMultiPart<EvaluatorKind_oneOf_5>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf_6>(const web::json::value& json);
+template bool EvaluatorKind::fromMultiPart<EvaluatorKind_oneOf_6>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf_7>(const web::json::value& json);
+template bool EvaluatorKind::fromMultiPart<EvaluatorKind_oneOf_7>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf_8>(const web::json::value& json);
+template bool EvaluatorKind::fromMultiPart<EvaluatorKind_oneOf_8>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf_9>(const web::json::value& json);
+template bool EvaluatorKind::fromMultiPart<EvaluatorKind_oneOf_9>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
 
 }
 }

@@ -80,6 +80,10 @@ beater_client/models/evaluator_kind_one_of2.py
 beater_client/models/evaluator_kind_one_of3.py
 beater_client/models/evaluator_kind_one_of4.py
 beater_client/models/evaluator_kind_one_of5.py
+beater_client/models/evaluator_kind_one_of6.py
+beater_client/models/evaluator_kind_one_of7.py
+beater_client/models/evaluator_kind_one_of8.py
+beater_client/models/evaluator_kind_one_of9.py
 beater_client/models/evaluator_lane.py
 beater_client/models/evaluator_spec.py
 beater_client/models/experiment_comparison.py
@@ -207,6 +211,10 @@ docs/EvaluatorKindOneOf2.md
 docs/EvaluatorKindOneOf3.md
 docs/EvaluatorKindOneOf4.md
 docs/EvaluatorKindOneOf5.md
+docs/EvaluatorKindOneOf6.md
+docs/EvaluatorKindOneOf7.md
+docs/EvaluatorKindOneOf8.md
+docs/EvaluatorKindOneOf9.md
 docs/EvaluatorLane.md
 docs/EvaluatorSpec.md
 docs/ExperimentComparison.md
@@ -351,6 +359,10 @@ test/test_evaluator_kind_one_of2.py
 test/test_evaluator_kind_one_of3.py
 test/test_evaluator_kind_one_of4.py
 test/test_evaluator_kind_one_of5.py
+test/test_evaluator_kind_one_of6.py
+test/test_evaluator_kind_one_of7.py
+test/test_evaluator_kind_one_of8.py
+test/test_evaluator_kind_one_of9.py
 test/test_evaluator_lane.py
 test/test_evaluator_spec.py
 test/test_experiment_comparison.py

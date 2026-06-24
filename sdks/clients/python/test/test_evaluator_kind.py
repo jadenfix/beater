@@ -40,7 +40,11 @@ class TestEvaluatorKind(unittest.TestCase):
                 max_micros = 56,
                 max_ms = 0,
                 model = '',
-                rubric = ''
+                rubric = '',
+                dom_contains = '',
+                url_contains = '',
+                max_steps = 0,
+                min_ratio = 1.337
             )
         else:
             return EvaluatorKind(
@@ -50,6 +54,8 @@ class TestEvaluatorKind(unittest.TestCase):
                 max_ms = 0,
                 model = '',
                 rubric = '',
+                max_steps = 0,
+                min_ratio = 1.337,
         )
         """
 

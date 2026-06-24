@@ -5883,6 +5883,10 @@ components:
       - $ref: '#/components/schemas/EvaluatorKind_oneOf_3'
       - $ref: '#/components/schemas/EvaluatorKind_oneOf_4'
       - $ref: '#/components/schemas/EvaluatorKind_oneOf_5'
+      - $ref: '#/components/schemas/EvaluatorKind_oneOf_6'
+      - $ref: '#/components/schemas/EvaluatorKind_oneOf_7'
+      - $ref: '#/components/schemas/EvaluatorKind_oneOf_8'
+      - $ref: '#/components/schemas/EvaluatorKind_oneOf_9'
     EvaluatorLane:
       enum:
       - deterministic_wasi
@@ -7891,6 +7895,66 @@ components:
       required:
       - model
       - rubric
+      - type
+    EvaluatorKind_oneOf_6:
+      description: |-
+        Browser world-state success: asserts the final step's observed page
+        (url and/or DOM) matches the configured target — NOT the agent's
+        self-reported "done". Reads `trace.browser_steps`.
+      properties:
+        dom_contains:
+          nullable: true
+          type: string
+        type:
+          enum:
+          - browser_task_success
+          type: string
+        url_contains:
+          nullable: true
+          type: string
+      required:
+      - type
+    EvaluatorKind_oneOf_7:
+      description: |-
+        Browser step efficiency: passes when the run used at most `max_steps`
+        browser steps (catches looping/backtracking). Reads `trace.browser_steps`.
+      properties:
+        max_steps:
+          format: int64
+          minimum: 0
+          type: integer
+        type:
+          enum:
+          - browser_step_efficiency
+          type: string
+      required:
+      - max_steps
+      - type
+    EvaluatorKind_oneOf_8:
+      description: |-
+        Browser grounding: fraction of element-targeted steps that resolved to
+        their intended element; score is the ratio, passes at `min_ratio`.
+      properties:
+        min_ratio:
+          format: double
+          type: number
+        type:
+          enum:
+          - browser_grounding
+          type: string
+      required:
+      - min_ratio
+      - type
+    EvaluatorKind_oneOf_9:
+      description: |-
+        Browser recovery: passes when the run either hit no errors or recovered
+        to a successful final step (catches death spirals after a failed action).
+      properties:
+        type:
+          enum:
+          - browser_recovery
+          type: string
+      required:
       - type
     Page_RunSummary_items_inner:
       example:

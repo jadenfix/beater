@@ -9,6 +9,10 @@
 * [EvaluatorKindOneOf3](EvaluatorKindOneOf3.md)
 * [EvaluatorKindOneOf4](EvaluatorKindOneOf4.md)
 * [EvaluatorKindOneOf5](EvaluatorKindOneOf5.md)
+* [EvaluatorKindOneOf6](EvaluatorKindOneOf6.md)
+* [EvaluatorKindOneOf7](EvaluatorKindOneOf7.md)
+* [EvaluatorKindOneOf8](EvaluatorKindOneOf8.md)
+* [EvaluatorKindOneOf9](EvaluatorKindOneOf9.md)
 
 ## Example
 ```java
@@ -20,6 +24,10 @@ import ai.beater.client.model.EvaluatorKindOneOf2;
 import ai.beater.client.model.EvaluatorKindOneOf3;
 import ai.beater.client.model.EvaluatorKindOneOf4;
 import ai.beater.client.model.EvaluatorKindOneOf5;
+import ai.beater.client.model.EvaluatorKindOneOf6;
+import ai.beater.client.model.EvaluatorKindOneOf7;
+import ai.beater.client.model.EvaluatorKindOneOf8;
+import ai.beater.client.model.EvaluatorKindOneOf9;
 
 public class Example {
     public static void main(String[] args) {
@@ -66,6 +74,34 @@ public class Example {
         exampleEvaluatorKind.setActualInstance(exampleEvaluatorKindOneOf5);
         // to get back the EvaluatorKindOneOf5 set earlier
         EvaluatorKindOneOf5 testEvaluatorKindOneOf5 = (EvaluatorKindOneOf5) exampleEvaluatorKind.getActualInstance();
+
+        // create a new EvaluatorKindOneOf6
+        EvaluatorKindOneOf6 exampleEvaluatorKindOneOf6 = new EvaluatorKindOneOf6();
+        // set EvaluatorKind to EvaluatorKindOneOf6
+        exampleEvaluatorKind.setActualInstance(exampleEvaluatorKindOneOf6);
+        // to get back the EvaluatorKindOneOf6 set earlier
+        EvaluatorKindOneOf6 testEvaluatorKindOneOf6 = (EvaluatorKindOneOf6) exampleEvaluatorKind.getActualInstance();
+
+        // create a new EvaluatorKindOneOf7
+        EvaluatorKindOneOf7 exampleEvaluatorKindOneOf7 = new EvaluatorKindOneOf7();
+        // set EvaluatorKind to EvaluatorKindOneOf7
+        exampleEvaluatorKind.setActualInstance(exampleEvaluatorKindOneOf7);
+        // to get back the EvaluatorKindOneOf7 set earlier
+        EvaluatorKindOneOf7 testEvaluatorKindOneOf7 = (EvaluatorKindOneOf7) exampleEvaluatorKind.getActualInstance();
+
+        // create a new EvaluatorKindOneOf8
+        EvaluatorKindOneOf8 exampleEvaluatorKindOneOf8 = new EvaluatorKindOneOf8();
+        // set EvaluatorKind to EvaluatorKindOneOf8
+        exampleEvaluatorKind.setActualInstance(exampleEvaluatorKindOneOf8);
+        // to get back the EvaluatorKindOneOf8 set earlier
+        EvaluatorKindOneOf8 testEvaluatorKindOneOf8 = (EvaluatorKindOneOf8) exampleEvaluatorKind.getActualInstance();
+
+        // create a new EvaluatorKindOneOf9
+        EvaluatorKindOneOf9 exampleEvaluatorKindOneOf9 = new EvaluatorKindOneOf9();
+        // set EvaluatorKind to EvaluatorKindOneOf9
+        exampleEvaluatorKind.setActualInstance(exampleEvaluatorKindOneOf9);
+        // to get back the EvaluatorKindOneOf9 set earlier
+        EvaluatorKindOneOf9 testEvaluatorKindOneOf9 = (EvaluatorKindOneOf9) exampleEvaluatorKind.getActualInstance();
     }
 }
 ```

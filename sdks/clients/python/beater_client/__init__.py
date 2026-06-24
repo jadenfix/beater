@@ -99,6 +99,10 @@ from beater_client.models.evaluator_kind_one_of2 import EvaluatorKindOneOf2
 from beater_client.models.evaluator_kind_one_of3 import EvaluatorKindOneOf3
 from beater_client.models.evaluator_kind_one_of4 import EvaluatorKindOneOf4
 from beater_client.models.evaluator_kind_one_of5 import EvaluatorKindOneOf5
+from beater_client.models.evaluator_kind_one_of6 import EvaluatorKindOneOf6
+from beater_client.models.evaluator_kind_one_of7 import EvaluatorKindOneOf7
+from beater_client.models.evaluator_kind_one_of8 import EvaluatorKindOneOf8
+from beater_client.models.evaluator_kind_one_of9 import EvaluatorKindOneOf9
 from beater_client.models.evaluator_lane import EvaluatorLane
 from beater_client.models.evaluator_spec import EvaluatorSpec
 from beater_client.models.experiment_comparison import ExperimentComparison

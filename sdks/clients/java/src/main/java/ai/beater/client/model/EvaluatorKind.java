@@ -25,6 +25,10 @@ import ai.beater.client.model.EvaluatorKindOneOf2;
 import ai.beater.client.model.EvaluatorKindOneOf3;
 import ai.beater.client.model.EvaluatorKindOneOf4;
 import ai.beater.client.model.EvaluatorKindOneOf5;
+import ai.beater.client.model.EvaluatorKindOneOf6;
+import ai.beater.client.model.EvaluatorKindOneOf7;
+import ai.beater.client.model.EvaluatorKindOneOf8;
+import ai.beater.client.model.EvaluatorKindOneOf9;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -250,6 +254,110 @@ public class EvaluatorKind extends AbstractOpenApiSchema {
                 log.log(Level.FINER, "Input data does not match schema 'EvaluatorKindOneOf5'", e);
             }
 
+            // deserialize EvaluatorKindOneOf6
+            try {
+                boolean attemptParsing = true;
+                // ensure that we respect type coercion as set on the client ObjectMapper
+                if (EvaluatorKindOneOf6.class.equals(Integer.class) || EvaluatorKindOneOf6.class.equals(Long.class) || EvaluatorKindOneOf6.class.equals(Float.class) || EvaluatorKindOneOf6.class.equals(Double.class) || EvaluatorKindOneOf6.class.equals(Boolean.class) || EvaluatorKindOneOf6.class.equals(String.class)) {
+                    attemptParsing = typeCoercion;
+                    if (!attemptParsing) {
+                        attemptParsing |= ((EvaluatorKindOneOf6.class.equals(Integer.class) || EvaluatorKindOneOf6.class.equals(Long.class)) && token == JsonToken.VALUE_NUMBER_INT);
+                        attemptParsing |= ((EvaluatorKindOneOf6.class.equals(Float.class) || EvaluatorKindOneOf6.class.equals(Double.class)) && token == JsonToken.VALUE_NUMBER_FLOAT);
+                        attemptParsing |= (EvaluatorKindOneOf6.class.equals(Boolean.class) && (token == JsonToken.VALUE_FALSE || token == JsonToken.VALUE_TRUE));
+                        attemptParsing |= (EvaluatorKindOneOf6.class.equals(String.class) && token == JsonToken.VALUE_STRING);
+                    }
+                }
+                if (attemptParsing) {
+                    deserialized = tree.traverse(jp.getCodec()).readValueAs(EvaluatorKindOneOf6.class);
+                    // TODO: there is no validation against JSON schema constraints
+                    // (min, max, enum, pattern...), this does not perform a strict JSON
+                    // validation, which means the 'match' count may be higher than it should be.
+                    match++;
+                    log.log(Level.FINER, "Input data matches schema 'EvaluatorKindOneOf6'");
+                }
+            } catch (Exception e) {
+                // deserialization failed, continue
+                log.log(Level.FINER, "Input data does not match schema 'EvaluatorKindOneOf6'", e);
+            }
+
+            // deserialize EvaluatorKindOneOf7
+            try {
+                boolean attemptParsing = true;
+                // ensure that we respect type coercion as set on the client ObjectMapper
+                if (EvaluatorKindOneOf7.class.equals(Integer.class) || EvaluatorKindOneOf7.class.equals(Long.class) || EvaluatorKindOneOf7.class.equals(Float.class) || EvaluatorKindOneOf7.class.equals(Double.class) || EvaluatorKindOneOf7.class.equals(Boolean.class) || EvaluatorKindOneOf7.class.equals(String.class)) {
+                    attemptParsing = typeCoercion;
+                    if (!attemptParsing) {
+                        attemptParsing |= ((EvaluatorKindOneOf7.class.equals(Integer.class) || EvaluatorKindOneOf7.class.equals(Long.class)) && token == JsonToken.VALUE_NUMBER_INT);
+                        attemptParsing |= ((EvaluatorKindOneOf7.class.equals(Float.class) || EvaluatorKindOneOf7.class.equals(Double.class)) && token == JsonToken.VALUE_NUMBER_FLOAT);
+                        attemptParsing |= (EvaluatorKindOneOf7.class.equals(Boolean.class) && (token == JsonToken.VALUE_FALSE || token == JsonToken.VALUE_TRUE));
+                        attemptParsing |= (EvaluatorKindOneOf7.class.equals(String.class) && token == JsonToken.VALUE_STRING);
+                    }
+                }
+                if (attemptParsing) {
+                    deserialized = tree.traverse(jp.getCodec()).readValueAs(EvaluatorKindOneOf7.class);
+                    // TODO: there is no validation against JSON schema constraints
+                    // (min, max, enum, pattern...), this does not perform a strict JSON
+                    // validation, which means the 'match' count may be higher than it should be.
+                    match++;
+                    log.log(Level.FINER, "Input data matches schema 'EvaluatorKindOneOf7'");
+                }
+            } catch (Exception e) {
+                // deserialization failed, continue
+                log.log(Level.FINER, "Input data does not match schema 'EvaluatorKindOneOf7'", e);
+            }
+
+            // deserialize EvaluatorKindOneOf8
+            try {
+                boolean attemptParsing = true;
+                // ensure that we respect type coercion as set on the client ObjectMapper
+                if (EvaluatorKindOneOf8.class.equals(Integer.class) || EvaluatorKindOneOf8.class.equals(Long.class) || EvaluatorKindOneOf8.class.equals(Float.class) || EvaluatorKindOneOf8.class.equals(Double.class) || EvaluatorKindOneOf8.class.equals(Boolean.class) || EvaluatorKindOneOf8.class.equals(String.class)) {
+                    attemptParsing = typeCoercion;
+                    if (!attemptParsing) {
+                        attemptParsing |= ((EvaluatorKindOneOf8.class.equals(Integer.class) || EvaluatorKindOneOf8.class.equals(Long.class)) && token == JsonToken.VALUE_NUMBER_INT);
+                        attemptParsing |= ((EvaluatorKindOneOf8.class.equals(Float.class) || EvaluatorKindOneOf8.class.equals(Double.class)) && token == JsonToken.VALUE_NUMBER_FLOAT);
+                        attemptParsing |= (EvaluatorKindOneOf8.class.equals(Boolean.class) && (token == JsonToken.VALUE_FALSE || token == JsonToken.VALUE_TRUE));
+                        attemptParsing |= (EvaluatorKindOneOf8.class.equals(String.class) && token == JsonToken.VALUE_STRING);
+                    }
+                }
+                if (attemptParsing) {
+                    deserialized = tree.traverse(jp.getCodec()).readValueAs(EvaluatorKindOneOf8.class);
+                    // TODO: there is no validation against JSON schema constraints
+                    // (min, max, enum, pattern...), this does not perform a strict JSON
+                    // validation, which means the 'match' count may be higher than it should be.
+                    match++;
+                    log.log(Level.FINER, "Input data matches schema 'EvaluatorKindOneOf8'");
+                }
+            } catch (Exception e) {
+                // deserialization failed, continue
+                log.log(Level.FINER, "Input data does not match schema 'EvaluatorKindOneOf8'", e);
+            }
+
+            // deserialize EvaluatorKindOneOf9
+            try {
+                boolean attemptParsing = true;
+                // ensure that we respect type coercion as set on the client ObjectMapper
+                if (EvaluatorKindOneOf9.class.equals(Integer.class) || EvaluatorKindOneOf9.class.equals(Long.class) || EvaluatorKindOneOf9.class.equals(Float.class) || EvaluatorKindOneOf9.class.equals(Double.class) || EvaluatorKindOneOf9.class.equals(Boolean.class) || EvaluatorKindOneOf9.class.equals(String.class)) {
+                    attemptParsing = typeCoercion;
+                    if (!attemptParsing) {
+                        attemptParsing |= ((EvaluatorKindOneOf9.class.equals(Integer.class) || EvaluatorKindOneOf9.class.equals(Long.class)) && token == JsonToken.VALUE_NUMBER_INT);
+                        attemptParsing |= ((EvaluatorKindOneOf9.class.equals(Float.class) || EvaluatorKindOneOf9.class.equals(Double.class)) && token == JsonToken.VALUE_NUMBER_FLOAT);
+                        attemptParsing |= (EvaluatorKindOneOf9.class.equals(Boolean.class) && (token == JsonToken.VALUE_FALSE || token == JsonToken.VALUE_TRUE));
+                        attemptParsing |= (EvaluatorKindOneOf9.class.equals(String.class) && token == JsonToken.VALUE_STRING);
+                    }
+                }
+                if (attemptParsing) {
+                    deserialized = tree.traverse(jp.getCodec()).readValueAs(EvaluatorKindOneOf9.class);
+                    // TODO: there is no validation against JSON schema constraints
+                    // (min, max, enum, pattern...), this does not perform a strict JSON
+                    // validation, which means the 'match' count may be higher than it should be.
+                    match++;
+                    log.log(Level.FINER, "Input data matches schema 'EvaluatorKindOneOf9'");
+                }
+            } catch (Exception e) {
+                // deserialization failed, continue
+                log.log(Level.FINER, "Input data does not match schema 'EvaluatorKindOneOf9'", e);
+            }
+
             if (match == 1) {
                 EvaluatorKind ret = new EvaluatorKind();
                 ret.setActualInstance(deserialized);
@@ -304,6 +412,26 @@ public class EvaluatorKind extends AbstractOpenApiSchema {
         setActualInstance(o);
     }
 
+    public EvaluatorKind(EvaluatorKindOneOf6 o) {
+        super("oneOf", Boolean.FALSE);
+        setActualInstance(o);
+    }
+
+    public EvaluatorKind(EvaluatorKindOneOf7 o) {
+        super("oneOf", Boolean.FALSE);
+        setActualInstance(o);
+    }
+
+    public EvaluatorKind(EvaluatorKindOneOf8 o) {
+        super("oneOf", Boolean.FALSE);
+        setActualInstance(o);
+    }
+
+    public EvaluatorKind(EvaluatorKindOneOf9 o) {
+        super("oneOf", Boolean.FALSE);
+        setActualInstance(o);
+    }
+
     static {
         schemas.put("EvaluatorKindOneOf", EvaluatorKindOneOf.class);
         schemas.put("EvaluatorKindOneOf1", EvaluatorKindOneOf1.class);
@@ -311,6 +439,10 @@ public class EvaluatorKind extends AbstractOpenApiSchema {
         schemas.put("EvaluatorKindOneOf3", EvaluatorKindOneOf3.class);
         schemas.put("EvaluatorKindOneOf4", EvaluatorKindOneOf4.class);
         schemas.put("EvaluatorKindOneOf5", EvaluatorKindOneOf5.class);
+        schemas.put("EvaluatorKindOneOf6", EvaluatorKindOneOf6.class);
+        schemas.put("EvaluatorKindOneOf7", EvaluatorKindOneOf7.class);
+        schemas.put("EvaluatorKindOneOf8", EvaluatorKindOneOf8.class);
+        schemas.put("EvaluatorKindOneOf9", EvaluatorKindOneOf9.class);
         JSON.registerDescendants(EvaluatorKind.class, Collections.unmodifiableMap(schemas));
     }
 
@@ -322,7 +454,7 @@ public class EvaluatorKind extends AbstractOpenApiSchema {
     /**
      * Set the instance that matches the oneOf child schema, check
      * the instance parameter is valid against the oneOf child schemas:
-     * EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5
+     * EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9
      *
      * It could be an instance of the 'oneOf' schemas.
      * The oneOf child schemas may themselves be a composed schema (allOf, anyOf, oneOf).
@@ -359,14 +491,34 @@ public class EvaluatorKind extends AbstractOpenApiSchema {
             return;
         }
 
-        throw new RuntimeException("Invalid instance type. Must be EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5");
+        if (JSON.isInstanceOf(EvaluatorKindOneOf6.class, instance, new HashSet<Class<?>>())) {
+            super.setActualInstance(instance);
+            return;
+        }
+
+        if (JSON.isInstanceOf(EvaluatorKindOneOf7.class, instance, new HashSet<Class<?>>())) {
+            super.setActualInstance(instance);
+            return;
+        }
+
+        if (JSON.isInstanceOf(EvaluatorKindOneOf8.class, instance, new HashSet<Class<?>>())) {
+            super.setActualInstance(instance);
+            return;
+        }
+
+        if (JSON.isInstanceOf(EvaluatorKindOneOf9.class, instance, new HashSet<Class<?>>())) {
+            super.setActualInstance(instance);
+            return;
+        }
+
+        throw new RuntimeException("Invalid instance type. Must be EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9");
     }
 
     /**
      * Get the actual instance, which can be the following:
-     * EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5
+     * EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9
      *
-     * @return The actual instance (EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5)
+     * @return The actual instance (EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9)
      */
     @Override
     public Object getActualInstance() {
@@ -439,6 +591,50 @@ public class EvaluatorKind extends AbstractOpenApiSchema {
         return (EvaluatorKindOneOf5)super.getActualInstance();
     }
 
+    /**
+     * Get the actual instance of `EvaluatorKindOneOf6`. If the actual instance is not `EvaluatorKindOneOf6`,
+     * the ClassCastException will be thrown.
+     *
+     * @return The actual instance of `EvaluatorKindOneOf6`
+     * @throws ClassCastException if the instance is not `EvaluatorKindOneOf6`
+     */
+    public EvaluatorKindOneOf6 getEvaluatorKindOneOf6() throws ClassCastException {
+        return (EvaluatorKindOneOf6)super.getActualInstance();
+    }
+
+    /**
+     * Get the actual instance of `EvaluatorKindOneOf7`. If the actual instance is not `EvaluatorKindOneOf7`,
+     * the ClassCastException will be thrown.
+     *
+     * @return The actual instance of `EvaluatorKindOneOf7`
+     * @throws ClassCastException if the instance is not `EvaluatorKindOneOf7`
+     */
+    public EvaluatorKindOneOf7 getEvaluatorKindOneOf7() throws ClassCastException {
+        return (EvaluatorKindOneOf7)super.getActualInstance();
+    }
+
+    /**
+     * Get the actual instance of `EvaluatorKindOneOf8`. If the actual instance is not `EvaluatorKindOneOf8`,
+     * the ClassCastException will be thrown.
+     *
+     * @return The actual instance of `EvaluatorKindOneOf8`
+     * @throws ClassCastException if the instance is not `EvaluatorKindOneOf8`
+     */
+    public EvaluatorKindOneOf8 getEvaluatorKindOneOf8() throws ClassCastException {
+        return (EvaluatorKindOneOf8)super.getActualInstance();
+    }
+
+    /**
+     * Get the actual instance of `EvaluatorKindOneOf9`. If the actual instance is not `EvaluatorKindOneOf9`,
+     * the ClassCastException will be thrown.
+     *
+     * @return The actual instance of `EvaluatorKindOneOf9`
+     * @throws ClassCastException if the instance is not `EvaluatorKindOneOf9`
+     */
+    public EvaluatorKindOneOf9 getEvaluatorKindOneOf9() throws ClassCastException {
+        return (EvaluatorKindOneOf9)super.getActualInstance();
+    }
+
 
 
   /**
@@ -506,6 +702,30 @@ public class EvaluatorKind extends AbstractOpenApiSchema {
     if (getActualInstance() instanceof EvaluatorKindOneOf5) {
         if (getActualInstance() != null) {
           joiner.add(((EvaluatorKindOneOf5)getActualInstance()).toUrlQueryString(prefix + "one_of_5" + suffix));
+        }
+        return joiner.toString();
+    }
+    if (getActualInstance() instanceof EvaluatorKindOneOf6) {
+        if (getActualInstance() != null) {
+          joiner.add(((EvaluatorKindOneOf6)getActualInstance()).toUrlQueryString(prefix + "one_of_6" + suffix));
+        }
+        return joiner.toString();
+    }
+    if (getActualInstance() instanceof EvaluatorKindOneOf7) {
+        if (getActualInstance() != null) {
+          joiner.add(((EvaluatorKindOneOf7)getActualInstance()).toUrlQueryString(prefix + "one_of_7" + suffix));
+        }
+        return joiner.toString();
+    }
+    if (getActualInstance() instanceof EvaluatorKindOneOf8) {
+        if (getActualInstance() != null) {
+          joiner.add(((EvaluatorKindOneOf8)getActualInstance()).toUrlQueryString(prefix + "one_of_8" + suffix));
+        }
+        return joiner.toString();
+    }
+    if (getActualInstance() instanceof EvaluatorKindOneOf9) {
+        if (getActualInstance() != null) {
+          joiner.add(((EvaluatorKindOneOf9)getActualInstance()).toUrlQueryString(prefix + "one_of_9" + suffix));
         }
         return joiner.toString();
     }

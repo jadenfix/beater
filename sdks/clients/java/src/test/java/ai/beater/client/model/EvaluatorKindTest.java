@@ -19,6 +19,10 @@ import ai.beater.client.model.EvaluatorKindOneOf2;
 import ai.beater.client.model.EvaluatorKindOneOf3;
 import ai.beater.client.model.EvaluatorKindOneOf4;
 import ai.beater.client.model.EvaluatorKindOneOf5;
+import ai.beater.client.model.EvaluatorKindOneOf6;
+import ai.beater.client.model.EvaluatorKindOneOf7;
+import ai.beater.client.model.EvaluatorKindOneOf8;
+import ai.beater.client.model.EvaluatorKindOneOf9;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -89,6 +93,38 @@ class EvaluatorKindTest {
     @Test
     void rubricTest() {
         // TODO: test rubric
+    }
+
+    /**
+     * Test the property 'domContains'
+     */
+    @Test
+    void domContainsTest() {
+        // TODO: test domContains
+    }
+
+    /**
+     * Test the property 'urlContains'
+     */
+    @Test
+    void urlContainsTest() {
+        // TODO: test urlContains
+    }
+
+    /**
+     * Test the property 'maxSteps'
+     */
+    @Test
+    void maxStepsTest() {
+        // TODO: test maxSteps
+    }
+
+    /**
+     * Test the property 'minRatio'
+     */
+    @Test
+    void minRatioTest() {
+        // TODO: test minRatio
     }
 
 }

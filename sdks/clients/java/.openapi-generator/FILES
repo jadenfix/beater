@@ -63,6 +63,10 @@ docs/EvaluatorKindOneOf2.md
 docs/EvaluatorKindOneOf3.md
 docs/EvaluatorKindOneOf4.md
 docs/EvaluatorKindOneOf5.md
+docs/EvaluatorKindOneOf6.md
+docs/EvaluatorKindOneOf7.md
+docs/EvaluatorKindOneOf8.md
+docs/EvaluatorKindOneOf9.md
 docs/EvaluatorLane.md
 docs/EvaluatorSpec.md
 docs/ExperimentComparison.md
@@ -231,6 +235,10 @@ src/main/java/ai/beater/client/model/EvaluatorKindOneOf2.java
 src/main/java/ai/beater/client/model/EvaluatorKindOneOf3.java
 src/main/java/ai/beater/client/model/EvaluatorKindOneOf4.java
 src/main/java/ai/beater/client/model/EvaluatorKindOneOf5.java
+src/main/java/ai/beater/client/model/EvaluatorKindOneOf6.java
+src/main/java/ai/beater/client/model/EvaluatorKindOneOf7.java
+src/main/java/ai/beater/client/model/EvaluatorKindOneOf8.java
+src/main/java/ai/beater/client/model/EvaluatorKindOneOf9.java
 src/main/java/ai/beater/client/model/EvaluatorLane.java
 src/main/java/ai/beater/client/model/EvaluatorSpec.java
 src/main/java/ai/beater/client/model/ExperimentComparison.java
@@ -366,6 +374,10 @@ src/test/java/ai/beater/client/model/EvaluatorKindOneOf2Test.java
 src/test/java/ai/beater/client/model/EvaluatorKindOneOf3Test.java
 src/test/java/ai/beater/client/model/EvaluatorKindOneOf4Test.java
 src/test/java/ai/beater/client/model/EvaluatorKindOneOf5Test.java
+src/test/java/ai/beater/client/model/EvaluatorKindOneOf6Test.java
+src/test/java/ai/beater/client/model/EvaluatorKindOneOf7Test.java
+src/test/java/ai/beater/client/model/EvaluatorKindOneOf8Test.java
+src/test/java/ai/beater/client/model/EvaluatorKindOneOf9Test.java
 src/test/java/ai/beater/client/model/EvaluatorKindOneOfTest.java
 src/test/java/ai/beater/client/model/EvaluatorKindTest.java
 src/test/java/ai/beater/client/model/EvaluatorLaneTest.java

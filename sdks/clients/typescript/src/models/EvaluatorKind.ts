@@ -54,13 +54,41 @@ import {
     EvaluatorKindOneOf5FromJSONTyped,
     EvaluatorKindOneOf5ToJSON,
 } from './EvaluatorKindOneOf5';
+import type { EvaluatorKindOneOf6 } from './EvaluatorKindOneOf6';
+import {
+    instanceOfEvaluatorKindOneOf6,
+    EvaluatorKindOneOf6FromJSON,
+    EvaluatorKindOneOf6FromJSONTyped,
+    EvaluatorKindOneOf6ToJSON,
+} from './EvaluatorKindOneOf6';
+import type { EvaluatorKindOneOf7 } from './EvaluatorKindOneOf7';
+import {
+    instanceOfEvaluatorKindOneOf7,
+    EvaluatorKindOneOf7FromJSON,
+    EvaluatorKindOneOf7FromJSONTyped,
+    EvaluatorKindOneOf7ToJSON,
+} from './EvaluatorKindOneOf7';
+import type { EvaluatorKindOneOf8 } from './EvaluatorKindOneOf8';
+import {
+    instanceOfEvaluatorKindOneOf8,
+    EvaluatorKindOneOf8FromJSON,
+    EvaluatorKindOneOf8FromJSONTyped,
+    EvaluatorKindOneOf8ToJSON,
+} from './EvaluatorKindOneOf8';
+import type { EvaluatorKindOneOf9 } from './EvaluatorKindOneOf9';
+import {
+    instanceOfEvaluatorKindOneOf9,
+    EvaluatorKindOneOf9FromJSON,
+    EvaluatorKindOneOf9FromJSONTyped,
+    EvaluatorKindOneOf9ToJSON,
+} from './EvaluatorKindOneOf9';
 
 /**
  * @type EvaluatorKind
  * 
  * @export
  */
-export type EvaluatorKind = EvaluatorKindOneOf | EvaluatorKindOneOf1 | EvaluatorKindOneOf2 | EvaluatorKindOneOf3 | EvaluatorKindOneOf4 | EvaluatorKindOneOf5;
+export type EvaluatorKind = EvaluatorKindOneOf | EvaluatorKindOneOf1 | EvaluatorKindOneOf2 | EvaluatorKindOneOf3 | EvaluatorKindOneOf4 | EvaluatorKindOneOf5 | EvaluatorKindOneOf6 | EvaluatorKindOneOf7 | EvaluatorKindOneOf8 | EvaluatorKindOneOf9;
 
 export function EvaluatorKindFromJSON(json: any): EvaluatorKind {
     return EvaluatorKindFromJSONTyped(json, false);
@@ -87,6 +115,18 @@ export function EvaluatorKindFromJSONTyped(json: any, ignoreDiscriminator: boole
     }
     if (instanceOfEvaluatorKindOneOf5(json)) {
         return EvaluatorKindOneOf5FromJSONTyped(json, true);
+    }
+    if (instanceOfEvaluatorKindOneOf6(json)) {
+        return EvaluatorKindOneOf6FromJSONTyped(json, true);
+    }
+    if (instanceOfEvaluatorKindOneOf7(json)) {
+        return EvaluatorKindOneOf7FromJSONTyped(json, true);
+    }
+    if (instanceOfEvaluatorKindOneOf8(json)) {
+        return EvaluatorKindOneOf8FromJSONTyped(json, true);
+    }
+    if (instanceOfEvaluatorKindOneOf9(json)) {
+        return EvaluatorKindOneOf9FromJSONTyped(json, true);
     }
 
     return {} as any;
@@ -118,6 +158,18 @@ export function EvaluatorKindToJSONTyped(value?: EvaluatorKind | null, ignoreDis
     }
     if (instanceOfEvaluatorKindOneOf5(value)) {
         return EvaluatorKindOneOf5ToJSON(value as EvaluatorKindOneOf5);
+    }
+    if (instanceOfEvaluatorKindOneOf6(value)) {
+        return EvaluatorKindOneOf6ToJSON(value as EvaluatorKindOneOf6);
+    }
+    if (instanceOfEvaluatorKindOneOf7(value)) {
+        return EvaluatorKindOneOf7ToJSON(value as EvaluatorKindOneOf7);
+    }
+    if (instanceOfEvaluatorKindOneOf8(value)) {
+        return EvaluatorKindOneOf8ToJSON(value as EvaluatorKindOneOf8);
+    }
+    if (instanceOfEvaluatorKindOneOf9(value)) {
+        return EvaluatorKindOneOf9ToJSON(value as EvaluatorKindOneOf9);
     }
 
     return {};

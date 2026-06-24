@@ -74,6 +74,10 @@ src/models/EvaluatorKindOneOf2.ts
 src/models/EvaluatorKindOneOf3.ts
 src/models/EvaluatorKindOneOf4.ts
 src/models/EvaluatorKindOneOf5.ts
+src/models/EvaluatorKindOneOf6.ts
+src/models/EvaluatorKindOneOf7.ts
+src/models/EvaluatorKindOneOf8.ts
+src/models/EvaluatorKindOneOf9.ts
 src/models/EvaluatorLane.ts
 src/models/EvaluatorSpec.ts
 src/models/ExperimentComparison.ts

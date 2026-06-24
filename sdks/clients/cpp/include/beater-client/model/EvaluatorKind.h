@@ -25,6 +25,10 @@
 
 #include "beater-client/model/EvaluatorKind_oneOf.h"
 #include "beater-client/model/EvaluatorKind_oneOf_1.h"
+#include "beater-client/model/EvaluatorKind_oneOf_7.h"
+#include "beater-client/model/EvaluatorKind_oneOf_6.h"
+#include "beater-client/model/EvaluatorKind_oneOf_8.h"
+#include "beater-client/model/EvaluatorKind_oneOf_9.h"
 #include "beater-client/model/EvaluatorKind_oneOf_4.h"
 #include "beater-client/model/EvaluatorKind_oneOf_5.h"
 #include <cpprest/details/basic_types.h>
@@ -85,7 +89,7 @@ public:
     /////////////////////////////////////////////
     /// EvaluatorKind members
 
-    using VariantType = std::variant<EvaluatorKind_oneOf, EvaluatorKind_oneOf_1, EvaluatorKind_oneOf_2, EvaluatorKind_oneOf_3, EvaluatorKind_oneOf_4, EvaluatorKind_oneOf_5>;
+    using VariantType = std::variant<EvaluatorKind_oneOf, EvaluatorKind_oneOf_1, EvaluatorKind_oneOf_2, EvaluatorKind_oneOf_3, EvaluatorKind_oneOf_4, EvaluatorKind_oneOf_5, EvaluatorKind_oneOf_6, EvaluatorKind_oneOf_7, EvaluatorKind_oneOf_8, EvaluatorKind_oneOf_9>;
 
     const VariantType& getVariant() const;
     void setVariant(VariantType value);

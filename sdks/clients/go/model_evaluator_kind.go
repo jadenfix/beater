@@ -24,6 +24,10 @@ type EvaluatorKind struct {
 	EvaluatorKindOneOf3 *EvaluatorKindOneOf3
 	EvaluatorKindOneOf4 *EvaluatorKindOneOf4
 	EvaluatorKindOneOf5 *EvaluatorKindOneOf5
+	EvaluatorKindOneOf6 *EvaluatorKindOneOf6
+	EvaluatorKindOneOf7 *EvaluatorKindOneOf7
+	EvaluatorKindOneOf8 *EvaluatorKindOneOf8
+	EvaluatorKindOneOf9 *EvaluatorKindOneOf9
 }
 
 // EvaluatorKindOneOfAsEvaluatorKind is a convenience function that returns EvaluatorKindOneOf wrapped in EvaluatorKind
@@ -65,6 +69,34 @@ func EvaluatorKindOneOf4AsEvaluatorKind(v *EvaluatorKindOneOf4) EvaluatorKind {
 func EvaluatorKindOneOf5AsEvaluatorKind(v *EvaluatorKindOneOf5) EvaluatorKind {
 	return EvaluatorKind{
 		EvaluatorKindOneOf5: v,
+	}
+}
+
+// EvaluatorKindOneOf6AsEvaluatorKind is a convenience function that returns EvaluatorKindOneOf6 wrapped in EvaluatorKind
+func EvaluatorKindOneOf6AsEvaluatorKind(v *EvaluatorKindOneOf6) EvaluatorKind {
+	return EvaluatorKind{
+		EvaluatorKindOneOf6: v,
+	}
+}
+
+// EvaluatorKindOneOf7AsEvaluatorKind is a convenience function that returns EvaluatorKindOneOf7 wrapped in EvaluatorKind
+func EvaluatorKindOneOf7AsEvaluatorKind(v *EvaluatorKindOneOf7) EvaluatorKind {
+	return EvaluatorKind{
+		EvaluatorKindOneOf7: v,
+	}
+}
+
+// EvaluatorKindOneOf8AsEvaluatorKind is a convenience function that returns EvaluatorKindOneOf8 wrapped in EvaluatorKind
+func EvaluatorKindOneOf8AsEvaluatorKind(v *EvaluatorKindOneOf8) EvaluatorKind {
+	return EvaluatorKind{
+		EvaluatorKindOneOf8: v,
+	}
+}
+
+// EvaluatorKindOneOf9AsEvaluatorKind is a convenience function that returns EvaluatorKindOneOf9 wrapped in EvaluatorKind
+func EvaluatorKindOneOf9AsEvaluatorKind(v *EvaluatorKindOneOf9) EvaluatorKind {
+	return EvaluatorKind{
+		EvaluatorKindOneOf9: v,
 	}
 }
 
@@ -175,6 +207,74 @@ func (dst *EvaluatorKind) UnmarshalJSON(data []byte) error {
 		dst.EvaluatorKindOneOf5 = nil
 	}
 
+	// try to unmarshal data into EvaluatorKindOneOf6
+	err = newStrictDecoder(data).Decode(&dst.EvaluatorKindOneOf6)
+	if err == nil {
+		jsonEvaluatorKindOneOf6, _ := json.Marshal(dst.EvaluatorKindOneOf6)
+		if string(jsonEvaluatorKindOneOf6) == "{}" { // empty struct
+			dst.EvaluatorKindOneOf6 = nil
+		} else {
+			if err = validator.Validate(dst.EvaluatorKindOneOf6); err != nil {
+				dst.EvaluatorKindOneOf6 = nil
+			} else {
+				match++
+			}
+		}
+	} else {
+		dst.EvaluatorKindOneOf6 = nil
+	}
+
+	// try to unmarshal data into EvaluatorKindOneOf7
+	err = newStrictDecoder(data).Decode(&dst.EvaluatorKindOneOf7)
+	if err == nil {
+		jsonEvaluatorKindOneOf7, _ := json.Marshal(dst.EvaluatorKindOneOf7)
+		if string(jsonEvaluatorKindOneOf7) == "{}" { // empty struct
+			dst.EvaluatorKindOneOf7 = nil
+		} else {
+			if err = validator.Validate(dst.EvaluatorKindOneOf7); err != nil {
+				dst.EvaluatorKindOneOf7 = nil
+			} else {
+				match++
+			}
+		}
+	} else {
+		dst.EvaluatorKindOneOf7 = nil
+	}
+
+	// try to unmarshal data into EvaluatorKindOneOf8
+	err = newStrictDecoder(data).Decode(&dst.EvaluatorKindOneOf8)
+	if err == nil {
+		jsonEvaluatorKindOneOf8, _ := json.Marshal(dst.EvaluatorKindOneOf8)
+		if string(jsonEvaluatorKindOneOf8) == "{}" { // empty struct
+			dst.EvaluatorKindOneOf8 = nil
+		} else {
+			if err = validator.Validate(dst.EvaluatorKindOneOf8); err != nil {
+				dst.EvaluatorKindOneOf8 = nil
+			} else {
+				match++
+			}
+		}
+	} else {
+		dst.EvaluatorKindOneOf8 = nil
+	}
+
+	// try to unmarshal data into EvaluatorKindOneOf9
+	err = newStrictDecoder(data).Decode(&dst.EvaluatorKindOneOf9)
+	if err == nil {
+		jsonEvaluatorKindOneOf9, _ := json.Marshal(dst.EvaluatorKindOneOf9)
+		if string(jsonEvaluatorKindOneOf9) == "{}" { // empty struct
+			dst.EvaluatorKindOneOf9 = nil
+		} else {
+			if err = validator.Validate(dst.EvaluatorKindOneOf9); err != nil {
+				dst.EvaluatorKindOneOf9 = nil
+			} else {
+				match++
+			}
+		}
+	} else {
+		dst.EvaluatorKindOneOf9 = nil
+	}
+
 	if match > 1 { // more than 1 match
 		// reset to nil
 		dst.EvaluatorKindOneOf = nil
@@ -183,6 +283,10 @@ func (dst *EvaluatorKind) UnmarshalJSON(data []byte) error {
 		dst.EvaluatorKindOneOf3 = nil
 		dst.EvaluatorKindOneOf4 = nil
 		dst.EvaluatorKindOneOf5 = nil
+		dst.EvaluatorKindOneOf6 = nil
+		dst.EvaluatorKindOneOf7 = nil
+		dst.EvaluatorKindOneOf8 = nil
+		dst.EvaluatorKindOneOf9 = nil
 
 		return fmt.Errorf("data matches more than one schema in oneOf(EvaluatorKind)")
 	} else if match == 1 {
@@ -218,6 +322,22 @@ func (src EvaluatorKind) MarshalJSON() ([]byte, error) {
 		return json.Marshal(&src.EvaluatorKindOneOf5)
 	}
 
+	if src.EvaluatorKindOneOf6 != nil {
+		return json.Marshal(&src.EvaluatorKindOneOf6)
+	}
+
+	if src.EvaluatorKindOneOf7 != nil {
+		return json.Marshal(&src.EvaluatorKindOneOf7)
+	}
+
+	if src.EvaluatorKindOneOf8 != nil {
+		return json.Marshal(&src.EvaluatorKindOneOf8)
+	}
+
+	if src.EvaluatorKindOneOf9 != nil {
+		return json.Marshal(&src.EvaluatorKindOneOf9)
+	}
+
 	return nil, nil // no data in oneOf schemas
 }
 
@@ -248,6 +368,22 @@ func (obj *EvaluatorKind) GetActualInstance() (interface{}) {
 
 	if obj.EvaluatorKindOneOf5 != nil {
 		return obj.EvaluatorKindOneOf5
+	}
+
+	if obj.EvaluatorKindOneOf6 != nil {
+		return obj.EvaluatorKindOneOf6
+	}
+
+	if obj.EvaluatorKindOneOf7 != nil {
+		return obj.EvaluatorKindOneOf7
+	}
+
+	if obj.EvaluatorKindOneOf8 != nil {
+		return obj.EvaluatorKindOneOf8
+	}
+
+	if obj.EvaluatorKindOneOf9 != nil {
+		return obj.EvaluatorKindOneOf9
 	}
 
 	// all schemas are nil

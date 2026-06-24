@@ -11,6 +11,10 @@ Name | Type | Description | Notes
 **max_ms** | **int** |  | 
 **model** | **str** |  | 
 **rubric** | **str** |  | 
+**dom_contains** | **str** |  | [optional] 
+**url_contains** | **str** |  | [optional] 
+**max_steps** | **int** |  | 
+**min_ratio** | **float** |  | 
 
 ## Example
 

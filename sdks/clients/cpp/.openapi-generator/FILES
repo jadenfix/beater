@@ -83,6 +83,10 @@ include/beater-client/model/EvaluatorKind_oneOf_2.h
 include/beater-client/model/EvaluatorKind_oneOf_3.h
 include/beater-client/model/EvaluatorKind_oneOf_4.h
 include/beater-client/model/EvaluatorKind_oneOf_5.h
+include/beater-client/model/EvaluatorKind_oneOf_6.h
+include/beater-client/model/EvaluatorKind_oneOf_7.h
+include/beater-client/model/EvaluatorKind_oneOf_8.h
+include/beater-client/model/EvaluatorKind_oneOf_9.h
 include/beater-client/model/EvaluatorLane.h
 include/beater-client/model/EvaluatorSpec.h
 include/beater-client/model/ExperimentComparison.h
@@ -229,6 +233,10 @@ src/model/EvaluatorKind_oneOf_2.cpp
 src/model/EvaluatorKind_oneOf_3.cpp
 src/model/EvaluatorKind_oneOf_4.cpp
 src/model/EvaluatorKind_oneOf_5.cpp
+src/model/EvaluatorKind_oneOf_6.cpp
+src/model/EvaluatorKind_oneOf_7.cpp
+src/model/EvaluatorKind_oneOf_8.cpp
+src/model/EvaluatorKind_oneOf_9.cpp
 src/model/EvaluatorLane.cpp
 src/model/EvaluatorSpec.cpp
 src/model/ExperimentComparison.cpp

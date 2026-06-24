@@ -9,6 +9,10 @@ Name | Type | Description | Notes
 **max_ms** | **long** |  | 
 **model** | **char \*** |  | 
 **rubric** | **char \*** |  | 
+**dom_contains** | **char \*** |  | [optional] 
+**url_contains** | **char \*** |  | [optional] 
+**max_steps** | **long** |  | 
+**min_ratio** | **double** |  | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

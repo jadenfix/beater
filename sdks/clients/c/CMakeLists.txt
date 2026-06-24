@@ -98,6 +98,10 @@ set(SRCS
     model/evaluator_kind_one_of_3.c
     model/evaluator_kind_one_of_4.c
     model/evaluator_kind_one_of_5.c
+    model/evaluator_kind_one_of_6.c
+    model/evaluator_kind_one_of_7.c
+    model/evaluator_kind_one_of_8.c
+    model/evaluator_kind_one_of_9.c
     model/evaluator_lane.c
     model/evaluator_spec.c
     model/experiment_comparison.c
@@ -246,6 +250,10 @@ set(HDRS
     model/evaluator_kind_one_of_3.h
     model/evaluator_kind_one_of_4.h
     model/evaluator_kind_one_of_5.h
+    model/evaluator_kind_one_of_6.h
+    model/evaluator_kind_one_of_7.h
+    model/evaluator_kind_one_of_8.h
+    model/evaluator_kind_one_of_9.h
     model/evaluator_lane.h
     model/evaluator_spec.h
     model/experiment_comparison.h

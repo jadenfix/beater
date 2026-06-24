@@ -20,6 +20,10 @@ pub enum EvaluatorKind {
     EvaluatorKindOneOf3(Box<models::EvaluatorKindOneOf3>),
     EvaluatorKindOneOf4(Box<models::EvaluatorKindOneOf4>),
     EvaluatorKindOneOf5(Box<models::EvaluatorKindOneOf5>),
+    EvaluatorKindOneOf6(Box<models::EvaluatorKindOneOf6>),
+    EvaluatorKindOneOf7(Box<models::EvaluatorKindOneOf7>),
+    EvaluatorKindOneOf8(Box<models::EvaluatorKindOneOf8>),
+    EvaluatorKindOneOf9(Box<models::EvaluatorKindOneOf9>),
 }
 
 impl Default for EvaluatorKind {
@@ -42,6 +46,14 @@ pub enum Type {
     LatencyBudgetMs,
     #[serde(rename = "llm_judge")]
     LlmJudge,
+    #[serde(rename = "browser_task_success")]
+    BrowserTaskSuccess,
+    #[serde(rename = "browser_step_efficiency")]
+    BrowserStepEfficiency,
+    #[serde(rename = "browser_grounding")]
+    BrowserGrounding,
+    #[serde(rename = "browser_recovery")]
+    BrowserRecovery,
 }
 
 impl Default for Type {

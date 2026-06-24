@@ -110,6 +110,10 @@ docs/evaluator_kind_one_of_2.md
 docs/evaluator_kind_one_of_3.md
 docs/evaluator_kind_one_of_4.md
 docs/evaluator_kind_one_of_5.md
+docs/evaluator_kind_one_of_6.md
+docs/evaluator_kind_one_of_7.md
+docs/evaluator_kind_one_of_8.md
+docs/evaluator_kind_one_of_9.md
 docs/evaluator_lane.md
 docs/evaluator_spec.md
 docs/experiment_comparison.md
@@ -287,6 +291,14 @@ model/evaluator_kind_one_of_4.c
 model/evaluator_kind_one_of_4.h
 model/evaluator_kind_one_of_5.c
 model/evaluator_kind_one_of_5.h
+model/evaluator_kind_one_of_6.c
+model/evaluator_kind_one_of_6.h
+model/evaluator_kind_one_of_7.c
+model/evaluator_kind_one_of_7.h
+model/evaluator_kind_one_of_8.c
+model/evaluator_kind_one_of_8.h
+model/evaluator_kind_one_of_9.c
+model/evaluator_kind_one_of_9.h
 model/evaluator_lane.c
 model/evaluator_lane.h
 model/evaluator_spec.c
@@ -480,6 +492,10 @@ unit-test/test_evaluator_kind_one_of_2.c
 unit-test/test_evaluator_kind_one_of_3.c
 unit-test/test_evaluator_kind_one_of_4.c
 unit-test/test_evaluator_kind_one_of_5.c
+unit-test/test_evaluator_kind_one_of_6.c
+unit-test/test_evaluator_kind_one_of_7.c
+unit-test/test_evaluator_kind_one_of_8.c
+unit-test/test_evaluator_kind_one_of_9.c
 unit-test/test_evaluator_lane.c
 unit-test/test_evaluator_spec.c
 unit-test/test_experiment_comparison.c

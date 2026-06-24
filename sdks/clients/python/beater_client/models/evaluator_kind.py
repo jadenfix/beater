@@ -23,11 +23,15 @@ from beater_client.models.evaluator_kind_one_of2 import EvaluatorKindOneOf2
 from beater_client.models.evaluator_kind_one_of3 import EvaluatorKindOneOf3
 from beater_client.models.evaluator_kind_one_of4 import EvaluatorKindOneOf4
 from beater_client.models.evaluator_kind_one_of5 import EvaluatorKindOneOf5
+from beater_client.models.evaluator_kind_one_of6 import EvaluatorKindOneOf6
+from beater_client.models.evaluator_kind_one_of7 import EvaluatorKindOneOf7
+from beater_client.models.evaluator_kind_one_of8 import EvaluatorKindOneOf8
+from beater_client.models.evaluator_kind_one_of9 import EvaluatorKindOneOf9
 from pydantic import StrictStr, Field
 from typing import Union, List, Set, Optional, Dict
 from typing_extensions import Literal, Self
 
-EVALUATORKIND_ONE_OF_SCHEMAS = ["EvaluatorKindOneOf", "EvaluatorKindOneOf1", "EvaluatorKindOneOf2", "EvaluatorKindOneOf3", "EvaluatorKindOneOf4", "EvaluatorKindOneOf5"]
+EVALUATORKIND_ONE_OF_SCHEMAS = ["EvaluatorKindOneOf", "EvaluatorKindOneOf1", "EvaluatorKindOneOf2", "EvaluatorKindOneOf3", "EvaluatorKindOneOf4", "EvaluatorKindOneOf5", "EvaluatorKindOneOf6", "EvaluatorKindOneOf7", "EvaluatorKindOneOf8", "EvaluatorKindOneOf9"]
 
 class EvaluatorKind(BaseModel):
     """
@@ -45,8 +49,16 @@ class EvaluatorKind(BaseModel):
     oneof_schema_5_validator: Optional[EvaluatorKindOneOf4] = None
     # data type: EvaluatorKindOneOf5
     oneof_schema_6_validator: Optional[EvaluatorKindOneOf5] = None
-    actual_instance: Optional[Union[EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5]] = None
-    one_of_schemas: Set[str] = { "EvaluatorKindOneOf", "EvaluatorKindOneOf1", "EvaluatorKindOneOf2", "EvaluatorKindOneOf3", "EvaluatorKindOneOf4", "EvaluatorKindOneOf5" }
+    # data type: EvaluatorKindOneOf6
+    oneof_schema_7_validator: Optional[EvaluatorKindOneOf6] = None
+    # data type: EvaluatorKindOneOf7
+    oneof_schema_8_validator: Optional[EvaluatorKindOneOf7] = None
+    # data type: EvaluatorKindOneOf8
+    oneof_schema_9_validator: Optional[EvaluatorKindOneOf8] = None
+    # data type: EvaluatorKindOneOf9
+    oneof_schema_10_validator: Optional[EvaluatorKindOneOf9] = None
+    actual_instance: Optional[Union[EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9]] = None
+    one_of_schemas: Set[str] = { "EvaluatorKindOneOf", "EvaluatorKindOneOf1", "EvaluatorKindOneOf2", "EvaluatorKindOneOf3", "EvaluatorKindOneOf4", "EvaluatorKindOneOf5", "EvaluatorKindOneOf6", "EvaluatorKindOneOf7", "EvaluatorKindOneOf8", "EvaluatorKindOneOf9" }
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -99,12 +111,32 @@ class EvaluatorKind(BaseModel):
             error_messages.append(f"Error! Input type `{type(v)}` is not `EvaluatorKindOneOf5`")
         else:
             match += 1
+        # validate data type: EvaluatorKindOneOf6
+        if not isinstance(v, EvaluatorKindOneOf6):
+            error_messages.append(f"Error! Input type `{type(v)}` is not `EvaluatorKindOneOf6`")
+        else:
+            match += 1
+        # validate data type: EvaluatorKindOneOf7
+        if not isinstance(v, EvaluatorKindOneOf7):
+            error_messages.append(f"Error! Input type `{type(v)}` is not `EvaluatorKindOneOf7`")
+        else:
+            match += 1
+        # validate data type: EvaluatorKindOneOf8
+        if not isinstance(v, EvaluatorKindOneOf8):
+            error_messages.append(f"Error! Input type `{type(v)}` is not `EvaluatorKindOneOf8`")
+        else:
+            match += 1
+        # validate data type: EvaluatorKindOneOf9
+        if not isinstance(v, EvaluatorKindOneOf9):
+            error_messages.append(f"Error! Input type `{type(v)}` is not `EvaluatorKindOneOf9`")
+        else:
+            match += 1
         if match > 1:
             # more than 1 match
-            raise ValueError("Multiple matches found when setting `actual_instance` in EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5. Details: " + ", ".join(error_messages))
+            raise ValueError("Multiple matches found when setting `actual_instance` in EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9. Details: " + ", ".join(error_messages))
         elif match == 0:
             # no match
-            raise ValueError("No match found when setting `actual_instance` in EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5. Details: " + ", ".join(error_messages))
+            raise ValueError("No match found when setting `actual_instance` in EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9. Details: " + ", ".join(error_messages))
         else:
             return v
 
@@ -155,13 +187,37 @@ class EvaluatorKind(BaseModel):
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
+        # deserialize data into EvaluatorKindOneOf6
+        try:
+            instance.actual_instance = EvaluatorKindOneOf6.from_json(json_str)
+            match += 1
+        except (ValidationError, ValueError) as e:
+            error_messages.append(str(e))
+        # deserialize data into EvaluatorKindOneOf7
+        try:
+            instance.actual_instance = EvaluatorKindOneOf7.from_json(json_str)
+            match += 1
+        except (ValidationError, ValueError) as e:
+            error_messages.append(str(e))
+        # deserialize data into EvaluatorKindOneOf8
+        try:
+            instance.actual_instance = EvaluatorKindOneOf8.from_json(json_str)
+            match += 1
+        except (ValidationError, ValueError) as e:
+            error_messages.append(str(e))
+        # deserialize data into EvaluatorKindOneOf9
+        try:
+            instance.actual_instance = EvaluatorKindOneOf9.from_json(json_str)
+            match += 1
+        except (ValidationError, ValueError) as e:
+            error_messages.append(str(e))
 
         if match > 1:
             # more than 1 match
-            raise ValueError("Multiple matches found when deserializing the JSON string into EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5. Details: " + ", ".join(error_messages))
+            raise ValueError("Multiple matches found when deserializing the JSON string into EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9. Details: " + ", ".join(error_messages))
         elif match == 0:
             # no match
-            raise ValueError("No match found when deserializing the JSON string into EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5. Details: " + ", ".join(error_messages))
+            raise ValueError("No match found when deserializing the JSON string into EvaluatorKind with oneOf schemas: EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9. Details: " + ", ".join(error_messages))
         else:
             return instance
 
@@ -175,7 +231,7 @@ class EvaluatorKind(BaseModel):
         else:
             return json.dumps(self.actual_instance)
 
-    def to_dict(self) -> Optional[Union[Dict[str, Any], EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5]]:
+    def to_dict(self) -> Optional[Union[Dict[str, Any], EvaluatorKindOneOf, EvaluatorKindOneOf1, EvaluatorKindOneOf2, EvaluatorKindOneOf3, EvaluatorKindOneOf4, EvaluatorKindOneOf5, EvaluatorKindOneOf6, EvaluatorKindOneOf7, EvaluatorKindOneOf8, EvaluatorKindOneOf9]]:
         """Returns the dict representation of the actual instance"""
         if self.actual_instance is None:
             return None

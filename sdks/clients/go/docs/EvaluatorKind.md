@@ -10,12 +10,16 @@ Name | Type | Description | Notes
 **MaxMs** | **int64** |  | 
 **Model** | **string** |  | 
 **Rubric** | **string** |  | 
+**DomContains** | Pointer to **string** |  | [optional] 
+**UrlContains** | Pointer to **string** |  | [optional] 
+**MaxSteps** | **int64** |  | 
+**MinRatio** | **float64** |  | 
 
 ## Methods
 
 ### NewEvaluatorKind
 
-`func NewEvaluatorKind(type_ string, pattern string, maxMicros int64, maxMs int64, model string, rubric string, ) *EvaluatorKind`
+`func NewEvaluatorKind(type_ string, pattern string, maxMicros int64, maxMs int64, model string, rubric string, maxSteps int64, minRatio float64, ) *EvaluatorKind`
 
 NewEvaluatorKind instantiates a new EvaluatorKind object
 This constructor will assign default values to properties that have it defined,
@@ -148,6 +152,96 @@ and a boolean to check if the value has been set.
 `func (o *EvaluatorKind) SetRubric(v string)`
 
 SetRubric sets Rubric field to given value.
+
+
+### GetDomContains
+
+`func (o *EvaluatorKind) GetDomContains() string`
+
+GetDomContains returns the DomContains field if non-nil, zero value otherwise.
+
+### GetDomContainsOk
+
+`func (o *EvaluatorKind) GetDomContainsOk() (*string, bool)`
+
+GetDomContainsOk returns a tuple with the DomContains field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetDomContains
+
+`func (o *EvaluatorKind) SetDomContains(v string)`
+
+SetDomContains sets DomContains field to given value.
+
+### HasDomContains
+
+`func (o *EvaluatorKind) HasDomContains() bool`
+
+HasDomContains returns a boolean if a field has been set.
+
+### GetUrlContains
+
+`func (o *EvaluatorKind) GetUrlContains() string`
+
+GetUrlContains returns the UrlContains field if non-nil, zero value otherwise.
+
+### GetUrlContainsOk
+
+`func (o *EvaluatorKind) GetUrlContainsOk() (*string, bool)`
+
+GetUrlContainsOk returns a tuple with the UrlContains field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetUrlContains
+
+`func (o *EvaluatorKind) SetUrlContains(v string)`
+
+SetUrlContains sets UrlContains field to given value.
+
+### HasUrlContains
+
+`func (o *EvaluatorKind) HasUrlContains() bool`
+
+HasUrlContains returns a boolean if a field has been set.
+
+### GetMaxSteps
+
+`func (o *EvaluatorKind) GetMaxSteps() int64`
+
+GetMaxSteps returns the MaxSteps field if non-nil, zero value otherwise.
+
+### GetMaxStepsOk
+
+`func (o *EvaluatorKind) GetMaxStepsOk() (*int64, bool)`
+
+GetMaxStepsOk returns a tuple with the MaxSteps field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMaxSteps
+
+`func (o *EvaluatorKind) SetMaxSteps(v int64)`
+
+SetMaxSteps sets MaxSteps field to given value.
+
+
+### GetMinRatio
+
+`func (o *EvaluatorKind) GetMinRatio() float64`
+
+GetMinRatio returns the MinRatio field if non-nil, zero value otherwise.
+
+### GetMinRatioOk
+
+`func (o *EvaluatorKind) GetMinRatioOk() (*float64, bool)`
+
+GetMinRatioOk returns a tuple with the MinRatio field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetMinRatio
+
+`func (o *EvaluatorKind) SetMinRatio(v float64)`
+
+SetMinRatio sets MinRatio field to given value.
 
 
 

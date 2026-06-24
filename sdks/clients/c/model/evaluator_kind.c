@@ -5,13 +5,13 @@
 
 
 char* evaluator_kind_type_ToString(beater_api_evaluator_kind_TYPE_e type) {
-    char* typeArray[] =  { "NULL", "exact_match", "regex_match", "json_object", "cost_budget", "latency_budget_ms", "llm_judge" };
+    char* typeArray[] =  { "NULL", "exact_match", "regex_match", "json_object", "cost_budget", "latency_budget_ms", "llm_judge", "browser_task_success", "browser_step_efficiency", "browser_grounding", "browser_recovery" };
     return typeArray[type];
 }
 
 beater_api_evaluator_kind_TYPE_e evaluator_kind_type_FromString(char* type){
     int stringToReturn = 0;
-    char *typeArray[] =  { "NULL", "exact_match", "regex_match", "json_object", "cost_budget", "latency_budget_ms", "llm_judge" };
+    char *typeArray[] =  { "NULL", "exact_match", "regex_match", "json_object", "cost_budget", "latency_budget_ms", "llm_judge", "browser_task_success", "browser_step_efficiency", "browser_grounding", "browser_recovery" };
     size_t sizeofArray = sizeof(typeArray) / sizeof(typeArray[0]);
     while(stringToReturn < sizeofArray) {
         if(strcmp(type, typeArray[stringToReturn]) == 0) {
@@ -28,7 +28,11 @@ static evaluator_kind_t *evaluator_kind_create_internal(
     long max_micros,
     long max_ms,
     char *model,
-    char *rubric
+    char *rubric,
+    char *dom_contains,
+    char *url_contains,
+    long max_steps,
+    double min_ratio
     ) {
     evaluator_kind_t *evaluator_kind_local_var = malloc(sizeof(evaluator_kind_t));
     if (!evaluator_kind_local_var) {
@@ -40,6 +44,10 @@ static evaluator_kind_t *evaluator_kind_create_internal(
     evaluator_kind_local_var->max_ms = max_ms;
     evaluator_kind_local_var->model = model;
     evaluator_kind_local_var->rubric = rubric;
+    evaluator_kind_local_var->dom_contains = dom_contains;
+    evaluator_kind_local_var->url_contains = url_contains;
+    evaluator_kind_local_var->max_steps = max_steps;
+    evaluator_kind_local_var->min_ratio = min_ratio;
 
     evaluator_kind_local_var->_library_owned = 1;
     return evaluator_kind_local_var;
@@ -51,7 +59,11 @@ __attribute__((deprecated)) evaluator_kind_t *evaluator_kind_create(
     long max_micros,
     long max_ms,
     char *model,
-    char *rubric
+    char *rubric,
+    char *dom_contains,
+    char *url_contains,
+    long max_steps,
+    double min_ratio
     ) {
     return evaluator_kind_create_internal (
         type,
@@ -59,7 +71,11 @@ __attribute__((deprecated)) evaluator_kind_t *evaluator_kind_create(
         max_micros,
         max_ms,
         model,
-        rubric
+        rubric,
+        dom_contains,
+        url_contains,
+        max_steps,
+        min_ratio
         );
 }
 
@@ -83,6 +99,14 @@ void evaluator_kind_free(evaluator_kind_t *evaluator_kind) {
     if (evaluator_kind->rubric) {
         free(evaluator_kind->rubric);
         evaluator_kind->rubric = NULL;
+    }
+    if (evaluator_kind->dom_contains) {
+        free(evaluator_kind->dom_contains);
+        evaluator_kind->dom_contains = NULL;
+    }
+    if (evaluator_kind->url_contains) {
+        free(evaluator_kind->url_contains);
+        evaluator_kind->url_contains = NULL;
     }
     free(evaluator_kind);
 }
@@ -142,6 +166,40 @@ cJSON *evaluator_kind_convertToJSON(evaluator_kind_t *evaluator_kind) {
     }
     if(cJSON_AddStringToObject(item, "rubric", evaluator_kind->rubric) == NULL) {
     goto fail; //String
+    }
+
+
+    // evaluator_kind->dom_contains
+    if(evaluator_kind->dom_contains) {
+    if(cJSON_AddStringToObject(item, "dom_contains", evaluator_kind->dom_contains) == NULL) {
+    goto fail; //String
+    }
+    }
+
+
+    // evaluator_kind->url_contains
+    if(evaluator_kind->url_contains) {
+    if(cJSON_AddStringToObject(item, "url_contains", evaluator_kind->url_contains) == NULL) {
+    goto fail; //String
+    }
+    }
+
+
+    // evaluator_kind->max_steps
+    if (!evaluator_kind->max_steps) {
+        goto fail;
+    }
+    if(cJSON_AddNumberToObject(item, "max_steps", evaluator_kind->max_steps) == NULL) {
+    goto fail; //Numeric
+    }
+
+
+    // evaluator_kind->min_ratio
+    if (!evaluator_kind->min_ratio) {
+        goto fail;
+    }
+    if(cJSON_AddNumberToObject(item, "min_ratio", evaluator_kind->min_ratio) == NULL) {
+    goto fail; //Numeric
     }
 
     return item;
@@ -248,6 +306,60 @@ evaluator_kind_t *evaluator_kind_parseFromJSON(cJSON *evaluator_kindJSON){
     goto end; //String
     }
 
+    // evaluator_kind->dom_contains
+    cJSON *dom_contains = cJSON_GetObjectItemCaseSensitive(evaluator_kindJSON, "dom_contains");
+    if (cJSON_IsNull(dom_contains)) {
+        dom_contains = NULL;
+    }
+    if (dom_contains) { 
+    if(!cJSON_IsString(dom_contains) && !cJSON_IsNull(dom_contains))
+    {
+    goto end; //String
+    }
+    }
+
+    // evaluator_kind->url_contains
+    cJSON *url_contains = cJSON_GetObjectItemCaseSensitive(evaluator_kindJSON, "url_contains");
+    if (cJSON_IsNull(url_contains)) {
+        url_contains = NULL;
+    }
+    if (url_contains) { 
+    if(!cJSON_IsString(url_contains) && !cJSON_IsNull(url_contains))
+    {
+    goto end; //String
+    }
+    }
+
+    // evaluator_kind->max_steps
+    cJSON *max_steps = cJSON_GetObjectItemCaseSensitive(evaluator_kindJSON, "max_steps");
+    if (cJSON_IsNull(max_steps)) {
+        max_steps = NULL;
+    }
+    if (!max_steps) {
+        goto end;
+    }
+
+    
+    if(!cJSON_IsNumber(max_steps))
+    {
+    goto end; //Numeric
+    }
+
+    // evaluator_kind->min_ratio
+    cJSON *min_ratio = cJSON_GetObjectItemCaseSensitive(evaluator_kindJSON, "min_ratio");
+    if (cJSON_IsNull(min_ratio)) {
+        min_ratio = NULL;
+    }
+    if (!min_ratio) {
+        goto end;
+    }
+
+    
+    if(!cJSON_IsNumber(min_ratio))
+    {
+    goto end; //Numeric
+    }
+
 
     evaluator_kind_local_var = evaluator_kind_create_internal (
         typeVariable,
@@ -255,7 +367,11 @@ evaluator_kind_t *evaluator_kind_parseFromJSON(cJSON *evaluator_kindJSON){
         max_micros->valuedouble,
         max_ms->valuedouble,
         strdup(model->valuestring),
-        strdup(rubric->valuestring)
+        strdup(rubric->valuestring),
+        dom_contains && !cJSON_IsNull(dom_contains) ? strdup(dom_contains->valuestring) : NULL,
+        url_contains && !cJSON_IsNull(url_contains) ? strdup(url_contains->valuestring) : NULL,
+        max_steps->valuedouble,
+        min_ratio->valuedouble
         );
 
     return evaluator_kind_local_var;

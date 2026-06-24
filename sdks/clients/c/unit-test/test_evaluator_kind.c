@@ -27,7 +27,11 @@ evaluator_kind_t* instantiate_evaluator_kind(int include_optional) {
       56,
       0,
       "0",
-      "0"
+      "0",
+      "0",
+      "0",
+      0,
+      1.337
     );
   } else {
     evaluator_kind = evaluator_kind_create(
@@ -36,7 +40,11 @@ evaluator_kind_t* instantiate_evaluator_kind(int include_optional) {
       56,
       0,
       "0",
-      "0"
+      "0",
+      "0",
+      "0",
+      0,
+      1.337
     );
   }
 
