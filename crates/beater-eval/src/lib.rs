@@ -61,11 +61,40 @@ pub struct EvaluatorSpec {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EvaluatorKind {
     ExactMatch,
-    RegexMatch { pattern: String },
+    RegexMatch {
+        pattern: String,
+    },
     JsonObject,
-    CostBudget { max_micros: i64 },
-    LatencyBudgetMs { max_ms: u64 },
-    LlmJudge { rubric: String, model: String },
+    CostBudget {
+        max_micros: i64,
+    },
+    LatencyBudgetMs {
+        max_ms: u64,
+    },
+    LlmJudge {
+        rubric: String,
+        model: String,
+    },
+    /// Browser world-state success: asserts the final step's observed page
+    /// (url and/or DOM) matches the configured target — NOT the agent's
+    /// self-reported "done". Reads `trace.browser_steps`.
+    BrowserTaskSuccess {
+        url_contains: Option<String>,
+        dom_contains: Option<String>,
+    },
+    /// Browser step efficiency: passes when the run used at most `max_steps`
+    /// browser steps (catches looping/backtracking). Reads `trace.browser_steps`.
+    BrowserStepEfficiency {
+        max_steps: u64,
+    },
+    /// Browser grounding: fraction of element-targeted steps that resolved to
+    /// their intended element; score is the ratio, passes at `min_ratio`.
+    BrowserGrounding {
+        min_ratio: f64,
+    },
+    /// Browser recovery: passes when the run either hit no errors or recovered
+    /// to a successful final step (catches death spirals after a failed action).
+    BrowserRecovery,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -134,6 +163,42 @@ pub const EVALUATOR_CATALOG: &[EvaluatorCatalogEntry] = &[
         consumes_trace: false,
         wasm_safe: false,
     },
+    EvaluatorCatalogEntry {
+        id: "browser_task_success",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Browser task success",
+        description: "Scores whether the final browser observation matches a world-state target.",
+        requires_reference: false,
+        consumes_trace: true,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "browser_step_efficiency",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Browser step efficiency",
+        description: "Scores whether the browser run stayed within a step budget.",
+        requires_reference: false,
+        consumes_trace: true,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "browser_grounding",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Browser grounding",
+        description: "Scores the fraction of element-targeted steps that resolved their element.",
+        requires_reference: false,
+        consumes_trace: true,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "browser_recovery",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Browser recovery",
+        description: "Scores whether the browser run avoided or recovered from action failures.",
+        requires_reference: false,
+        consumes_trace: true,
+        wasm_safe: true,
+    },
 ];
 
 pub fn evaluator_catalog() -> &'static [EvaluatorCatalogEntry] {
@@ -153,6 +218,10 @@ impl EvaluatorKind {
             Self::CostBudget { .. } => "cost_budget",
             Self::LatencyBudgetMs { .. } => "latency_budget_ms",
             Self::LlmJudge { .. } => "llm_judge",
+            Self::BrowserTaskSuccess { .. } => "browser_task_success",
+            Self::BrowserStepEfficiency { .. } => "browser_step_efficiency",
+            Self::BrowserGrounding { .. } => "browser_grounding",
+            Self::BrowserRecovery => "browser_recovery",
         }
     }
 
@@ -222,7 +291,113 @@ pub fn evaluate_deterministic(
             Ok(binary_score(latency <= *max_ms, "latency_budget"))
         }
         EvaluatorKind::LlmJudge { .. } => Err(EvalError::RequiresJudgeBroker(spec.id.clone())),
+        EvaluatorKind::BrowserTaskSuccess {
+            url_contains,
+            dom_contains,
+        } => {
+            let steps = browser_steps(case);
+            let observation = steps
+                .last()
+                .and_then(|step| step.get("outcome"))
+                .and_then(|outcome| outcome.get("observation"));
+            let url = observation
+                .and_then(|obs| obs.get("url"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let dom = observation
+                .and_then(|obs| obs.get("dom_html"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let url_ok = url_contains
+                .as_ref()
+                .map(|needle| url.contains(needle.as_str()))
+                .unwrap_or(true);
+            let dom_ok = dom_contains
+                .as_ref()
+                .map(|needle| dom.contains(needle.as_str()))
+                .unwrap_or(true);
+            let pass = !steps.is_empty() && url_ok && dom_ok;
+            Ok(binary_score(pass, "browser_task_success"))
+        }
+        EvaluatorKind::BrowserStepEfficiency { max_steps } => {
+            let count = browser_steps(case).len() as u64;
+            Ok(binary_score(
+                count > 0 && count <= *max_steps,
+                "browser_step_efficiency",
+            ))
+        }
+        EvaluatorKind::BrowserGrounding { min_ratio } => {
+            let steps = browser_steps(case);
+            let mut targeted = 0u64;
+            let mut grounded = 0u64;
+            for step in &steps {
+                let grounding = step
+                    .get("outcome")
+                    .and_then(|outcome| outcome.get("grounding"));
+                let has_selector = grounding
+                    .and_then(|grounding| grounding.get("selector"))
+                    .map(|selector| !selector.is_null())
+                    .unwrap_or(false);
+                if has_selector {
+                    targeted += 1;
+                    let matched = grounding
+                        .and_then(|grounding| grounding.get("matched_element"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    if matched {
+                        grounded += 1;
+                    }
+                }
+            }
+            let ratio = if targeted == 0 {
+                1.0
+            } else {
+                grounded as f64 / targeted as f64
+            };
+            let pass = ratio >= *min_ratio;
+            Ok(ScoreResult {
+                score: ratio,
+                label: Some(if pass { "pass" } else { "fail" }.to_string()),
+                evidence: serde_json::json!({
+                    "metric": "browser_grounding",
+                    "targeted": targeted,
+                    "grounded": grounded,
+                    "ratio": ratio,
+                    "min_ratio": min_ratio,
+                    "pass": pass,
+                }),
+            })
+        }
+        EvaluatorKind::BrowserRecovery => {
+            let steps = browser_steps(case);
+            let status_of = |step: &Value| -> String {
+                step.get("outcome")
+                    .and_then(|outcome| outcome.get("status"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("ok")
+                    .to_string()
+            };
+            let any_error = steps.iter().any(|step| status_of(step) == "error");
+            let final_ok = steps
+                .last()
+                .map(|step| status_of(step) == "ok")
+                .unwrap_or(false);
+            let pass = !steps.is_empty() && (!any_error || final_ok);
+            Ok(binary_score(pass, "browser_recovery"))
+        }
     }
+}
+
+/// Extract the `browser_steps` array (serialized `StepTriple`s) from a case
+/// trace. Returns an empty vec when absent — every browser evaluator degrades to
+/// a deterministic "fail/neutral" rather than erroring on a non-browser trace.
+fn browser_steps(case: &EvaluationCase) -> Vec<Value> {
+    case.trace
+        .as_ref()
+        .and_then(|trace| trace.get("browser_steps"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn binary_score(pass: bool, metric: &str) -> ScoreResult {
@@ -382,7 +557,7 @@ mod tests {
     #[test]
     fn evaluator_catalog_classifies_execution_lanes() {
         let catalog = evaluator_catalog();
-        assert_eq!(catalog.len(), 6);
+        assert_eq!(catalog.len(), 10);
 
         let exact = evaluator_catalog_entry("exact_match")
             .unwrap_or_else(|| panic!("exact_match catalog entry should exist"));
@@ -479,5 +654,156 @@ mod tests {
 
         assert_eq!(comparison.decision, GateDecision::FailRegression);
         assert!(comparison.adjusted_alpha < 0.05);
+    }
+
+    fn browser_step(action: &str, selector: Option<&str>, matched: bool, status: &str) -> Value {
+        serde_json::json!({
+            "action": { "action": action },
+            "outcome": {
+                "status": status,
+                "grounding": {
+                    "selector": selector,
+                    "selector_existed": matched,
+                    "matched_element": matched,
+                },
+                "observation": {
+                    "url": "https://shop.example/checkout/confirmation",
+                    "dom_html": "<div id=\"order-confirmed\">Thank you</div>",
+                },
+            },
+        })
+    }
+
+    fn browser_case(steps: Vec<Value>) -> EvaluationCase {
+        EvaluationCase {
+            input: serde_json::json!("book a flight"),
+            output: serde_json::json!(null),
+            reference: None,
+            trace: Some(serde_json::json!({ "browser_steps": steps })),
+        }
+    }
+
+    fn deterministic_spec(kind: EvaluatorKind) -> EvaluatorSpec {
+        EvaluatorSpec {
+            id: kind.catalog_id().to_string(),
+            lane: EvaluatorLane::DeterministicWasi,
+            kind,
+        }
+    }
+
+    #[test]
+    fn browser_evaluator_catalog_ids_match_entries() {
+        for kind in [
+            EvaluatorKind::BrowserTaskSuccess {
+                url_contains: None,
+                dom_contains: None,
+            },
+            EvaluatorKind::BrowserStepEfficiency { max_steps: 1 },
+            EvaluatorKind::BrowserGrounding { min_ratio: 1.0 },
+            EvaluatorKind::BrowserRecovery,
+        ] {
+            assert_eq!(kind.catalog_entry().id, kind.catalog_id());
+            assert_eq!(kind.expected_lane(), EvaluatorLane::DeterministicWasi);
+            assert!(kind.catalog_entry().consumes_trace);
+        }
+    }
+
+    #[test]
+    fn browser_task_success_checks_world_state_not_self_report() {
+        let case = browser_case(vec![browser_step("click", Some("#pay"), true, "ok")]);
+        let pass = deterministic_spec(EvaluatorKind::BrowserTaskSuccess {
+            url_contains: Some("confirmation".to_string()),
+            dom_contains: Some("order-confirmed".to_string()),
+        });
+        assert_eq!(
+            evaluate_deterministic(&pass, &case)
+                .unwrap_or_else(|err| panic!("{err}"))
+                .score,
+            1.0
+        );
+
+        let fail = deterministic_spec(EvaluatorKind::BrowserTaskSuccess {
+            url_contains: Some("error".to_string()),
+            dom_contains: None,
+        });
+        assert_eq!(
+            evaluate_deterministic(&fail, &case)
+                .unwrap_or_else(|err| panic!("{err}"))
+                .score,
+            0.0
+        );
+
+        // No browser steps => cannot have succeeded.
+        let empty = evaluate_deterministic(
+            &deterministic_spec(EvaluatorKind::BrowserTaskSuccess {
+                url_contains: None,
+                dom_contains: None,
+            }),
+            &browser_case(vec![]),
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(empty.score, 0.0);
+    }
+
+    #[test]
+    fn browser_step_efficiency_enforces_budget() {
+        let steps = vec![
+            browser_step("click", Some("#a"), true, "ok"),
+            browser_step("click", Some("#b"), true, "ok"),
+        ];
+        let within = deterministic_spec(EvaluatorKind::BrowserStepEfficiency { max_steps: 3 });
+        assert_eq!(
+            evaluate_deterministic(&within, &browser_case(steps.clone()))
+                .unwrap_or_else(|err| panic!("{err}"))
+                .score,
+            1.0
+        );
+        let over = deterministic_spec(EvaluatorKind::BrowserStepEfficiency { max_steps: 1 });
+        assert_eq!(
+            evaluate_deterministic(&over, &browser_case(steps))
+                .unwrap_or_else(|err| panic!("{err}"))
+                .score,
+            0.0
+        );
+    }
+
+    #[test]
+    fn browser_grounding_reports_resolution_ratio() {
+        let steps = vec![
+            browser_step("click", Some("#a"), true, "ok"),
+            browser_step("click", Some("#b"), false, "error"),
+            browser_step("scroll", None, true, "ok"), // not element-targeted, ignored
+        ];
+        let spec = deterministic_spec(EvaluatorKind::BrowserGrounding { min_ratio: 0.75 });
+        let result = evaluate_deterministic(&spec, &browser_case(steps))
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(result.score, 0.5); // 1 of 2 targeted steps grounded
+        assert_eq!(result.label.as_deref(), Some("fail"));
+    }
+
+    #[test]
+    fn browser_recovery_distinguishes_spiral_from_recovery() {
+        let recovered = vec![
+            browser_step("click", Some("#a"), false, "error"),
+            browser_step("click", Some("#a"), true, "ok"),
+        ];
+        let spec = deterministic_spec(EvaluatorKind::BrowserRecovery);
+        assert_eq!(
+            evaluate_deterministic(&spec, &browser_case(recovered))
+                .unwrap_or_else(|err| panic!("{err}"))
+                .score,
+            1.0
+        );
+
+        let spiraled = vec![
+            browser_step("click", Some("#a"), false, "error"),
+            browser_step("click", Some("#b"), false, "error"),
+        ];
+        assert_eq!(
+            evaluate_deterministic(&spec, &browser_case(spiraled))
+                .unwrap_or_else(|err| panic!("{err}"))
+                .score,
+            0.0
+        );
     }
 }
