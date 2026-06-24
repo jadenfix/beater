@@ -1307,6 +1307,7 @@ dependencies = [
  "beater-store-sql",
  "beater-temporal",
  "beater-usage",
+ "chrono",
  "clap",
  "opentelemetry-proto",
  "reqwest",
@@ -1315,6 +1316,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tonic",
+ "tower",
 ]
 
 [[package]]

@@ -1,3 +1,6 @@
+mod metrics;
+mod metrics_http;
+
 use anyhow::Context;
 use beater_api::{router, ApiState};
 use beater_archive::ParquetTraceArchive;
@@ -10,19 +13,22 @@ use beater_datasets::SqliteDatasetStore;
 use beater_experiments::SqliteExperimentStore;
 use beater_gates::SqliteGateStore;
 use beater_human::SqliteHumanReviewStore;
-use beater_ingest::{IngestPolicy, IngestService};
+use beater_ingest::{
+    ImportError, IngestPolicy, IngestQueueStatus, IngestService, RawTraceIngestRequest,
+    SourceImporter,
+};
 use beater_judge::{
     HttpRoutingJudgeProvider, JudgeBrokerService, JudgeProvider, KeywordJudgeProvider,
     SqliteJudgeLedger,
 };
 use beater_otlp::{OtlpGrpcTraceService, TraceServiceServer};
 use beater_schema::{
-    CanonicalTraceBatch, RawEnvelope, RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView,
-    WriteAck,
+    ArtifactRef, AuthContext, CanonicalTraceBatch, RawEnvelope, RedactionClass, RunFilter,
+    RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
 };
 use beater_search::{SearchIndex, TantivySearchIndex, TraceIngestedSearchProcessor};
 use beater_secrets::{EncryptedSqliteProviderSecretStore, SecretKeyring};
-use beater_store::{StoreError, StoreResult, TraceStore};
+use beater_store::{ArtifactStore, StoreError, StoreResult, TraceStore};
 use beater_store_obj::FsArtifactStore;
 use beater_store_sql::{
     migrate_local_beaterd_sqlite, SqliteMetadataStore, SqliteQuotaLimiter, SqliteTraceStore,
@@ -129,6 +135,10 @@ enum JudgeProviderArg {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // R13.1 — install the self-observability foundation (metrics registry +
+    // structured log writer) before any work happens, so every subsystem can
+    // emit into the same process-wide registry.
+    let metrics = metrics::init_observability();
     let args = Args::parse();
     if args.test_http_trace_store_url.is_some() && !cfg!(debug_assertions) {
         anyhow::bail!("--test-http-trace-store-url is only supported in debug/test builds");
@@ -172,7 +182,11 @@ async fn main() -> anyhow::Result<()> {
     }
     migrate_local_sqlite_stores(&sqlite_store_paths)?;
 
-    let artifacts = Arc::new(FsArtifactStore::new(args.data_dir.join("artifacts"))?);
+    // R13.9 — wrap the object store so every read/write outcome is counted.
+    let artifacts = Arc::new(MeteredArtifactStore::new(
+        FsArtifactStore::new(args.data_dir.join("artifacts"))?,
+        metrics.clone(),
+    ));
     let sqlite_traces = Arc::new(SqliteTraceStore::open(trace_db_path)?);
     let traces: Arc<dyn TraceStore> = if let Some(url) = args.test_http_trace_store_url.clone() {
         Arc::new(HttpTraceStore::new(url))
@@ -229,11 +243,15 @@ async fn main() -> anyhow::Result<()> {
         trace_write_max_attempts: args.trace_write_max_attempts,
         ..IngestPolicy::default()
     };
+    // R13.7 — wrap the source importer so normalization failures are counted by
+    // source dialect (and the importer's normalizer version).
     let ingest = IngestService::new(artifacts, traces.clone(), bus, ingest_policy)
         .with_quota_limiter(quota_limiter)
-        .with_importer(std::sync::Arc::new(
+        .with_importer(std::sync::Arc::new(MeteredImporter::new(
             beater_temporal::TemporalHistoryImporter,
-        ));
+            "temporal-history-import-v1",
+            metrics.clone(),
+        )));
     if args.trace_write_drain_interval_ms > 0 {
         let trace_write_hooks = TraceWriteWorkerHooks {
             lease_marker_path: args.test_trace_write_lease_marker.clone(),
@@ -243,6 +261,7 @@ async fn main() -> anyhow::Result<()> {
             ingest.clone(),
             Duration::from_millis(args.trace_write_drain_interval_ms),
             trace_write_hooks,
+            metrics.clone(),
         );
     }
     if args.trace_ingested_drain_interval_ms > 0 {
@@ -257,12 +276,24 @@ async fn main() -> anyhow::Result<()> {
             search.clone(),
             Duration::from_millis(args.trace_ingested_drain_interval_ms),
             trace_ingested_hooks,
+            metrics.clone(),
         );
     }
     let otlp_default_scope = beater_core::TenantScope::new(
         beater_core::TenantId::new(args.default_tenant_id.clone())?,
         beater_core::ProjectId::new(args.default_project_id.clone())?,
         beater_core::EnvironmentId::new(args.default_environment_id.clone())?,
+    );
+    // R13.4 / R13.6 / R13.8 — periodically sample queue depths, dead-letter
+    // backlog, and per-lane/per-tenant lag for the default scope and publish them
+    // to the metrics registry. Cardinality is bounded by sampling a single scope
+    // and by the cardinality-safe label helpers.
+    spawn_queue_stats_sampler(
+        ingest.clone(),
+        beater_core::TenantId::new(args.default_tenant_id.clone())?,
+        beater_core::ProjectId::new(args.default_project_id.clone())?,
+        Duration::from_secs(5),
+        metrics.clone(),
     );
     let otlp_grpc = OtlpGrpcTraceService::new(ingest.clone(), otlp_default_scope);
     let mut state =
@@ -281,7 +312,18 @@ async fn main() -> anyhow::Result<()> {
     // Serve the MCP endpoint (`/mcp`) alongside the HTTP API, sharing the same
     // `ApiState` and auth. The MCP tool catalog is derived from the OpenAPI spec
     // and dispatches through the real router, so it cannot drift from the API.
-    let app = router(state.clone()).merge(beater_mcp::router(state));
+    // R13.5 — record per-request query latency via an axum middleware (labelled
+    // by matched route template + method for bounded cardinality). The
+    // Prometheus `/metrics` route (NOT part of the typed `/v1` contract) is
+    // merged in alongside the API and MCP routers.
+    let latency_metrics = metrics.clone();
+    let app = router(state.clone())
+        .merge(beater_mcp::router(state))
+        .layer(axum::middleware::from_fn(move |req, next| {
+            let latency_metrics = latency_metrics.clone();
+            async move { metrics_http::track_query_latency(latency_metrics, req, next).await }
+        }))
+        .merge(metrics_http::router(metrics.clone()));
     let listener = tokio::net::TcpListener::bind(args.addr)
         .await
         .with_context(|| format!("bind {}", args.addr))?;
@@ -322,6 +364,7 @@ fn spawn_trace_write_worker(
     ingest: IngestService,
     interval: Duration,
     hooks: TraceWriteWorkerHooks,
+    metrics: metrics::Metrics,
 ) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -341,6 +384,17 @@ fn spawn_trace_write_worker(
                     continue;
                 }
             };
+            // R13.3 — write success rate: count successful and failed writes.
+            let succeeded = report
+                .written_spans
+                .saturating_add(report.written_raw) as u64;
+            metrics.record_write(metrics::OpResult::Success, succeeded);
+            metrics.record_write(
+                metrics::OpResult::Failure,
+                report.failed_writes as u64,
+            );
+            // R13.6 — dead-letter queue depth for the trace.write lane.
+            metrics.set_dlq("trace.write", report.dead_lettered, 0.0);
             if report.consumed > 0
                 && (report.failed_writes > 0 || report.failed_downstream_publishes > 0)
             {
@@ -382,6 +436,7 @@ fn spawn_trace_ingested_worker(
     search: Arc<dyn SearchIndex>,
     interval: Duration,
     hooks: TraceIngestedWorkerHooks,
+    metrics: metrics::Metrics,
 ) {
     tokio::spawn(async move {
         let search_processor = TraceIngestedSearchProcessor::new(traces, search);
@@ -390,19 +445,28 @@ fn spawn_trace_ingested_worker(
             ticker.tick().await;
             let search_processor = search_processor.clone();
             let hooks = hooks.clone();
+            let lag_metrics = metrics.clone();
             let report = match ingest
                 .drain_trace_ingested(100, move |trace_ref| {
                     let search_processor = search_processor.clone();
                     let hooks = hooks.clone();
+                    let lag_metrics = lag_metrics.clone();
                     async move {
                         apply_trace_ingested_test_hooks(&hooks).await?;
-                        search_processor
+                        let sw = metrics::Stopwatch::start();
+                        let result = search_processor
                             .process_trace(
                                 trace_ref.tenant_id,
                                 trace_ref.project_id,
                                 trace_ref.trace_id,
                             )
-                            .await
+                            .await;
+                        if result.is_ok() {
+                            // R13.2 — observe ingest-to-queryable lag (the time to
+                            // index a trace so it becomes searchable/queryable).
+                            lag_metrics.observe_ingest_lag(sw.elapsed_seconds());
+                        }
+                        result
                     }
                 })
                 .await
@@ -413,12 +477,96 @@ fn spawn_trace_ingested_worker(
                     continue;
                 }
             };
+            // R13.6 — dead-letter queue depth for the trace.ingested lane.
+            metrics.set_dlq("trace.ingested", report.dead_lettered, 0.0);
             if report.consumed > 0 && report.failed_work > 0 {
                 eprintln!(
                     "trace.ingested drain completed with failed work: consumed={} failed={} retried={} dlq={}",
                     report.consumed, report.failed_work, report.retried, report.dead_lettered
                 );
             }
+        }
+    });
+}
+
+/// A computed snapshot of queue health derived from an [`IngestQueueStatus`],
+/// expressed in metric-ready terms. Kept pure so it is unit-testable without a
+/// live bus.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct QueueStatsSample {
+    /// R13.4 — eval pipeline queue depth (the `trace.ingested` lane feeds the
+    /// search/eval downstream processors).
+    eval_queue_depth: usize,
+    /// R13.4 — age in seconds of the oldest pending eval item we can observe
+    /// (derived from the oldest dead-lettered message, the only timestamped
+    /// signal `queue_status` exposes).
+    eval_queue_oldest_age_seconds: f64,
+    /// R13.6 — dead-letter queue count.
+    dlq_count: usize,
+    /// R13.6 — age in seconds of the oldest dead-lettered message.
+    dlq_oldest_age_seconds: f64,
+    /// R13.8 — per-lane queue lag in seconds (oldest in-flight DLQ enqueue age),
+    /// a cardinality-safe proxy for end-to-end lag of the `trace.ingested` lane.
+    queue_lag_seconds: f64,
+}
+
+/// Pure derivation of [`QueueStatsSample`] from a queue status snapshot at a
+/// reference time `now`. Separated from I/O so it can be tested deterministically.
+fn compute_queue_stats(status: &IngestQueueStatus, now: chrono::DateTime<chrono::Utc>) -> QueueStatsSample {
+    let dlq_count = status.dead_letters.len();
+    let oldest_failed = status
+        .dead_letters
+        .iter()
+        .map(|dl| dl.failed_at)
+        .min();
+    let dlq_oldest_age_seconds = oldest_failed
+        .map(|ts| (now - ts).num_milliseconds().max(0) as f64 / 1000.0)
+        .unwrap_or(0.0);
+    let oldest_enqueued = status
+        .dead_letters
+        .iter()
+        .map(|dl| dl.message.enqueued_at)
+        .min();
+    let queue_lag_seconds = oldest_enqueued
+        .map(|ts| (now - ts).num_milliseconds().max(0) as f64 / 1000.0)
+        .unwrap_or(0.0);
+    QueueStatsSample {
+        eval_queue_depth: status.trace_ingested_depth,
+        eval_queue_oldest_age_seconds: queue_lag_seconds,
+        dlq_count,
+        dlq_oldest_age_seconds,
+        queue_lag_seconds,
+    }
+}
+
+/// R13.4 / R13.6 / R13.8 — periodically sample queue health for one scope and
+/// publish it to the metrics registry.
+fn spawn_queue_stats_sampler(
+    ingest: IngestService,
+    tenant_id: TenantId,
+    project_id: ProjectId,
+    interval: Duration,
+    metrics: metrics::Metrics,
+) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        let tenant_label = tenant_id.as_str().to_string();
+        loop {
+            ticker.tick().await;
+            let status = match ingest
+                .queue_status(tenant_id.clone(), project_id.clone())
+                .await
+            {
+                Ok(status) => status,
+                Err(error) => {
+                    eprintln!("queue status sample failed: {error}");
+                    continue;
+                }
+            };
+            let sample = compute_queue_stats(&status, chrono::Utc::now());
+            metrics.set_eval_queue(sample.eval_queue_depth, sample.eval_queue_oldest_age_seconds);
+            metrics.set_dlq("trace.ingested", sample.dlq_count, sample.dlq_oldest_age_seconds);
+            metrics.set_queue_lag("trace.ingested", &tenant_label, sample.queue_lag_seconds);
         }
     });
 }
@@ -636,5 +784,162 @@ impl TraceStore for FailSwitchTraceStore {
         page: PageRequest,
     ) -> StoreResult<Page<SpanSummary>> {
         self.inner.query_spans(tenant, filter, page).await
+    }
+}
+
+/// R13.9 — an [`ArtifactStore`] decorator that records read/write outcomes into
+/// the object-store operations counter. Delegates all behaviour to the inner
+/// store; only adds a success/failure observation per call.
+#[derive(Clone)]
+struct MeteredArtifactStore<S> {
+    inner: S,
+    metrics: metrics::Metrics,
+}
+
+impl<S> MeteredArtifactStore<S> {
+    fn new(inner: S, metrics: metrics::Metrics) -> Self {
+        Self { inner, metrics }
+    }
+
+    fn record<T>(
+        &self,
+        op: metrics::ObjectStoreOp,
+        result: &StoreResult<T>,
+    ) {
+        let outcome = if result.is_ok() {
+            metrics::OpResult::Success
+        } else {
+            metrics::OpResult::Failure
+        };
+        self.metrics.record_object_store_op(op, outcome);
+    }
+}
+
+#[async_trait::async_trait]
+impl<S: ArtifactStore> ArtifactStore for MeteredArtifactStore<S> {
+    async fn put_bytes(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        mime_type: &str,
+        redaction_class: RedactionClass,
+        bytes: &[u8],
+    ) -> StoreResult<ArtifactRef> {
+        let result = self
+            .inner
+            .put_bytes(tenant_id, project_id, mime_type, redaction_class, bytes)
+            .await;
+        self.record(metrics::ObjectStoreOp::Write, &result);
+        result
+    }
+
+    async fn get_bytes(&self, artifact_ref: &ArtifactRef) -> StoreResult<Vec<u8>> {
+        let result = self.inner.get_bytes(artifact_ref).await;
+        self.record(metrics::ObjectStoreOp::Read, &result);
+        result
+    }
+}
+
+/// R13.7 — a [`SourceImporter`] decorator that counts normalization failures by
+/// source dialect and normalizer version. Delegates `source()` and `normalize()`
+/// to the inner importer, incrementing the failure counter on `Err`.
+struct MeteredImporter<I> {
+    inner: I,
+    version: &'static str,
+    metrics: metrics::Metrics,
+}
+
+impl<I> MeteredImporter<I> {
+    fn new(inner: I, version: &'static str, metrics: metrics::Metrics) -> Self {
+        Self {
+            inner,
+            version,
+            metrics,
+        }
+    }
+}
+
+impl<I: SourceImporter> SourceImporter for MeteredImporter<I> {
+    fn source(&self) -> &'static str {
+        self.inner.source()
+    }
+
+    fn normalize(
+        &self,
+        scope: &beater_core::TenantScope,
+        raw_bytes: &[u8],
+        auth: Option<AuthContext>,
+    ) -> Result<RawTraceIngestRequest, ImportError> {
+        let result = self.inner.normalize(scope, raw_bytes, auth);
+        if result.is_err() {
+            self.metrics
+                .record_normalizer_failure(self.inner.source(), self.version);
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod queue_stats_tests {
+    use super::*;
+    use beater_bus::{BusMessage, DeadLetter};
+    use beater_core::{IdempotencyKey, ProjectId, TenantId};
+    use chrono::{Duration as ChronoDuration, Utc};
+
+    fn dead_letter(
+        enqueued_offset_s: i64,
+        failed_offset_s: i64,
+        now: chrono::DateTime<Utc>,
+    ) -> DeadLetter {
+        let mut message = BusMessage::new(
+            TenantId::new("demo").expect("tenant"),
+            ProjectId::new("demo").expect("project"),
+            IdempotencyKey::new("k").expect("key"),
+            "trace.ingested",
+            vec![],
+        );
+        message.enqueued_at = now - ChronoDuration::seconds(enqueued_offset_s);
+        DeadLetter {
+            message,
+            reason: "boom".to_string(),
+            failed_at: now - ChronoDuration::seconds(failed_offset_s),
+        }
+    }
+
+    #[test]
+    fn compute_queue_stats_uses_oldest_timestamps() {
+        let now = Utc::now();
+        let status = IngestQueueStatus {
+            tenant_id: TenantId::new("demo").expect("tenant"),
+            project_id: ProjectId::new("demo").expect("project"),
+            total_depth: 9,
+            trace_write_depth: 4,
+            trace_ingested_depth: 5,
+            dead_letters: vec![dead_letter(30, 20, now), dead_letter(90, 60, now)],
+        };
+        let sample = compute_queue_stats(&status, now);
+        assert_eq!(sample.eval_queue_depth, 5);
+        assert_eq!(sample.dlq_count, 2);
+        // Oldest failed_at is 60s ago; oldest enqueued is 90s ago.
+        assert!((sample.dlq_oldest_age_seconds - 60.0).abs() < 1.5);
+        assert!((sample.queue_lag_seconds - 90.0).abs() < 1.5);
+    }
+
+    #[test]
+    fn compute_queue_stats_empty_dlq_is_zero_age() {
+        let now = Utc::now();
+        let status = IngestQueueStatus {
+            tenant_id: TenantId::new("demo").expect("tenant"),
+            project_id: ProjectId::new("demo").expect("project"),
+            total_depth: 0,
+            trace_write_depth: 0,
+            trace_ingested_depth: 3,
+            dead_letters: vec![],
+        };
+        let sample = compute_queue_stats(&status, now);
+        assert_eq!(sample.eval_queue_depth, 3);
+        assert_eq!(sample.dlq_count, 0);
+        assert_eq!(sample.dlq_oldest_age_seconds, 0.0);
+        assert_eq!(sample.queue_lag_seconds, 0.0);
     }
 }

@@ -31,6 +31,7 @@ beater-store-obj = { path = "../../crates/beater-store-obj" }
 beater-store-sql = { path = "../../crates/beater-store-sql" }
 beater-core = { path = "../../crates/beater-core" }
 beater-usage = { path = "../../crates/beater-usage" }
+chrono.workspace = true
 clap.workspace = true
 reqwest.workspace = true
 serde.workspace = true
@@ -42,6 +43,7 @@ tonic.workspace = true
 beater-replay = { path = "../../crates/beater-replay" }
 opentelemetry-proto.workspace = true
 tempfile.workspace = true
+tower.workspace = true
 
 [lints]
 workspace = true
