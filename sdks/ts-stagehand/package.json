@@ -1,0 +1,51 @@
+{
+  "name": "@beater/stagehand-instrumentation",
+  "version": "0.1.0",
+  "description": "Beater instrumentation SDK that wraps the Stagehand browser-automation SDK (act/extract/observe) and emits canonical browser.* spans over OTLP into Beater.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example": "tsx examples/run.ts"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.52.0",
+    "@opentelemetry/resources": "^1.25.0",
+    "@opentelemetry/sdk-node": "^0.52.0",
+    "@opentelemetry/sdk-trace-base": "^1.25.0",
+    "@opentelemetry/semantic-conventions": "^1.25.0"
+  },
+  "peerDependencies": {
+    "@browserbasehq/stagehand": "*"
+  },
+  "peerDependenciesMeta": {
+    "@browserbasehq/stagehand": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
