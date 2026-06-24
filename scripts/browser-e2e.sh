@@ -54,7 +54,7 @@ if have safaridriver; then
   SAFARI_PID=$!
   sleep 2
   if WEBDRIVER_URL="http://localhost:4444" WEBDRIVER_ENGINE="safari" \
-       cargo test -p beater-browser-webdriver --test '*' -- --ignored \
+       cargo test -p beater-browser-webdriver -- --ignored \
        >/tmp/bt-e2e-wd.log 2>&1; then
     pass "WebDriver backend live conformance (native Safari)"
   else
@@ -72,7 +72,7 @@ for c in chrome google-chrome google-chrome-stable chromium chromium-browser \
   if have "$c" || [ -x "$c" ]; then CHROME="$c"; break; fi
 done
 if [ -n "$CHROME" ]; then
-  if BEATER_CDP_CHROME="$CHROME" cargo test -p beater-browser-cdp --test '*' -- --ignored \
+  if BEATER_CDP_CHROME="$CHROME" cargo test -p beater-browser-cdp -- --ignored \
        >/tmp/bt-e2e-cdp.log 2>&1; then
     pass "CDP backend live conformance (real Chrome)"
   else
