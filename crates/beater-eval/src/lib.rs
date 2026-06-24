@@ -304,18 +304,24 @@ pub fn evaluate_deterministic(
                 .and_then(|obs| obs.get("url"))
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            let dom = observation
-                .and_then(|obs| obs.get("dom_html"))
-                .and_then(Value::as_str)
-                .unwrap_or_default();
             let url_ok = url_contains
                 .as_ref()
                 .map(|needle| url.contains(needle.as_str()))
                 .unwrap_or(true);
-            let dom_ok = dom_contains
-                .as_ref()
-                .map(|needle| dom.contains(needle.as_str()))
-                .unwrap_or(true);
+            // The DOM check is only evaluated when the DOM is present in the
+            // trace. An ingested run stores DOM out of line (artifacts), so its
+            // browser_steps carry no dom_html — a `dom_contains` check there is
+            // unevaluable and must NOT fail (which would manufacture a spurious
+            // regression); native runs always inline dom_html, so they evaluate
+            // normally including genuine "does not contain" failures.
+            let dom_value = observation
+                .and_then(|obs| obs.get("dom_html"))
+                .and_then(Value::as_str);
+            let dom_ok = match (dom_contains.as_ref(), dom_value) {
+                (Some(needle), Some(dom)) => dom.contains(needle.as_str()),
+                (Some(_), None) => true,
+                (None, _) => true,
+            };
             let pass = !steps.is_empty() && url_ok && dom_ok;
             Ok(binary_score(pass, "browser_task_success"))
         }
@@ -750,6 +756,40 @@ mod tests {
         )
         .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(empty.score, 0.0);
+    }
+
+    #[test]
+    fn browser_task_success_skips_dom_check_when_dom_absent() {
+        // An ingested step carries url but no dom_html (DOM lives in artifacts).
+        // A dom_contains check is unevaluable and must not fail the run; the
+        // url check still applies.
+        let ingested = serde_json::json!({
+            "action": { "action": "click", "args": {} },
+            "outcome": {
+                "status": "ok",
+                "grounding": { "selector": "#pay", "selector_existed": true, "matched_element": true },
+                "observation": { "url": "https://shop/checkout/confirmation" },
+            },
+        });
+        let spec = deterministic_spec(EvaluatorKind::BrowserTaskSuccess {
+            url_contains: Some("confirmation".to_string()),
+            dom_contains: Some("order-confirmed".to_string()),
+        });
+        let result = evaluate_deterministic(&spec, &browser_case(vec![ingested.clone()]))
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(result.score, 1.0, "url matches and dom check is skipped");
+
+        // But a wrong url still fails even when the dom check is skipped.
+        let url_fail = deterministic_spec(EvaluatorKind::BrowserTaskSuccess {
+            url_contains: Some("error".to_string()),
+            dom_contains: Some("order-confirmed".to_string()),
+        });
+        assert_eq!(
+            evaluate_deterministic(&url_fail, &browser_case(vec![ingested]))
+                .unwrap_or_else(|err| panic!("{err}"))
+                .score,
+            0.0
+        );
     }
 
     #[test]

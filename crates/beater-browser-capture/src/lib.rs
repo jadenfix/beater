@@ -394,9 +394,16 @@ pub fn browser_trace_from_spans(spans: &[CanonicalSpan]) -> Value {
                 SpanStatus::Error => "error".to_string(),
                 _ => "ok".to_string(),
             });
+        // Mirror the native `BrowserAction` serialization (#[serde(tag="action",
+        // content="args")]) so ingested and natively-captured browser_steps share
+        // one `action` shape: { "action": <verb>, "args": { "selector": ... } }.
+        let mut args = serde_json::Map::new();
+        if let Some(selector) = attrs.get(semconv::SELECTOR).and_then(Value::as_str) {
+            args.insert("selector".to_string(), json!(selector));
+        }
         let step = json!({
             "seq": seq,
-            "action": { "action": action },
+            "action": { "action": action, "args": Value::Object(args) },
             "outcome": {
                 "status": status,
                 "grounding": {
