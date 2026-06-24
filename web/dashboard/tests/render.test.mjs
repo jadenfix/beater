@@ -746,7 +746,7 @@ test("generated api client is produced from the checked-in openapi snapshot", ()
   assert.match(spec, /"\/v1\/traces\/\{tenant_id\}"/);
   assert.match(spec, /"started_after"/);
   assert.match(spec, /"min_cost_micros"/);
-  assert.match(generated, /openapi_list_traces/);
+  assert.match(generated, /listTraces/);
   assert.match(generated, /started_after/);
   assert.match(generated, /min_cost_micros/);
 });

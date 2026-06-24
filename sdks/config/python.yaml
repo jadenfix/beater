@@ -1,0 +1,8 @@
+# openapi-generator config: Python control-plane client (Layer 1).
+# DatasetsApi.create(), so callers write client.datasets.create(...).
+generatorName: python
+additionalProperties:
+  packageName: beater_client
+  projectName: beater-client
+  packageVersion: 0.1.0
+  library: urllib3

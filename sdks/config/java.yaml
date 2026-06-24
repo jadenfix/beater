@@ -1,0 +1,12 @@
+# openapi-generator config: Java control-plane client (Layer 1).
+generatorName: java
+additionalProperties:
+  groupId: ai.beater
+  artifactId: beater-client
+  artifactVersion: 0.1.0
+  # Deterministic output: no per-file generation timestamp (would break drift checks).
+  hideGenerationTimestamp: true
+  invokerPackage: ai.beater.client
+  apiPackage: ai.beater.client.api
+  modelPackage: ai.beater.client.model
+  library: native

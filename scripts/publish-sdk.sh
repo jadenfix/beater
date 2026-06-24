@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Publish one SDK at a synchronized version. Called per-target by release.yml.
+# Each target no-ops with a clear message when its registry secret is absent, so
+# the pipeline is wired now and "just works" once tokens are added as repo
+# secrets. C/C++ have no central registry -- they ship as source + release tarballs.
+#
+# Version handling: generated clients are versioned at generation time
+# (BEATER_SDK_VERSION -> openapi-generator, see regen-sdks.sh); the published
+# ergonomic packages are stamped here so a `v0.2.0` tag actually publishes 0.2.0.
+set -euo pipefail
+
+target="${1:?usage: publish-sdk.sh <target> <version>}"
+version="${2:?usage: publish-sdk.sh <target> <version>}"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+skip() { echo "SKIP $target: $1 not set (wire the secret to enable publishing)"; exit 0; }
+
+# Stamp the single [project]/[package] version line of an ergonomic manifest.
+stamp_pyproject() { perl -0pi -e 's/(\n\s*version\s*=\s*")[^"]*(")/${1}'"$version"'${2}/' "$1"; }
+
+case "$target" in
+  rust)
+    [ -n "${CARGO_REGISTRY_TOKEN:-}" ] || skip CARGO_REGISTRY_TOKEN
+    # --allow-dirty: the client is (re)generated + version-stamped at release time,
+    # so the worktree is intentionally not a committed state.
+    (cd sdks/clients/rust && cargo publish --allow-dirty --token "$CARGO_REGISTRY_TOKEN")
+    ;;
+  python)
+    [ -n "${PYPI_TOKEN:-}" ] || skip PYPI_TOKEN
+    pip install --quiet build twine
+    stamp_pyproject sdks/python/pyproject.toml
+    for pkg in sdks/clients/python sdks/python; do
+      (cd "$pkg" && python -m build && TWINE_USERNAME=__token__ TWINE_PASSWORD="$PYPI_TOKEN" twine upload dist/*)
+    done
+    ;;
+  typescript)
+    [ -n "${NPM_TOKEN:-}" ] || skip NPM_TOKEN
+    # Write the token narrowly and remove it on exit.
+    ( umask 077 && echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc )
+    trap 'rm -f ~/.npmrc' EXIT
+    (cd sdks/typescript && npm version "$version" --no-git-tag-version --allow-same-version)
+    for pkg in sdks/clients/typescript sdks/typescript; do
+      (cd "$pkg" && npm install && npm run build --if-present && npm publish --access public)
+    done
+    ;;
+  go)
+    # Go modules publish by pushing the tag; the module proxy serves sdks/clients/go.
+    echo "go: tag v${version} pushed; module proxy will serve sdks/clients/go at that version"
+    ;;
+  java)
+    [ -n "${OSSRH_USERNAME:-}" ] || skip OSSRH_USERNAME
+    (cd sdks/clients/java && mvn --batch-mode versions:set -DnewVersion="$version" -DgenerateBackupPoms=false && mvn --batch-mode deploy -DskipTests)
+    ;;
+  *)
+    echo "Unknown target: $target" >&2; exit 1 ;;
+esac
+
+echo "Published $target @ $version"

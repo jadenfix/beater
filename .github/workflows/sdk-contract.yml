@@ -1,0 +1,57 @@
+name: sdk-contract
+
+# Zero-drift gate: a handler change that isn't regenerated into the spec + every
+# SDK client cannot merge, and breaking contract changes are flagged.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  contract-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: OpenAPI route-coverage test (spec == served routes)
+        run: cargo test -p beater-api --test openapi_coverage
+
+  semconv-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Semantic conventions single-source guard (schema -> normalizer)
+        run: cargo test -p beater-otlp
+      - name: Regenerate conventions.json and fail on drift
+        run: |
+          cargo xtask regen-semconv
+          git diff --exit-code -- sdks/semconv/conventions.json
+      - name: Every SDK semconv matches the single source
+        run: python3 scripts/check-semconv-drift.py
+
+  sdk-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Regenerate spec + all 7 SDK clients and fail on drift
+        run: scripts/regen-sdks.sh --check
+
+  breaking-change:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate current spec
+        run: cargo run -q -p beater-api --example dump_openapi > /tmp/new-spec.json
+      - name: Get base spec
+        run: git show "origin/${{ github.base_ref || 'main' }}:sdks/openapi/beater-api.json" > /tmp/base-spec.json || echo '{}' > /tmp/base-spec.json
+      - name: oasdiff breaking-change check (additive-only policy)
+        run: |
+          docker run --rm -v /tmp:/specs tufin/oasdiff breaking \
+            /specs/base-spec.json /specs/new-spec.json --fail-on ERR

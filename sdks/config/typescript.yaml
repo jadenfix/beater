@@ -1,0 +1,7 @@
+# openapi-generator config: TypeScript control-plane client (Layer 1).
+generatorName: typescript-fetch
+additionalProperties:
+  npmName: "@beater/client"
+  npmVersion: 0.1.0
+  supportsES6: true
+  typescriptThreePlus: true

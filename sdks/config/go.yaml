@@ -1,0 +1,10 @@
+# openapi-generator config: Go control-plane client (Layer 1).
+generatorName: go
+additionalProperties:
+  packageName: beaterclient
+  packageVersion: 0.1.0
+  isGoSubmodule: true
+  withGoMod: true
+  # Prefix enum constants with their type so values shared across enums
+  # (PASS/FAIL/PII_UNMASK) don't collide in Go's single package.
+  enumClassPrefix: true

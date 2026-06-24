@@ -1,0 +1,30 @@
+[package]
+name = "beater"
+version = "0.1.0"
+edition = "2021"
+description = "Ergonomic, OpenTelemetry-native agent observability SDK for Beater"
+license = "Apache-2.0"
+repository = "https://github.com/beater/beater"
+readme = "README.md"
+
+# This crate lives under `sdks/` which the root workspace excludes, so it owns
+# its own (empty) workspace table to compile standalone with its own lockfile.
+[workspace]
+
+[dependencies]
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+    "trace",
+    "http-proto",
+    "reqwest-blocking-client",
+] }
+
+[dev-dependencies]
+# In-memory span exporter for offline tests (mirrors Python's InMemorySpanExporter).
+opentelemetry_sdk = { version = "0.32", features = ["trace", "testing"] }
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[[example]]
+name = "quickstart"
+path = "examples/quickstart.rs"

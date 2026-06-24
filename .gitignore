@@ -10,3 +10,12 @@ yarn-debug.log*
 yarn-error.log*
 .env.local
 .env*.local
+
+# SDK build artifacts (generated clients + conformance)
+sdks/**/build/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+sdks/python/dist/
+*.class

@@ -1,0 +1,242 @@
+diff -ruN pristine-cpp/include/beater-client/ApiClient.h patched-cpp/include/beater-client/ApiClient.h
+--- pristine-cpp/include/beater-client/ApiClient.h	2026-06-23 16:15:56
++++ patched-cpp/include/beater-client/ApiClient.h	2026-06-23 16:16:25
+@@ -23,6 +23,7 @@
+ #include "beater-client/ApiException.h"
+ #include "beater-client/IHttpBody.h"
+ #include "beater-client/HttpContent.h"
++#include "beater-client/ModelBase.h"
+ 
+ #if  defined (_WIN32) || defined (_WIN64)
+ #undef U
+@@ -63,6 +64,11 @@
+     static utility::string_t parameterToString(double value);
+     static utility::string_t parameterToString(const utility::datetime &value);
+     static utility::string_t parameterToString(bool value);
++    // Enum/model parameters (e.g. ReviewTaskState passed as a query value):
++    // openapi-generator dereferences the shared_ptr to a ModelBase subclass but
++    // never emits a matching overload. Serialize via toJson() (enums produce a
++    // bare JSON string; strip the surrounding quotes for the wire value).
++    static utility::string_t parameterToString(const ModelBase& value);
+     template<class T>
+     static utility::string_t parameterToString(const std::vector<T>& value);
+     template<class T>
+diff -ruN pristine-cpp/include/beater-client/ModelBase.h patched-cpp/include/beater-client/ModelBase.h
+--- pristine-cpp/include/beater-client/ModelBase.h	2026-06-23 16:15:56
++++ patched-cpp/include/beater-client/ModelBase.h	2026-06-23 16:16:25
+@@ -79,6 +79,9 @@
+     template<typename T>
+     static web::json::value toJson( const std::shared_ptr<T>& val );
+     static web::json::value toJson( const std::shared_ptr<utility::datetime>& val );
++    // Primitive-in-shared_ptr (e.g. array-of-string members): the generic
++    // shared_ptr<T> template wrongly calls val->toJson(); specialize for string.
++    static web::json::value toJson( const std::shared_ptr<utility::string_t>& val );
+     template<typename T>
+     static web::json::value toJson( const std::vector<T>& val );
+     template<typename T>
+@@ -117,6 +120,7 @@
+     template<typename T>
+     static bool fromJson( const web::json::value& val, std::shared_ptr<T>& );
+     static bool fromJson( const web::json::value& val, std::shared_ptr<utility::datetime> &outVal );
++    static bool fromJson( const web::json::value& val, std::shared_ptr<utility::string_t> &outVal );
+     template<typename T>
+     static bool fromJson( const web::json::value& val, std::vector<T> & );
+     template<typename T>
+diff -ruN pristine-cpp/include/beater-client/model/EvaluatorKind.h patched-cpp/include/beater-client/model/EvaluatorKind.h
+--- pristine-cpp/include/beater-client/model/EvaluatorKind.h	2026-06-23 16:15:56
++++ patched-cpp/include/beater-client/model/EvaluatorKind.h	2026-06-23 16:16:25
+@@ -62,6 +62,10 @@
+         return true;
+     }
+ 
++    // Non-template override required by ModelBase's shared_ptr plumbing
++    // (outVal->fromJson(val)); try each oneOf alternative in declaration order.
++    bool fromJson(const web::json::value& json);
++
+     void toMultipart(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix) const;
+ 
+     template<typename Target>
+@@ -75,6 +79,8 @@
+         m_variantValue = target;
+         return true;
+     }
++
++    bool fromMultiPart(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+ 
+     /////////////////////////////////////////////
+     /// EvaluatorKind members
+diff -ruN pristine-cpp/include/beater-client/model/SpanIoValue.h patched-cpp/include/beater-client/model/SpanIoValue.h
+--- pristine-cpp/include/beater-client/model/SpanIoValue.h	2026-06-23 16:15:56
++++ patched-cpp/include/beater-client/model/SpanIoValue.h	2026-06-23 16:16:25
+@@ -63,6 +63,9 @@
+         return true;
+     }
+ 
++    // Non-template override required by ModelBase's shared_ptr plumbing.
++    bool fromJson(const web::json::value& json);
++
+     void toMultipart(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix) const;
+ 
+     template<typename Target>
+@@ -76,6 +79,8 @@
+         m_variantValue = target;
+         return true;
+     }
++
++    bool fromMultiPart(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+ 
+     /////////////////////////////////////////////
+     /// SpanIoValue members
+diff -ruN pristine-cpp/include/beater-client/model/SpanIoValue_oneOf.h patched-cpp/include/beater-client/model/SpanIoValue_oneOf.h
+--- pristine-cpp/include/beater-client/model/SpanIoValue_oneOf.h	2026-06-23 16:15:56
++++ patched-cpp/include/beater-client/model/SpanIoValue_oneOf.h	2026-06-23 16:16:25
+@@ -56,8 +56,10 @@
+ 
+     enum class KindEnum
+     {
+-        inline,
+-        
++        // 'inline' is a C++ keyword; the OpenAPI enum value "inline" is mapped
++        // to this identifier and round-tripped to the wire string in the .cpp.
++        INLINE,
++
+     };
+ 
+     KindEnum toKindEnum(const utility::string_t& value) const;
+diff -ruN pristine-cpp/src/ApiClient.cpp patched-cpp/src/ApiClient.cpp
+--- pristine-cpp/src/ApiClient.cpp	2026-06-23 16:15:56
++++ patched-cpp/src/ApiClient.cpp	2026-06-23 16:16:25
+@@ -97,6 +97,16 @@
+     return utility::conversions::to_string_t(valueAsStringStream.str());
+ }
+ 
++utility::string_t ApiClient::parameterToString(const ModelBase& value)
++{
++    web::json::value j = value.toJson();
++    if (j.is_string())
++    {
++        return j.as_string();
++    }
++    return j.serialize();
++}
++
+ pplx::task<web::http::http_response> ApiClient::callApi(
+     const utility::string_t& path,
+     const utility::string_t& method,
+diff -ruN pristine-cpp/src/ModelBase.cpp patched-cpp/src/ModelBase.cpp
+--- pristine-cpp/src/ModelBase.cpp	2026-06-23 16:15:56
++++ patched-cpp/src/ModelBase.cpp	2026-06-23 16:16:25
+@@ -132,6 +132,15 @@
+     }
+     return retVal;
+ }
++web::json::value ModelBase::toJson( const std::shared_ptr<utility::string_t>& val )
++{
++    web::json::value retVal;
++    if(val != nullptr)
++    {
++        retVal = toJson(*val);
++    }
++    return retVal;
++}
+ bool ModelBase::fromString( const utility::string_t& val, bool &outVal )
+ {
+     utility::stringstream_t ss(val);
+@@ -358,6 +367,19 @@
+     if(outVal == nullptr)
+     {
+         outVal = std::shared_ptr<utility::datetime>(new utility::datetime());
++    }
++    if( outVal != nullptr )
++    {
++        ok = fromJson(val, *outVal);
++    }
++    return ok;
++}
++bool ModelBase::fromJson( const web::json::value& val, std::shared_ptr<utility::string_t> &outVal )
++{
++    bool ok = false;
++    if(outVal == nullptr)
++    {
++        outVal = std::shared_ptr<utility::string_t>(new utility::string_t());
+     }
+     if( outVal != nullptr )
+     {
+diff -ruN pristine-cpp/src/model/EvaluatorKind.cpp patched-cpp/src/model/EvaluatorKind.cpp
+--- pristine-cpp/src/model/EvaluatorKind.cpp	2026-06-23 16:15:56
++++ patched-cpp/src/model/EvaluatorKind.cpp	2026-06-23 16:16:25
+@@ -59,6 +59,26 @@
+     }, m_variantValue);
+ }
+ 
++bool EvaluatorKind::fromJson(const web::json::value& json)
++{
++    return fromJson<EvaluatorKind_oneOf>(json)
++        || fromJson<EvaluatorKind_oneOf_1>(json)
++        || fromJson<EvaluatorKind_oneOf_2>(json)
++        || fromJson<EvaluatorKind_oneOf_3>(json)
++        || fromJson<EvaluatorKind_oneOf_4>(json)
++        || fromJson<EvaluatorKind_oneOf_5>(json);
++}
++
++bool EvaluatorKind::fromMultiPart(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix)
++{
++    return fromMultiPart<EvaluatorKind_oneOf>(multipart, namePrefix)
++        || fromMultiPart<EvaluatorKind_oneOf_1>(multipart, namePrefix)
++        || fromMultiPart<EvaluatorKind_oneOf_2>(multipart, namePrefix)
++        || fromMultiPart<EvaluatorKind_oneOf_3>(multipart, namePrefix)
++        || fromMultiPart<EvaluatorKind_oneOf_4>(multipart, namePrefix)
++        || fromMultiPart<EvaluatorKind_oneOf_5>(multipart, namePrefix);
++}
++
+ template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf>(const web::json::value& json);
+ template bool EvaluatorKind::fromMultiPart<EvaluatorKind_oneOf>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+ template bool EvaluatorKind::fromJson<EvaluatorKind_oneOf_1>(const web::json::value& json);
+diff -ruN pristine-cpp/src/model/SpanIoValue.cpp patched-cpp/src/model/SpanIoValue.cpp
+--- pristine-cpp/src/model/SpanIoValue.cpp	2026-06-23 16:15:56
++++ patched-cpp/src/model/SpanIoValue.cpp	2026-06-23 16:16:25
+@@ -59,6 +59,22 @@
+     }, m_variantValue);
+ }
+ 
++bool SpanIoValue::fromJson(const web::json::value& json)
++{
++    return fromJson<SpanIoValue_oneOf>(json)
++        || fromJson<SpanIoValue_oneOf_1>(json)
++        || fromJson<SpanIoValue_oneOf_2>(json)
++        || fromJson<SpanIoValue_oneOf_3>(json);
++}
++
++bool SpanIoValue::fromMultiPart(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix)
++{
++    return fromMultiPart<SpanIoValue_oneOf>(multipart, namePrefix)
++        || fromMultiPart<SpanIoValue_oneOf_1>(multipart, namePrefix)
++        || fromMultiPart<SpanIoValue_oneOf_2>(multipart, namePrefix)
++        || fromMultiPart<SpanIoValue_oneOf_3>(multipart, namePrefix);
++}
++
+ template bool SpanIoValue::fromJson<SpanIoValue_oneOf>(const web::json::value& json);
+ template bool SpanIoValue::fromMultiPart<SpanIoValue_oneOf>(std::shared_ptr<MultipartFormData> multipart, const utility::string_t& namePrefix);
+ template bool SpanIoValue::fromJson<SpanIoValue_oneOf_1>(const web::json::value& json);
+diff -ruN pristine-cpp/src/model/SpanIoValue_oneOf.cpp patched-cpp/src/model/SpanIoValue_oneOf.cpp
+--- pristine-cpp/src/model/SpanIoValue_oneOf.cpp	2026-06-23 16:15:56
++++ patched-cpp/src/model/SpanIoValue_oneOf.cpp	2026-06-23 16:16:25
+@@ -126,7 +126,7 @@
+ {
+     
+     if (value == utility::conversions::to_string_t("inline")) {
+-        return KindEnum::inline;
++        return KindEnum::INLINE;
+     }
+     
+     throw std::invalid_argument("Invalid value for conversion to KindEnum");
+@@ -138,7 +138,8 @@
+     switch(value)
+     {
+         
+-        case KindEnum::inline: return utility::conversions::to_string_t("inline");
++        case KindEnum::INLINE: return utility::conversions::to_string_t("inline");
++        default: return utility::conversions::to_string_t("inline");
+         
+     }
+ }

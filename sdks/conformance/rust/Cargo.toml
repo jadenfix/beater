@@ -1,0 +1,12 @@
+[package]
+name = "beater-conformance"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+beater-client = { path = "../../clients/rust" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# Standalone: not part of the main workspace.
+[workspace]

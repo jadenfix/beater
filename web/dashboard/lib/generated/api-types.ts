@@ -11,7 +11,535 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["openapi_health"];
+        get: operations["health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/{tenant_id}/{project_id}/traces/{trace_id}/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["alerts_evaluate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-keys/{tenant_id}/{project_id}/{environment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["apiKeys_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-keys/{tenant_id}/{project_id}/{environment_id}/{api_key_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["apiKeys_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/archive/{tenant_id}/{project_id}/spans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["archive_querySpans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/archive/{tenant_id}/{project_id}/{trace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archive_archiveTrace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit/{tenant_id}/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["audit_listEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/calibrations/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["calibrations_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{tenant_id}/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["datasets_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{tenant_id}/{project_id}/{dataset_id}/cases/from-trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["datasets_promoteCaseFromTrace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{tenant_id}/{project_id}/{dataset_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["datasets_createVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id}/evals/deterministic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["evals_runDeterministic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/datasets/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id}/evals/judge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["evals_runJudge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/experiments/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id}/deterministic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["experiments_runDeterministic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/experiments/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id}/judge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["experiments_runJudge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/gates/{tenant_id}/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["gates_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/gates/{tenant_id}/{project_id}/{gate_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["gates_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ingest/{tenant_id}/{project_id}/dead-letters/{message_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ingest_replayDeadLetter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ingest/{tenant_id}/{project_id}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ingest_getQueueStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ingest/{tenant_id}/{project_id}/trace-ingested/drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ingest_drainTraceIngested"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ingest/{tenant_id}/{project_id}/trace-writes/drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ingest_drainTraceWrites"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ingest/{tenant_id}/{project_id}/traces/{trace_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ingest_reconcileTrace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/judge/{tenant_id}/{project_id}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["judge_evaluate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/judge/{tenant_id}/{project_id}/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["judge_listLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/online/{tenant_id}/{project_id}/traces/{trace_id}/sampling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["online_decideSampling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/otlp/{tenant_id}/{project_id}/{environment_id}/v1/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ingest_otlp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-secrets/{tenant_id}/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["providerSecrets_list"];
+        put?: never;
+        post: operations["providerSecrets_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/provider-secrets/{tenant_id}/{project_id}/{provider_secret_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["providerSecrets_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/review-queues/{tenant_id}/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reviews_createQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["reviews_listTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/from-trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reviews_enqueueTaskFromTrace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reviews_submitAnnotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations/{annotation_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reviews_promoteAnnotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/search/{tenant_id}/spans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search_spans"];
         put?: never;
         post?: never;
         delete?: never;
@@ -27,7 +555,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["openapi_get_span"];
+        get: operations["spans_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -43,9 +571,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["openapi_get_span_io"];
+        get: operations["spans_getIo"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/traces/native": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["ingest_native"];
         delete?: never;
         options?: never;
         head?: never;
@@ -59,7 +603,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["openapi_list_traces"];
+        get: operations["traces_list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -75,7 +619,23 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["openapi_get_trace"];
+        get: operations["traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/usage/{tenant_id}/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["usage_getSummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -88,99 +648,849 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ArtifactRefDoc: {
-            artifact_id: string;
+        AgentReleaseId: string;
+        /**
+         * @description Canonical agent span kind such as agent.run or llm.call
+         * @example llm.call
+         */
+        AgentSpanKind: string;
+        AlertDecision: {
+            delivery?: null | components["schemas"]["WebhookDelivery"];
+            emitted: boolean;
+            suppressed_reason?: string | null;
+        };
+        AlertInput: {
+            /** Format: double */
+            baseline_score?: number | null;
+            group_key: string;
+            links: components["schemas"]["AlertLinks"];
+            /** Format: date-time */
+            now: string;
+            project_id: components["schemas"]["ProjectId"];
+            /** Format: double */
+            score: number;
+            tenant_id: components["schemas"]["TenantId"];
+            title: string;
+            trace_id: components["schemas"]["TraceId"];
+        };
+        AlertLinks: {
+            cluster_url?: string | null;
+            dataset_url?: string | null;
+            gate_url?: string | null;
+            trace_url: string;
+        };
+        AlertPolicy: {
+            /** Format: int64 */
+            dedupe_window_seconds: number;
+            endpoint_url: string;
+            /** Format: double */
+            fire_when_score_at_or_below: number;
+            maintenance_windows: components["schemas"]["MaintenanceWindow"][];
+            policy_id: string;
+            severity: components["schemas"]["AlertSeverity"];
+            signing_secret: string;
+        };
+        /** @enum {string} */
+        AlertSeverity: "info" | "warning" | "critical";
+        AnnotationId: string;
+        ApiKeyCreatedResponse: {
+            active: boolean;
+            api_key_id: components["schemas"]["ApiKeyId"];
+            /** Format: date-time */
+            created_at: string;
+            environment_id: components["schemas"]["EnvironmentId"];
+            project_id: components["schemas"]["ProjectId"];
+            scopes: components["schemas"]["ApiScope"][];
+            secret: string;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        ApiKeyId: string;
+        /** @enum {string} */
+        ApiScope: "trace_write" | "trace_read" | "dataset_write" | "eval_run" | "pii_unmask" | "admin";
+        ArchiveManifest: {
+            /** Format: date-time */
+            created_at: string;
+            path: string;
+            project_id: components["schemas"]["ProjectId"];
+            span_count: number;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        ArchiveQueryResponse: {
+            rows: components["schemas"]["ArchivedSpanRow"][];
+        };
+        ArchivedSpanRow: {
+            attributes_json: string;
+            cost_amount_micros?: string | null;
+            cost_currency?: string | null;
+            end_time?: string | null;
+            environment_id: string;
+            input_tokens?: string | null;
+            input_uri?: string | null;
+            kind: string;
+            model_name?: string | null;
+            model_provider?: string | null;
+            name: string;
+            output_tokens?: string | null;
+            output_uri?: string | null;
+            parent_span_id?: string | null;
+            project_id: string;
+            raw_uri: string;
+            reasoning_tokens?: string | null;
+            /** Format: int64 */
+            seq: number;
+            span_id: string;
+            start_time: string;
+            status: string;
+            tenant_id: string;
+            trace_id: string;
+            unmapped_json: string;
+        };
+        ArtifactId: string;
+        ArtifactRef: {
+            artifact_id: components["schemas"]["ArtifactId"];
             mime_type: string;
-            /** @example internal */
-            redaction_class: string;
-            sha256: string;
+            redaction_class: components["schemas"]["RedactionClass"];
+            sha256: components["schemas"]["Sha256Hash"];
             /** Format: int64 */
             size_bytes: number;
             uri: string;
         };
-        CanonicalSpanDoc: {
+        /** @enum {string} */
+        AuditAction: "pii_unmask";
+        AuditEvent: {
+            action: components["schemas"]["AuditAction"];
+            actor_api_key_id?: null | components["schemas"]["ApiKeyId"];
             attributes: unknown;
-            cost?: null | components["schemas"]["MoneyDoc"];
+            audit_event_id: components["schemas"]["AuditEventId"];
+            /** Format: date-time */
+            created_at: string;
+            environment_id?: null | components["schemas"]["EnvironmentId"];
+            outcome: components["schemas"]["AuditOutcome"];
+            project_id: components["schemas"]["ProjectId"];
+            reason?: string | null;
+            resource_id: string;
+            resource_type: string;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        AuditEventId: string;
+        /** @enum {string} */
+        AuditOutcome: "allowed" | "denied";
+        AuthContext: {
+            api_key_id?: null | components["schemas"]["ApiKeyId"];
+            scopes: string[];
+        };
+        BusMessage: {
+            /** Format: int32 */
+            attempts: number;
+            /** Format: date-time */
+            enqueued_at: string;
+            idempotency_key: components["schemas"]["IdempotencyKey"];
+            kind: string;
+            /** Format: int32 */
+            max_attempts: number;
+            message_id: string;
+            payload: number[];
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        CalibrationConfusion: {
+            human_fail_judge_fail: number;
+            human_fail_judge_pass: number;
+            human_pass_judge_fail: number;
+            human_pass_judge_pass: number;
+        };
+        CalibrationItem: {
+            agreed: boolean;
+            dataset_case_id: components["schemas"]["DatasetCaseId"];
+            evidence: unknown;
+            human_label: components["schemas"]["CalibrationLabel"];
+            judge_label: components["schemas"]["CalibrationLabel"];
+            judge_result_label?: string | null;
+            /** Format: double */
+            judge_score: number;
+        };
+        /** @enum {string} */
+        CalibrationLabel: "pass" | "fail";
+        CalibrationPolicy: {
+            /** Format: double */
+            pass_threshold: number;
+        };
+        CalibrationReport: {
+            calibration_report_id: components["schemas"]["CalibrationReportId"];
+            /** Format: double */
+            cohen_kappa: number;
+            confusion: components["schemas"]["CalibrationConfusion"];
+            /** Format: date-time */
+            created_at: string;
+            dataset_id: components["schemas"]["DatasetId"];
+            dataset_version_id: components["schemas"]["DatasetVersionId"];
+            eval_report_id: string;
+            evaluator_version_id: components["schemas"]["EvaluatorVersionId"];
+            /** Format: double */
+            expected_agreement: number;
+            items: components["schemas"]["CalibrationItem"][];
+            /** Format: double */
+            observed_agreement: number;
+            policy: components["schemas"]["CalibrationPolicy"];
+            project_id: components["schemas"]["ProjectId"];
+            sample_count: number;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        CalibrationReportId: string;
+        CanonicalSpan: {
+            attributes: {
+                [key: string]: unknown;
+            };
+            cost?: null | components["schemas"]["Money"];
             /** Format: date-time */
             end_time?: string | null;
-            environment_id: string;
-            input_ref?: null | components["schemas"]["ArtifactRefDoc"];
-            /** @example llm.call */
-            kind: string;
-            model?: null | components["schemas"]["ModelRefDoc"];
+            environment_id: components["schemas"]["EnvironmentId"];
+            input_ref?: null | components["schemas"]["ArtifactRef"];
+            kind: components["schemas"]["AgentSpanKind"];
+            model?: null | components["schemas"]["ModelRef"];
             name: string;
             normalizer_version: string;
-            output_ref?: null | components["schemas"]["ArtifactRefDoc"];
-            parent_span_id?: string | null;
-            project_id: string;
-            raw_ref: components["schemas"]["ArtifactRefDoc"];
+            output_ref?: null | components["schemas"]["ArtifactRef"];
+            parent_span_id?: null | components["schemas"]["SpanId"];
+            project_id: components["schemas"]["ProjectId"];
+            raw_ref: components["schemas"]["ArtifactRef"];
             /** Format: int32 */
             schema_version: number;
             /** Format: int64 */
             seq: number;
-            span_id: string;
+            span_id: components["schemas"]["SpanId"];
             /** Format: date-time */
             start_time: string;
-            /** @example ok */
-            status: string;
-            tenant_id: string;
-            tokens?: null | components["schemas"]["TokenCountsDoc"];
-            trace_id: string;
+            status: components["schemas"]["SpanStatus"];
+            tenant_id: components["schemas"]["TenantId"];
+            tokens?: null | components["schemas"]["TokenCounts"];
+            trace_id: components["schemas"]["TraceId"];
             unmapped_attrs: unknown;
         };
-        ErrorResponseDoc: {
-            error: string;
+        CaseExperimentScore: {
+            baseline_cached?: boolean | null;
+            baseline_cost?: null | components["schemas"]["Money"];
+            baseline_evidence: unknown;
+            baseline_judge_call_id?: null | components["schemas"]["JudgeCallId"];
+            baseline_output: unknown;
+            /** Format: double */
+            baseline_score: number;
+            baseline_trace?: unknown;
+            candidate_cached?: boolean | null;
+            candidate_cost?: null | components["schemas"]["Money"];
+            candidate_evidence: unknown;
+            candidate_judge_call_id?: null | components["schemas"]["JudgeCallId"];
+            candidate_output: unknown;
+            /** Format: double */
+            candidate_score: number;
+            candidate_trace?: unknown;
+            case_id: components["schemas"]["DatasetCaseId"];
+            /** Format: double */
+            delta: number;
+            reference?: unknown;
+        };
+        CaseOutputOverrideRequest: {
+            case_id: string;
+            output: unknown;
+            trace?: unknown;
+        };
+        CreateApiKeyHttpRequest: {
+            scopes: components["schemas"]["ApiScope"][];
+        };
+        CreateDatasetRequest: {
+            name: string;
+        };
+        CreateDatasetVersionRequest: {
+            case_ids?: string[] | null;
+        };
+        CreateGateRequest: {
+            dataset_id?: string | null;
+            evaluator_version_id?: string | null;
+            gate_id: string;
+            inconclusive_policy?: null | components["schemas"]["InconclusivePolicy"];
+            name: string;
+        };
+        CreateProviderSecretHttpRequest: {
+            display_name: string;
+            provider: string;
+            secret_value: string;
+        };
+        CreateReviewQueueHttpRequest: {
+            annotation_schema: unknown;
+            name: string;
+            queue_id?: string | null;
+        };
+        /** @enum {string} */
+        Currency: "USD";
+        Dataset: {
+            /** Format: date-time */
+            created_at: string;
+            dataset_id: components["schemas"]["DatasetId"];
+            name: string;
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        DatasetCase: {
+            case_id: components["schemas"]["DatasetCaseId"];
+            /** Format: date-time */
+            created_at: string;
+            dataset_id: components["schemas"]["DatasetId"];
+            input: unknown;
+            input_artifact_hashes: components["schemas"]["Sha256Hash"][];
+            normalizer_version: string;
+            output: unknown;
+            project_id: components["schemas"]["ProjectId"];
+            reference?: unknown;
+            source_environment_id: components["schemas"]["EnvironmentId"];
+            source_span_id: components["schemas"]["SpanId"];
+            source_trace_id: components["schemas"]["TraceId"];
+            tenant_id: components["schemas"]["TenantId"];
+            trace: unknown;
             /** Format: int32 */
+            trace_schema_version: number;
+        };
+        DatasetCaseId: string;
+        DatasetEvalReport: {
+            /** Format: double */
+            aggregate_score: number;
+            /** Format: date-time */
+            created_at: string;
+            dataset_id: components["schemas"]["DatasetId"];
+            dataset_version_id: components["schemas"]["DatasetVersionId"];
+            evaluator_version_id: components["schemas"]["EvaluatorVersionId"];
+            project_id: components["schemas"]["ProjectId"];
+            report_id: string;
+            result_count: number;
+            results: components["schemas"]["EvalResult"][];
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        DatasetId: string;
+        DatasetVersionId: string;
+        DatasetVersionSnapshot: {
+            cases: components["schemas"]["DatasetCase"][];
+            /** Format: date-time */
+            created_at: string;
+            dataset_id: components["schemas"]["DatasetId"];
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+            version_id: components["schemas"]["DatasetVersionId"];
+        };
+        DeadLetter: {
+            /** Format: date-time */
+            failed_at: string;
+            message: components["schemas"]["BusMessage"];
+            reason: string;
+        };
+        DeadLetterReplayReport: {
+            ack: components["schemas"]["PublishAck"];
+            message_id: string;
+            project_id: components["schemas"]["ProjectId"];
+            reset_attempts: boolean;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        EnqueueReviewTaskFromTraceHttpRequest: {
+            dataset_case_id?: string | null;
+            dataset_id?: string | null;
+            /** Format: int64 */
+            priority?: number | null;
+            span_id?: string | null;
+            task_id?: string | null;
+            trace_id: string;
+        };
+        EnvironmentId: string;
+        /** @description Error envelope returned by every fallible endpoint. */
+        ErrorResponse: {
+            /** @description Human-readable error message. */
+            error: string;
+            /**
+             * Format: int32
+             * @description HTTP status code, duplicated in the body for convenience.
+             */
             status: number;
         };
-        HealthResponseDoc: {
+        EvalReproducibility: {
+            agent_release_id: components["schemas"]["AgentReleaseId"];
+            code_hash?: null | components["schemas"]["Sha256Hash"];
+            dataset_case_id: components["schemas"]["DatasetCaseId"];
+            dataset_version_id: components["schemas"]["DatasetVersionId"];
+            evaluator_version_id: components["schemas"]["EvaluatorVersionId"];
+            input_artifact_hashes: components["schemas"]["Sha256Hash"][];
+            judge_model_id?: string | null;
+            judge_parameters: unknown;
+            judge_provider?: string | null;
+            judge_rubric_version?: string | null;
+            /** Format: int64 */
+            judge_seed?: number | null;
+            normalizer_version: string;
+            prompt_version_id?: null | components["schemas"]["PromptVersionId"];
+            /** Format: int32 */
+            trace_schema_version: number;
+            wasi_abi_version?: string | null;
+            wasm_hash?: null | components["schemas"]["Sha256Hash"];
+        };
+        EvalResult: {
+            cost?: null | components["schemas"]["Money"];
+            /** Format: date-time */
+            created_at: string;
+            eval_result_id: components["schemas"]["EvalResultId"];
+            evidence: unknown;
+            label?: string | null;
+            non_reproducible_reason?: string | null;
+            project_id: components["schemas"]["ProjectId"];
+            reproducibility: components["schemas"]["EvalReproducibility"];
+            /** Format: double */
+            score: number;
+            span_id?: null | components["schemas"]["SpanId"];
+            tenant_id: components["schemas"]["TenantId"];
+            tokens?: null | components["schemas"]["TokenCounts"];
+            trace_id: components["schemas"]["TraceId"];
+        };
+        EvalResultId: string;
+        EvaluateAlertRequest: {
+            input: components["schemas"]["AlertInput"];
+            policy: components["schemas"]["AlertPolicy"];
+        };
+        EvaluationCase: {
+            input: unknown;
+            output: unknown;
+            reference?: unknown;
+            trace?: unknown;
+        };
+        EvaluatorKind: "exact_match" | {
+            regex_match: {
+                pattern: string;
+            };
+        } | "json_object" | {
+            cost_budget: {
+                /** Format: int64 */
+                max_micros: number;
+            };
+        } | {
+            latency_budget_ms: {
+                /** Format: int64 */
+                max_ms: number;
+            };
+        } | {
+            llm_judge: {
+                model: string;
+                rubric: string;
+            };
+        };
+        /** @enum {string} */
+        EvaluatorLane: "deterministic_wasi" | "judge_broker" | "human" | "hybrid";
+        EvaluatorSpec: {
+            id: string;
+            kind: components["schemas"]["EvaluatorKind"];
+            lane: components["schemas"]["EvaluatorLane"];
+        };
+        EvaluatorVersionId: string;
+        ExperimentComparison: {
+            /** Format: double */
+            adjusted_alpha: number;
+            /** Format: double */
+            baseline_mean: number;
+            /** Format: double */
+            candidate_mean: number;
+            /** Format: double */
+            ci_high: number;
+            /** Format: double */
+            ci_low: number;
+            decision: components["schemas"]["GateDecision"];
+            /** Format: double */
+            delta: number;
+            sample_size: number;
+            test: components["schemas"]["StatisticalTest"];
+        };
+        ExperimentRunId: string;
+        ExperimentRunReport: {
+            baseline_release_id: components["schemas"]["AgentReleaseId"];
+            candidate_release_id: components["schemas"]["AgentReleaseId"];
+            case_scores: components["schemas"]["CaseExperimentScore"][];
+            comparison: components["schemas"]["ExperimentComparison"];
+            /** Format: date-time */
+            created_at: string;
+            dataset_id: components["schemas"]["DatasetId"];
+            dataset_version_id: components["schemas"]["DatasetVersionId"];
+            decision: components["schemas"]["GateDecision"];
+            evaluator_version_id: components["schemas"]["EvaluatorVersionId"];
+            experiment_run_id: components["schemas"]["ExperimentRunId"];
+            gate_policy?: components["schemas"]["GatePolicy"];
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        /** @enum {string} */
+        GateDecision: "pass" | "fail_regression" | "inconclusive";
+        GateDefinition: {
+            /** Format: date-time */
+            created_at: string;
+            dataset_id?: null | components["schemas"]["DatasetId"];
+            evaluator_version_id?: null | components["schemas"]["EvaluatorVersionId"];
+            gate_id: components["schemas"]["GateId"];
+            inconclusive_policy?: components["schemas"]["InconclusivePolicy"];
+            name: string;
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        GateId: string;
+        GatePolicy: {
+            /** Format: double */
+            alpha: number;
+            comparison_count: number;
+            /** Format: double */
+            max_regression: number;
+            min_sample_size: number;
+        };
+        GateRunId: string;
+        GateRunReport: {
+            baseline_release_id: components["schemas"]["AgentReleaseId"];
+            candidate_release_id: components["schemas"]["AgentReleaseId"];
+            comparison: components["schemas"]["ExperimentComparison"];
+            /** Format: date-time */
+            created_at: string;
+            dataset_id: components["schemas"]["DatasetId"];
+            evaluator_version_id: components["schemas"]["EvaluatorVersionId"];
+            /** Format: date-time */
+            experiment_created_at: string;
+            experiment_decision: components["schemas"]["GateDecision"];
+            experiment_gate_policy: components["schemas"]["GatePolicy"];
+            experiment_run_id: components["schemas"]["ExperimentRunId"];
+            gate_dataset_id?: null | components["schemas"]["DatasetId"];
+            gate_evaluator_version_id?: null | components["schemas"]["EvaluatorVersionId"];
+            gate_id: components["schemas"]["GateId"];
+            gate_name: string;
+            gate_run_id: components["schemas"]["GateRunId"];
+            inconclusive_policy: components["schemas"]["InconclusivePolicy"];
+            passed: boolean;
+            project_id: components["schemas"]["ProjectId"];
+            reason: string;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        HealthResponse: {
             ok: boolean;
         };
-        ModelRefDoc: {
+        IdempotencyKey: string;
+        /** @enum {string} */
+        InconclusivePolicy: "pass" | "fail";
+        IngestOutcome: {
+            ack: components["schemas"]["WriteAck"];
+            downstream_queued: boolean;
+        };
+        IngestQueueStatus: {
+            dead_letters: components["schemas"]["DeadLetter"][];
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+            total_depth: number;
+            trace_ingested_depth: number;
+            trace_write_depth: number;
+        };
+        JudgeAuditRecord: {
+            cached: boolean;
+            charged_cost: components["schemas"]["Money"];
+            /** Format: date-time */
+            created_at: string;
+            evaluator_id: string;
+            judge_call_id: components["schemas"]["JudgeCallId"];
+            model: string;
+            project_id: components["schemas"]["ProjectId"];
+            provider: string;
+            provider_cost: components["schemas"]["Money"];
+            provider_secret_id: components["schemas"]["ProviderSecretId"];
+            request_hash: components["schemas"]["Sha256Hash"];
+            response_hash: components["schemas"]["Sha256Hash"];
+            /** Format: double */
+            score: number;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        JudgeBrokerOutcome: {
+            audit: components["schemas"]["JudgeAuditRecord"];
+            remaining_budget: components["schemas"]["Money"];
+            result: components["schemas"]["ScoreResult"];
+        };
+        JudgeCallId: string;
+        MaintenanceWindow: {
+            /** Format: date-time */
+            ends_at: string;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        ModelRef: {
             name: string;
             provider: string;
         };
-        MoneyDoc: {
+        Money: {
             /** Format: int64 */
             amount_micros: number;
-            /** @example USD */
-            currency: string;
+            currency: components["schemas"]["Currency"];
         };
-        PageRunSummaryDoc: {
-            items: components["schemas"]["RunSummaryDoc"][];
+        NativeIngestRequest: {
+            attributes: {
+                [key: string]: unknown;
+            };
+            auth_context?: null | components["schemas"]["AuthContext"];
+            cost?: null | components["schemas"]["Money"];
+            /** Format: date-time */
+            end_time?: string | null;
+            idempotency_key?: null | components["schemas"]["IdempotencyKey"];
+            input?: unknown;
+            kind: components["schemas"]["AgentSpanKind"];
+            model?: null | components["schemas"]["ModelRef"];
+            name: string;
+            output?: unknown;
+            parent_span_id?: null | components["schemas"]["SpanId"];
+            redaction_class: components["schemas"]["RedactionClass"];
+            scope: components["schemas"]["TenantScope"];
+            /** Format: int64 */
+            seq: number;
+            span_id: components["schemas"]["SpanId"];
+            /** Format: date-time */
+            start_time?: string | null;
+            status: components["schemas"]["SpanStatus"];
+            tokens?: null | components["schemas"]["TokenCounts"];
+            trace_id: components["schemas"]["TraceId"];
+        };
+        OnlineSamplingPolicy: {
+            /** Format: int64 */
+            high_cost_micros_threshold?: number | null;
+            keep_errors: boolean;
+            /** Format: int32 */
+            sample_rate_per_mille: number;
+            /** Format: int64 */
+            slow_ms_threshold?: number | null;
+        };
+        OtlpIngestOutcome: {
+            accepted_raw: number;
+            accepted_spans: number;
+            downstream_queued: boolean;
+            duplicate_raw: number;
+            duplicate_spans: number;
+        };
+        Page_RunSummary: {
+            items: {
+                /** Format: int64 */
+                duration_ms?: number | null;
+                /** Format: date-time */
+                ended_at?: string | null;
+                first_span_name: string;
+                models: components["schemas"]["ModelRef"][];
+                project_id: components["schemas"]["ProjectId"];
+                release_ids: string[];
+                span_count: number;
+                /** Format: date-time */
+                started_at: string;
+                status: components["schemas"]["SpanStatus"];
+                tenant_id: components["schemas"]["TenantId"];
+                total_cost?: null | components["schemas"]["Money"];
+                trace_id: components["schemas"]["TraceId"];
+            }[];
             next_cursor?: string | null;
         };
-        RunSummaryDoc: {
+        ProjectId: string;
+        PromoteReviewAnnotationHttpRequest: {
+            dataset_id: string;
+            reference?: unknown;
+        };
+        PromoteTraceCaseRequest: {
+            reference?: unknown;
+            span_id?: string | null;
+            trace_id: string;
+        };
+        PromptVersionId: string;
+        ProviderSecretId: string;
+        ProviderSecretMetadata: {
+            active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            display_name: string;
+            project_id: components["schemas"]["ProjectId"];
+            provider: string;
+            provider_secret_id: components["schemas"]["ProviderSecretId"];
+            /** Format: date-time */
+            rotated_at?: string | null;
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        PublishAck: {
+            accepted: boolean;
+            duplicate: boolean;
+        };
+        QueuedTraceWork: {
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+            trace_id: components["schemas"]["TraceId"];
+        };
+        /** @enum {string} */
+        RedactionClass: "public" | "internal" | "sensitive" | "secret";
+        ReviewAnnotation: {
+            annotation_id: components["schemas"]["AnnotationId"];
+            /** Format: date-time */
+            created_at: string;
+            payload: unknown;
+            project_id: components["schemas"]["ProjectId"];
+            queue_id: components["schemas"]["ReviewQueueId"];
+            reviewer_id: string;
+            task_id: components["schemas"]["ReviewTaskId"];
+            tenant_id: components["schemas"]["TenantId"];
+            verdict: components["schemas"]["ReviewVerdict"];
+        };
+        ReviewQueue: {
+            annotation_schema: unknown;
+            /** Format: date-time */
+            created_at: string;
+            name: string;
+            project_id: components["schemas"]["ProjectId"];
+            queue_id: components["schemas"]["ReviewQueueId"];
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        ReviewQueueId: string;
+        ReviewTask: {
+            /** Format: date-time */
+            created_at: string;
+            dataset_case_id?: null | components["schemas"]["DatasetCaseId"];
+            dataset_id?: null | components["schemas"]["DatasetId"];
+            /** Format: int64 */
+            priority: number;
+            project_id: components["schemas"]["ProjectId"];
+            queue_id: components["schemas"]["ReviewQueueId"];
+            span_id?: null | components["schemas"]["SpanId"];
+            state: components["schemas"]["ReviewTaskState"];
+            task_id: components["schemas"]["ReviewTaskId"];
+            tenant_id: components["schemas"]["TenantId"];
+            trace_id: components["schemas"]["TraceId"];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ReviewTaskId: string;
+        /** @enum {string} */
+        ReviewTaskState: "open" | "submitted" | "cancelled";
+        /** @enum {string} */
+        ReviewVerdict: "pass" | "fail" | "needs_fix" | "unsure";
+        RevokedApiKey: {
+            active: boolean;
+            api_key_id: components["schemas"]["ApiKeyId"];
+            /** Format: date-time */
+            rotated_at: string;
+        };
+        RevokedProviderSecret: {
+            active: boolean;
+            provider_secret_id: components["schemas"]["ProviderSecretId"];
+            /** Format: date-time */
+            rotated_at: string;
+        };
+        RunCalibrationHttpRequest: {
+            eval_report_id?: string | null;
+            evaluator_version_id?: string | null;
+            /** Format: double */
+            pass_threshold?: number | null;
+        };
+        RunDeterministicEvalRequest: {
+            agent_release_id: string;
+            code_hash?: string | null;
+            evaluator_id: string;
+            evaluator_version_id: string;
+            kind: components["schemas"]["EvaluatorKind"];
+            prompt_version_id?: string | null;
+            wasm_hash?: string | null;
+        };
+        RunExperimentRequest: {
+            baseline_outputs: components["schemas"]["CaseOutputOverrideRequest"][];
+            baseline_release_id: string;
+            candidate_outputs: components["schemas"]["CaseOutputOverrideRequest"][];
+            candidate_release_id: string;
+            evaluator_id: string;
+            evaluator_version_id: string;
+            gate_policy?: null | components["schemas"]["GatePolicy"];
+            kind: components["schemas"]["EvaluatorKind"];
+        };
+        RunGateRequest: {
+            experiment_run_id?: string | null;
+        };
+        RunJudgeDatasetEvalRequest: {
+            agent_release_id: string;
+            code_hash?: string | null;
+            evaluator_id: string;
+            evaluator_version_id: string;
+            kind: components["schemas"]["EvaluatorKind"];
+            prompt_version_id?: string | null;
+            provider_secret_id: components["schemas"]["ProviderSecretId"];
+        };
+        RunJudgeEvalHttpRequest: {
+            case: components["schemas"]["EvaluationCase"];
+            evaluator: components["schemas"]["EvaluatorSpec"];
+            provider_secret_id: components["schemas"]["ProviderSecretId"];
+        };
+        RunJudgeExperimentRequest: {
+            baseline_outputs: components["schemas"]["CaseOutputOverrideRequest"][];
+            baseline_release_id: string;
+            candidate_outputs: components["schemas"]["CaseOutputOverrideRequest"][];
+            candidate_release_id: string;
+            evaluator_id: string;
+            evaluator_version_id: string;
+            gate_policy?: null | components["schemas"]["GatePolicy"];
+            kind: components["schemas"]["EvaluatorKind"];
+            provider_secret_id: components["schemas"]["ProviderSecretId"];
+        };
+        RunSummary: {
             /** Format: int64 */
             duration_ms?: number | null;
             /** Format: date-time */
             ended_at?: string | null;
             first_span_name: string;
-            models: components["schemas"]["ModelRefDoc"][];
-            project_id: string;
+            models: components["schemas"]["ModelRef"][];
+            project_id: components["schemas"]["ProjectId"];
             release_ids: string[];
             span_count: number;
             /** Format: date-time */
             started_at: string;
-            /** @example ok */
+            status: components["schemas"]["SpanStatus"];
+            tenant_id: components["schemas"]["TenantId"];
+            total_cost?: null | components["schemas"]["Money"];
+            trace_id: components["schemas"]["TraceId"];
+        };
+        SamplingDecision: {
+            reason: components["schemas"]["SamplingReason"];
+            selected: boolean;
+            /** Format: int32 */
+            stable_score_per_mille: number;
+        };
+        /** @enum {string} */
+        SamplingReason: "error_trace" | "slow_trace" | "high_cost_trace" | "routine_sampled" | "routine_dropped";
+        ScoreResult: {
+            evidence: unknown;
+            label?: string | null;
+            /** Format: double */
+            score: number;
+        };
+        SearchHit: {
+            environment_id: string;
+            kind: string;
+            model: string;
+            name: string;
+            project_id: string;
+            /** Format: float */
+            score: number;
+            span_id: string;
             status: string;
             tenant_id: string;
-            total_cost?: null | components["schemas"]["MoneyDoc"];
+            tool: string;
             trace_id: string;
         };
-        SpanIoResponseDoc: {
-            input: components["schemas"]["SpanIoValueDoc"];
-            output: components["schemas"]["SpanIoValueDoc"];
-            span_id: string;
-            tenant_id: string;
-            trace_id: string;
+        SearchResponse: {
+            hits: components["schemas"]["SearchHit"][];
         };
-        SpanIoValueDoc: {
+        Sha256Hash: string;
+        SpanId: string;
+        SpanIoResponse: {
+            input: components["schemas"]["SpanIoValue"];
+            output: components["schemas"]["SpanIoValue"];
+            span_id: components["schemas"]["SpanId"];
+            tenant_id: components["schemas"]["TenantId"];
+            trace_id: components["schemas"]["TraceId"];
+        };
+        SpanIoValue: {
             /** @enum {string} */
             kind: "inline";
             value: unknown;
         } | {
-            artifact_ref: components["schemas"]["ArtifactRefDoc"];
+            artifact_ref: components["schemas"]["ArtifactRef"];
             /** @enum {string} */
             kind: "artifact";
         } | {
@@ -191,7 +1501,23 @@ export interface components {
             /** @enum {string} */
             kind: "missing";
         };
-        TokenCountsDoc: {
+        /** @enum {string} */
+        SpanStatus: "ok" | "error" | "unset";
+        /** @enum {string} */
+        StatisticalTest: "paired_normal_approximation";
+        SubmitReviewAnnotationHttpRequest: {
+            annotation_id?: string | null;
+            payload: unknown;
+            reviewer_id: string;
+            verdict: components["schemas"]["ReviewVerdict"];
+        };
+        TenantId: string;
+        TenantScope: {
+            environment_id: components["schemas"]["EnvironmentId"];
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+        };
+        TokenCounts: {
             /** Format: int64 */
             cache_read: number;
             /** Format: int64 */
@@ -201,10 +1527,69 @@ export interface components {
             /** Format: int64 */
             reasoning: number;
         };
-        TraceViewDoc: {
-            spans: components["schemas"]["CanonicalSpanDoc"][];
-            tenant_id: string;
-            trace_id: string;
+        TraceId: string;
+        TraceIngestedDrainReport: {
+            completed: number;
+            consumed: number;
+            dead_lettered: number;
+            failed_work: number;
+            invalid_messages: number;
+            retried: number;
+            trace_refs: components["schemas"]["QueuedTraceWork"][];
+        };
+        TraceIngestedReconcileReport: {
+            downstream_accepted: number;
+            downstream_duplicate: number;
+            downstream_queued: boolean;
+            project_id: components["schemas"]["ProjectId"];
+            span_count: number;
+            tenant_id: components["schemas"]["TenantId"];
+            trace_id: components["schemas"]["TraceId"];
+        };
+        TraceView: {
+            spans: components["schemas"]["CanonicalSpan"][];
+            tenant_id: components["schemas"]["TenantId"];
+            trace_id: components["schemas"]["TraceId"];
+        };
+        TraceWriteDrainReport: {
+            consumed: number;
+            dead_lettered: number;
+            downstream_published: number;
+            duplicate_raw: number;
+            duplicate_spans: number;
+            failed_downstream_publishes: number;
+            failed_writes: number;
+            invalid_messages: number;
+            retried: number;
+            trace_ids: components["schemas"]["TraceId"][];
+            trace_refs: components["schemas"]["QueuedTraceWork"][];
+            written_raw: number;
+            written_spans: number;
+        };
+        UsageSummary: {
+            project_id: components["schemas"]["ProjectId"];
+            tenant_id: components["schemas"]["TenantId"];
+            totals: {
+                [key: string]: components["schemas"]["UsageTotal"];
+            };
+        };
+        UsageTotal: {
+            /** Format: int64 */
+            quantity: number;
+            unit: string;
+        };
+        WebhookDelivery: {
+            body: unknown;
+            endpoint_url: string;
+            headers: {
+                [key: string]: string;
+            };
+        };
+        WriteAck: {
+            accepted_raw: number;
+            accepted_spans: number;
+            duplicate_raw: number;
+            duplicate_spans: number;
         };
     };
     responses: never;
@@ -215,7 +1600,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    openapi_health: {
+    health: {
         parameters: {
             query?: never;
             header?: never;
@@ -230,12 +1615,2401 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthResponseDoc"];
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };
     };
-    openapi_get_span: {
+    alerts_evaluate: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description trace_id */
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluateAlertRequest"];
+            };
+        };
+        responses: {
+            /** @description Evaluate an alert policy for a trace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertDecision"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    apiKeys_create: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description environment_id */
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApiKeyHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Create a scoped API key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreatedResponse"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    apiKeys_revoke: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description environment_id */
+                environment_id: string;
+                /** @description api_key_id */
+                api_key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoke an API key */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevokedApiKey"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_querySpans: {
+        parameters: {
+            query?: {
+                environment_id?: string;
+                trace_id?: string;
+                span_id?: string;
+                kind?: string;
+                status?: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Query archived spans */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveQueryResponse"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_archiveTrace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description trace_id */
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archive a trace to object storage */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveManifest"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    audit_listEvents: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List audit events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEvent"][];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    calibrations_run: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description dataset_id */
+                dataset_id: string;
+                /** @description version_id */
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCalibrationHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Run a calibration over an eval report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalibrationReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    datasets_create: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDatasetRequest"];
+            };
+        };
+        responses: {
+            /** @description Create a dataset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dataset"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    datasets_promoteCaseFromTrace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description dataset_id */
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteTraceCaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Promote a trace span to a dataset case */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCase"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    datasets_createVersion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description dataset_id */
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDatasetVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Create a dataset version snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetVersionSnapshot"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    evals_runDeterministic: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description dataset_id */
+                dataset_id: string;
+                /** @description version_id */
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunDeterministicEvalRequest"];
+            };
+        };
+        responses: {
+            /** @description Run a deterministic dataset evaluation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetEvalReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    evals_runJudge: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description dataset_id */
+                dataset_id: string;
+                /** @description version_id */
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunJudgeDatasetEvalRequest"];
+            };
+        };
+        responses: {
+            /** @description Run a judge dataset evaluation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetEvalReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    experiments_runDeterministic: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description dataset_id */
+                dataset_id: string;
+                /** @description version_id */
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunExperimentRequest"];
+            };
+        };
+        responses: {
+            /** @description Run a deterministic experiment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentRunReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    experiments_runJudge: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description dataset_id */
+                dataset_id: string;
+                /** @description version_id */
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunJudgeExperimentRequest"];
+            };
+        };
+        responses: {
+            /** @description Run a judge experiment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentRunReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    gates_create: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGateRequest"];
+            };
+        };
+        responses: {
+            /** @description Create a release gate */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateDefinition"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    gates_run: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description gate_id */
+                gate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunGateRequest"];
+            };
+        };
+        responses: {
+            /** @description Run a gate against an experiment */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateRunReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_replayDeadLetter: {
+        parameters: {
+            query?: {
+                reset_attempts?: boolean;
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description message_id */
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Replay a dead-letter message */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeadLetterReplayReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_getQueueStatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get ingest queue status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestQueueStatus"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_drainTraceIngested: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drain pending trace-ingested events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceIngestedDrainReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_drainTraceWrites: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drain pending trace writes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceWriteDrainReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_reconcileTrace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description trace_id */
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reconcile a trace-ingested record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceIngestedReconcileReport"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    judge_evaluate: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunJudgeEvalHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Run an ad-hoc judge evaluation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JudgeBrokerOutcome"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    judge_listLedger: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List judge ledger audit records */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JudgeAuditRecord"][];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    online_decideSampling: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description trace_id */
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnlineSamplingPolicy"];
+            };
+        };
+        responses: {
+            /** @description Decide online sampling for a trace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SamplingDecision"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_otlp: {
+        parameters: {
+            query?: {
+                durability?: string;
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description environment_id */
+                environment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ingest OTLP/HTTP protobuf traces */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OtlpIngestOutcome"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    providerSecrets_list: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List provider secret metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSecretMetadata"][];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    providerSecrets_create: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProviderSecretHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Store an encrypted provider secret */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSecretMetadata"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    providerSecrets_revoke: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description provider_secret_id */
+                provider_secret_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoke a provider secret */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevokedProviderSecret"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reviews_createQueue: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReviewQueueHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Create a human review queue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reviews_listTasks: {
+        parameters: {
+            query?: {
+                state?: components["schemas"]["ReviewTaskState"];
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description queue_id */
+                queue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List review tasks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewTask"][];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reviews_enqueueTaskFromTrace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description queue_id */
+                queue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnqueueReviewTaskFromTraceHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Enqueue a review task from a trace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewTask"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reviews_submitAnnotation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description queue_id */
+                queue_id: string;
+                /** @description task_id */
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitReviewAnnotationHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Submit a review annotation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewAnnotation"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reviews_promoteAnnotation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description queue_id */
+                queue_id: string;
+                /** @description task_id */
+                task_id: string;
+                /** @description annotation_id */
+                annotation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteReviewAnnotationHttpRequest"];
+            };
+        };
+        responses: {
+            /** @description Promote a review annotation to a dataset case */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCase"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    search_spans: {
+        parameters: {
+            query?: {
+                q?: string;
+                project_id?: string;
+                environment_id?: string;
+                trace_id?: string;
+                span_id?: string;
+                kind?: string;
+                status?: string;
+                model?: string;
+                tool?: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Search spans */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    spans_get: {
         parameters: {
             query?: {
                 unmask?: boolean;
@@ -252,65 +4026,65 @@ export interface operations {
                 "x-beater-environment-id"?: string | null;
             };
             path: {
-                /** @description Tenant id */
+                /** @description tenant_id */
                 tenant_id: string;
-                /** @description Trace id */
+                /** @description trace_id */
                 trace_id: string;
-                /** @description Span id */
+                /** @description span_id */
                 span_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Canonical span with redaction applied unless unmasked */
+            /** @description Get a canonical span */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CanonicalSpanDoc"];
+                    "application/json": components["schemas"]["CanonicalSpan"];
                 };
             };
-            /** @description Invalid scope or query */
+            /** @description Invalid request, scope, or filter */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Missing or invalid API key */
+            /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description API key lacks trace read or unmask scope */
+            /** @description Credentials lack the required scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Span or trace not found */
+            /** @description Resource not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    openapi_get_span_io: {
+    spans_getIo: {
         parameters: {
             query?: {
                 unmask?: boolean;
@@ -327,81 +4101,137 @@ export interface operations {
                 "x-beater-environment-id"?: string | null;
             };
             path: {
-                /** @description Tenant id */
+                /** @description tenant_id */
                 tenant_id: string;
-                /** @description Trace id */
+                /** @description trace_id */
                 trace_id: string;
-                /** @description Span id */
+                /** @description span_id */
                 span_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Redaction-aware span input and output metadata */
+            /** @description Get span input/output metadata */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SpanIoResponseDoc"];
+                    "application/json": components["schemas"]["SpanIoResponse"];
                 };
             };
-            /** @description Invalid scope or query */
+            /** @description Invalid request, scope, or filter */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Missing or invalid API key */
+            /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description API key lacks trace read or unmask scope */
+            /** @description Credentials lack the required scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Span or trace not found */
+            /** @description Resource not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    openapi_list_traces: {
+    ingest_native: {
+        parameters: {
+            query?: {
+                durability?: string;
+            };
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NativeIngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Ingest native canonical spans */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestOutcome"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    traces_list: {
         parameters: {
             query?: {
                 project_id?: string;
                 environment_id?: string;
                 trace_id?: string;
-                /** @example llm.call */
                 kind?: string;
-                /** @example ok */
                 status?: string;
-                /** @example 2026-01-01T00:00:00Z */
                 started_after?: string;
-                /** @example 2026-01-01T01:00:00Z */
                 started_before?: string;
-                /** @example gpt-4.1 */
                 model?: string;
-                /** @example release-a */
                 release?: string;
                 min_cost_micros?: number;
                 max_cost_micros?: number;
@@ -421,52 +4251,52 @@ export interface operations {
                 "x-beater-environment-id"?: string | null;
             };
             path: {
-                /** @description Tenant id */
+                /** @description tenant_id */
                 tenant_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Trace run summaries */
+            /** @description List trace run summaries */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageRunSummaryDoc"];
+                    "application/json": components["schemas"]["Page_RunSummary"];
                 };
             };
-            /** @description Invalid scope or filter */
+            /** @description Invalid request, scope, or filter */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Missing or invalid API key */
+            /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description API key lacks trace read scope */
+            /** @description Credentials lack the required scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    openapi_get_trace: {
+    traces_get: {
         parameters: {
             query?: {
                 unmask?: boolean;
@@ -483,58 +4313,119 @@ export interface operations {
                 "x-beater-environment-id"?: string | null;
             };
             path: {
-                /** @description Tenant id */
+                /** @description tenant_id */
                 tenant_id: string;
-                /** @description Trace id */
+                /** @description trace_id */
                 trace_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Canonical trace with redaction applied unless unmasked */
+            /** @description Get a canonical trace */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TraceViewDoc"];
+                    "application/json": components["schemas"]["TraceView"];
                 };
             };
-            /** @description Invalid scope or query */
+            /** @description Invalid request, scope, or filter */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Missing or invalid API key */
+            /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description API key lacks trace read or unmask scope */
+            /** @description Credentials lack the required scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Trace not found */
+            /** @description Resource not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorResponseDoc"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    usage_getSummary: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get usage summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageSummary"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

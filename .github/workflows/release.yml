@@ -1,0 +1,82 @@
+name: release
+
+# Tag-triggered lockstep release: verify the contract, run conformance against a
+# live beaterd as a release candidate, then publish every SDK at the SAME version
+# to its registry. Publishing requires registry secrets (see below); jobs no-op
+# with a clear message if the corresponding secret is absent.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  verify-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p beater-api --test openapi_coverage
+      - run: scripts/regen-sdks.sh --check
+
+  conformance:
+    needs: verify-contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start beaterd and run live SDK conformance smoke
+        run: |
+          docker compose up -d
+          # Per-SDK smoke against a representative endpoint per resource group.
+          # (Reuses the live-smoke harness pattern from gate1-live-smoke.yml.)
+          ./scripts/smoke-compose.sh
+          docker compose down
+
+  publish:
+    needs: conformance
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [rust, python, typescript, go, java]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stamp version from tag
+        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Regenerate SDKs at release version
+        run: scripts/regen-sdks.sh
+      - name: Publish ${{ matrix.target }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+        run: scripts/publish-sdk.sh "${{ matrix.target }}" "$RELEASE_VERSION"
+
+  release-notes:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate contract changelog (oasdiff vs previous tag)
+        run: |
+          prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo '')"
+          cargo run -q -p beater-api --example dump_openapi > /tmp/new.json
+          if [ -n "$prev" ]; then
+            git show "$prev:sdks/openapi/beater-api.json" > /tmp/old.json || echo '{}' > /tmp/old.json
+            docker run --rm -v /tmp:/s tufin/oasdiff changelog /s/old.json /s/new.json > /tmp/changelog.md || true
+          fi
+          gh release create "${GITHUB_REF_NAME}" --notes-file /tmp/changelog.md --title "${GITHUB_REF_NAME}" || \
+            gh release edit "${GITHUB_REF_NAME}" --notes-file /tmp/changelog.md
+        env:
+          GH_TOKEN: ${{ github.token }}

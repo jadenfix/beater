@@ -1,0 +1,21 @@
+diff -ruN pristine-c/model/any_type.h patched-c/model/any_type.h
+--- pristine-c/model/any_type.h	2026-06-23 16:15:54
++++ patched-c/model/any_type.h	2026-06-23 16:16:25
+@@ -1,5 +1,16 @@
+ /*
+  * any_type.h
+  *
+- * A placeholder for now, this type isn't really needed.
++ * Free-form / additionalProperties value. The openapi-generator C template
++ * leaves this as a placeholder; we alias it to cJSON, which is the on-the-wire
++ * representation the generated (de)serializers already use.
+  */
++
++#ifndef _any_type_H_
++#define _any_type_H_
++
++#include "../external/cJSON.h"
++
++typedef cJSON any_type_t;
++
++#endif /* _any_type_H_ */

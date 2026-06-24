@@ -1,0 +1,45 @@
+{
+  "attributes": {
+    "HEADER_ENVIRONMENT": "x-beater-environment-id",
+    "HEADER_PROJECT": "x-beater-project-id",
+    "HEADER_TENANT": "x-beater-tenant-id",
+    "INPUT_VALUE": "input.value",
+    "LLM_COST_CURRENCY": "llm.cost.currency",
+    "LLM_COST_MICROS": "llm.cost.amount_micros",
+    "LLM_MODEL_NAME": "llm.model_name",
+    "LLM_PROVIDER": "llm.provider",
+    "LLM_TOKEN_CACHE_READ": "llm.token_count.cache_read",
+    "LLM_TOKEN_COMPLETION": "llm.token_count.completion",
+    "LLM_TOKEN_PROMPT": "llm.token_count.prompt",
+    "LLM_TOKEN_REASONING": "llm.token_count.reasoning",
+    "OUTPUT_VALUE": "output.value",
+    "RELEASE_ID": "agent.release_id",
+    "SEQ": "beater.seq",
+    "SPAN_KIND": "openinference.span.kind"
+  },
+  "defaults": {
+    "BASE_URL": "http://127.0.0.1:8080",
+    "ENVIRONMENT": "local",
+    "PROJECT": "demo",
+    "TENANT": "demo"
+  },
+  "env": {
+    "BASE_URL": "BEATER_BASE_URL",
+    "ENVIRONMENT_ID": "BEATER_ENVIRONMENT_ID",
+    "PROJECT_ID": "BEATER_PROJECT_ID",
+    "TENANT_ID": "BEATER_TENANT_ID"
+  },
+  "span_kinds": [
+    "agent.run",
+    "agent.turn",
+    "agent.plan",
+    "agent.step",
+    "llm.call",
+    "tool.call",
+    "mcp.request",
+    "retrieval.query",
+    "memory.read",
+    "memory.write",
+    "guardrail.check"
+  ]
+}

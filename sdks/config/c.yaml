@@ -1,0 +1,5 @@
+# openapi-generator config: C control-plane client (Layer 1, libcurl-based).
+generatorName: c
+additionalProperties:
+  projectName: beater-client
+  packageVersion: 0.1.0

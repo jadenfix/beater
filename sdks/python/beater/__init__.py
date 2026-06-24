@@ -1,0 +1,47 @@
+"""Beater Python SDK -- ergonomic agent observability.
+
+Quickstart::
+
+    import beater
+
+    beater.init(tenant_id="acme", project_id="support-bot", environment_id="prod")
+
+    @beater.observe(kind=beater.SpanKind.AGENT_RUN)
+    def handle(query): ...
+
+Drop-in provider instrumentation::
+
+    from openai import OpenAI
+    client = beater.wrap_openai(OpenAI())
+
+This is the hand-written ergonomic (Layer 2) SDK. The generated control-plane
+client (Layer 1, for datasets/experiments/gates/etc.) lives in the
+``beater_client`` package generated from the OpenAPI contract.
+"""
+
+from __future__ import annotations
+
+from .config import BeaterConfig
+from .observe import observe, set_input, set_output, span
+from .providers.anthropic import wrap_anthropic
+from .providers.openai import wrap_openai
+from .semconv import Attr, SpanKind
+from .tracing import flush, get_config, init, shutdown
+
+__all__ = [
+    "init",
+    "observe",
+    "span",
+    "set_input",
+    "set_output",
+    "wrap_openai",
+    "wrap_anthropic",
+    "flush",
+    "shutdown",
+    "get_config",
+    "BeaterConfig",
+    "SpanKind",
+    "Attr",
+]
+
+__version__ = "0.1.0"
