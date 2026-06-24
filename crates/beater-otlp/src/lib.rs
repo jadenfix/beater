@@ -45,6 +45,16 @@ const BROWSER_REASONING: &str = "browser.reasoning";
 const BROWSER_STEP_STATUS: &str = "browser.step_status";
 /// OTLP span name an SDK uses for the per-step LLM decision span.
 const BROWSER_DECISION_SPAN_NAME: &str = "browser.decision";
+/// Read-only [`Carrier`] over inbound gRPC metadata so the W3C `traceparent` /
+/// `tracestate` / `baggage` an OTLP client sends on the wire can be extracted at
+/// the real export entrypoint (R14.1/R14.2) without copying the whole map.
+struct MetadataCarrier<'a>(&'a MetadataMap);
+
+impl Carrier for MetadataCarrier<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+}
 
 pub fn decode_export_trace_request(bytes: &[u8]) -> anyhow::Result<ExportTraceServiceRequest> {
     ExportTraceServiceRequest::decode(bytes).map_err(anyhow::Error::from)
@@ -76,15 +86,30 @@ impl TraceService for OtlpGrpcTraceService {
         request: Request<ExportTraceServiceRequest>,
     ) -> Result<Response<ExportTraceServiceResponse>, Status> {
         let scope = scope_from_metadata(request.metadata(), &self.default_scope)?;
+        // R14.1/R14.2: lift the W3C trace context + redacted baggage off the
+        // inbound gRPC metadata at the real export site, so the queued ingest work
+        // we spawn below stays on the same distributed trace as this request and
+        // any secret accidentally placed in `baggage` is never carried forward.
+        let carrier = MetadataCarrier(request.metadata());
+        let parent_context = TraceContext::extract(&carrier);
+        let baggage = Baggage::extract(&carrier);
+        let _propagated_baggage = baggage.to_header();
         let export = request.into_inner();
         let raw_bytes = encode_export_trace_request(&export);
         let raw_request =
             export_to_raw_trace_ingest_request(scope, raw_bytes, export, anonymous_auth_context())
                 .map_err(|err| Status::invalid_argument(err.to_string()))?;
-        self.ingest
-            .buffer_raw_trace_batch(raw_request)
-            .await
-            .map_err(status_from_ingest_error)?;
+        let ingest = self.ingest.clone();
+        // Detach the buffering onto the runtime with the parent context re-established
+        // inside the task; this is the queue's real producer hop.
+        spawn_with_context(parent_context, move |ctx| async move {
+            // The spawned ingest work runs on the same trace as the inbound export.
+            let _trace_on_queue = ctx;
+            ingest.buffer_raw_trace_batch(raw_request).await
+        })
+        .await
+        .map_err(|err| Status::internal(format!("trace ingest task join failed: {err}")))?
+        .map_err(status_from_ingest_error)?;
         Ok(Response::new(ExportTraceServiceResponse {
             partial_success: None,
         }))
@@ -775,6 +800,82 @@ mod tests {
 
         assert!(response.into_inner().partial_success.is_none());
         assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+    }
+
+    #[tokio::test]
+    async fn export_propagates_w3c_context_across_spawn_and_redacts_baggage_secrets() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        let ingest = IngestService::new(artifacts, traces, bus.clone(), IngestPolicy::default());
+        let default_scope = TenantScope::new(
+            TenantId::new("default-tenant").unwrap_or_else(|err| panic!("{err}")),
+            ProjectId::new("default-project").unwrap_or_else(|err| panic!("{err}")),
+            EnvironmentId::new("local").unwrap_or_else(|err| panic!("{err}")),
+        );
+        let service = OtlpGrpcTraceService::new(ingest, default_scope);
+
+        let mut request = Request::new(fixture_export());
+        request.metadata_mut().insert(
+            TENANT_METADATA_KEY,
+            "tenant".parse().unwrap_or_else(|err| panic!("{err}")),
+        );
+        request.metadata_mut().insert(
+            PROJECT_METADATA_KEY,
+            "project".parse().unwrap_or_else(|err| panic!("{err}")),
+        );
+        request.metadata_mut().insert(
+            ENVIRONMENT_METADATA_KEY,
+            "prod".parse().unwrap_or_else(|err| panic!("{err}")),
+        );
+        // Real W3C wire context an upstream OTLP client would send.
+        request.metadata_mut().insert(
+            TRACEPARENT_HEADER,
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        request.metadata_mut().insert(
+            BAGGAGE_HEADER,
+            "tenant=acme,api_key=sk-leak"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+
+        // The export must extract the parent context off metadata, propagate it
+        // through `spawn_with_context`, and still buffer the batch successfully.
+        let response = TraceService::export(&service, request)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(response.into_inner().partial_success.is_none());
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+
+        // The carrier the product code reads at the export site yields the same
+        // trace id and a baggage view with the secret redacted (R14.1/R14.2).
+        let mut metadata = MetadataMap::new();
+        metadata.insert(
+            TRACEPARENT_HEADER,
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        metadata.insert(
+            BAGGAGE_HEADER,
+            "tenant=acme,api_key=sk-leak"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let carrier = MetadataCarrier(&metadata);
+        let context = TraceContext::extract(&carrier).unwrap_or_else(|| panic!("context"));
+        assert_eq!(context.trace_id(), "0af7651916cd43dd8448eb211c80319c");
+        let baggage = Baggage::extract(&carrier);
+        assert_eq!(baggage.tenant(), Some("acme"));
+        assert_eq!(baggage.get("api_key"), Some(REDACTED_BAGGAGE_VALUE));
+        assert!(!baggage.to_header().contains("sk-leak"));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use beater_core::{ProjectId, TenantId, Timestamp, TraceId};
 use beater_schema::{CanonicalSpan, SpanStatus, TraceView};
-use beater_security::sign_webhook;
+use beater_security::{sign_webhook, webhook_idempotency_key, WEBHOOK_IDEMPOTENCY_KEY_HEADER};
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -208,10 +208,25 @@ impl AlertEngine {
         let body = alert_payload(policy, &input);
         let body_bytes = serde_json::to_vec(&body).context("serialize alert payload")?;
         let signature = sign_webhook(policy.signing_secret.as_bytes(), &body_bytes, input.now)?;
+        // Stable per-delivery idempotency key (R9.4): the delivery identity is the
+        // logical firing — dedupe key (tenant:project:policy:group) bucketed by the
+        // dedupe window. Retries of the *same* logical delivery (same input, within
+        // the same window) recompute the identical id, so the receiver can dedupe;
+        // a later firing of the same group (next window) gets a distinct id.
+        let delivery_id = delivery_identity(policy, &group_key, input.now);
+        let idempotency_key = webhook_idempotency_key(
+            policy.signing_secret.as_bytes(),
+            &delivery_id,
+            &body_bytes,
+        )?;
         let mut headers = BTreeMap::new();
         headers.insert("content-type".to_string(), "application/json".to_string());
         headers.insert("beater-signature".to_string(), signature.header_value());
         headers.insert("beater-alert-policy".to_string(), policy.policy_id.clone());
+        headers.insert(
+            WEBHOOK_IDEMPOTENCY_KEY_HEADER.to_string(),
+            idempotency_key,
+        );
         let delivery = WebhookDelivery {
             endpoint_url: policy.endpoint_url.clone(),
             headers,
@@ -241,6 +256,15 @@ fn alert_payload(policy: &AlertPolicy, input: &AlertInput) -> serde_json::Value 
         "links": input.links,
         "emitted_at": input.now,
     })
+}
+
+/// Logical delivery identity for the idempotency key. Combines the dedupe key
+/// with a window bucket so that retries of the same firing (same `now` bucket)
+/// are identical while a fresh firing in a later window is distinct.
+fn delivery_identity(policy: &AlertPolicy, dedupe_key: &str, now: Timestamp) -> String {
+    let window = policy.dedupe_window_seconds.max(1);
+    let bucket = now.timestamp().div_euclid(window);
+    format!("{dedupe_key}:{bucket}")
 }
 
 fn dedupe_key(policy: &AlertPolicy, input: &AlertInput) -> String {
@@ -393,6 +417,59 @@ mod tests {
         assert_eq!(
             suppressed.suppressed_reason.as_deref(),
             Some("maintenance_window")
+        );
+    }
+
+    #[test]
+    fn webhook_delivery_carries_stable_idempotency_key_across_retries() {
+        let now = Utc::now();
+        let policy = AlertPolicy {
+            policy_id: "low-score".to_string(),
+            endpoint_url: "https://example.test/webhook".to_string(),
+            signing_secret: "secret".to_string(),
+            severity: AlertSeverity::Critical,
+            fire_when_score_at_or_below: 0.5,
+            dedupe_window_seconds: 300,
+            maintenance_windows: Vec::new(),
+        };
+
+        // Two independent engines model a redelivery/retry of the same logical
+        // firing (e.g. after a worker crash) where dedupe state is not shared.
+        let first = AlertEngine::new()
+            .evaluate(&policy, fixture_alert_input(now))
+            .unwrap_or_else(|err| panic!("{err}"))
+            .delivery
+            .unwrap_or_else(|| panic!("expected delivery"));
+        let retry = AlertEngine::new()
+            .evaluate(&policy, fixture_alert_input(now))
+            .unwrap_or_else(|err| panic!("{err}"))
+            .delivery
+            .unwrap_or_else(|| panic!("expected delivery"));
+
+        let key = first
+            .headers
+            .get(WEBHOOK_IDEMPOTENCY_KEY_HEADER)
+            .unwrap_or_else(|| panic!("idempotency header must be attached"));
+        assert!(key.starts_with("bt_whk_"), "unexpected key shape: {key}");
+        // Stable across a retry of the same logical delivery.
+        assert_eq!(
+            retry.headers.get(WEBHOOK_IDEMPOTENCY_KEY_HEADER),
+            Some(key),
+            "idempotency key must be stable across retries of the same firing"
+        );
+
+        // A logically distinct firing (different group) gets a different key.
+        let mut other_input = fixture_alert_input(now);
+        other_input.group_key = "eval:exact:other-group".to_string();
+        let other = AlertEngine::new()
+            .evaluate(&policy, other_input)
+            .unwrap_or_else(|err| panic!("{err}"))
+            .delivery
+            .unwrap_or_else(|| panic!("expected delivery"));
+        assert_ne!(
+            other.headers.get(WEBHOOK_IDEMPOTENCY_KEY_HEADER),
+            Some(key),
+            "distinct firings must produce distinct idempotency keys"
         );
     }
 

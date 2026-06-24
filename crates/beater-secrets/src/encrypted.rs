@@ -345,6 +345,16 @@ impl EncryptedSqliteProviderSecretStore {
     /// active key, call this, and once it returns the old key material can be
     /// dropped. Idempotent — a second call re-wraps nothing.
     ///
+    /// # Concurrency (TOCTOU)
+    ///
+    /// The stale-row scan ([`load_rows_not_under_key`]) and the re-wrap
+    /// transaction acquire the store lock separately, so a row inserted by a
+    /// concurrent writer *between* the scan and the transaction would be missed
+    /// by this pass (it would stay under its original key). Rotation must
+    /// therefore run with **no concurrent writers** to the provider secret store
+    /// — quiesce the API/write path, run rotation, then resume. (The operator
+    /// entrypoint is `beaterctl secret-rotate`, which surfaces this requirement.)
+    ///
     /// Returns the number of rows re-encrypted.
     pub fn rotate_to_active_key(&self) -> anyhow::Result<usize> {
         let active_key_id = self.keyring.active_key_id().to_string();
