@@ -370,6 +370,30 @@ mod tests {
     }
 
     #[test]
+    fn resolved_selector_with_action_error_is_a_failed_step() {
+        // The selector existed (e.g. click intercepted, fill on disabled input)
+        // but the action errored — this must be StepStatus::Error, not Ok-with-
+        // error. Regression guard for the actual fix in this area.
+        let observation = ObservationWire {
+            url: "https://example.com".to_string(),
+            title: None,
+            dom_html: None,
+            accessibility_tree: None,
+            console: Vec::new(),
+        };
+        let outcome = outcome_from_response(
+            true,
+            false,
+            Some("#submit".to_string()),
+            Some("element is not enabled".to_string()),
+            observation,
+        );
+        assert_eq!(outcome.status, StepStatus::Error);
+        assert!(outcome.grounding.selector_existed);
+        assert_eq!(outcome.error.as_deref(), Some("element is not enabled"));
+    }
+
+    #[test]
     fn ready_banner_parses() {
         let line = r#"{"id":0,"kind":"ready","protocol_version":1,"engine":"chromium"}"#;
         let resp: Response = serde_json::from_str(line).unwrap_or_else(|err| panic!("{err}"));

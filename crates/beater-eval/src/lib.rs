@@ -339,13 +339,20 @@ pub fn evaluate_deterministic(
                     .map(|selector| !selector.is_null())
                     .unwrap_or(false);
                 if has_selector {
-                    targeted += 1;
-                    let matched = grounding
+                    // Grounding is only measurable when the producer reported
+                    // whether the element matched. An absent/unknown
+                    // `matched_element` (e.g. browser-use, which does not expose
+                    // grounding; or a Stagehand step with no resolved selector)
+                    // is EXCLUDED from the ratio rather than counted as a miss —
+                    // otherwise a successful ingested run would score 0.
+                    if let Some(matched) = grounding
                         .and_then(|grounding| grounding.get("matched_element"))
                         .and_then(Value::as_bool)
-                        .unwrap_or(false);
-                    if matched {
-                        grounded += 1;
+                    {
+                        targeted += 1;
+                        if matched {
+                            grounded += 1;
+                        }
                     }
                 }
             }
@@ -779,6 +786,30 @@ mod tests {
             .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(result.score, 0.5); // 1 of 2 targeted steps grounded
         assert_eq!(result.label.as_deref(), Some("fail"));
+    }
+
+    #[test]
+    fn browser_grounding_excludes_unknown_matched_element() {
+        // An ingested span can carry a selector but OMIT matched_element when the
+        // SDK doesn't expose grounding (browser-use). Such steps must be excluded
+        // from the ratio, not scored as misses — else a successful run scores 0.
+        let selector_no_grounding = serde_json::json!({
+            "action": { "action": "click" },
+            "outcome": {
+                "status": "ok",
+                "grounding": { "selector": "#pay", "selector_existed": true },
+                "observation": { "url": "https://shop/confirm" },
+            },
+        });
+        // Only this step has a known matched_element (true).
+        let known = browser_step("click", Some("#cart"), true, "ok");
+        let spec = deterministic_spec(EvaluatorKind::BrowserGrounding { min_ratio: 1.0 });
+        let result =
+            evaluate_deterministic(&spec, &browser_case(vec![selector_no_grounding, known]))
+                .unwrap_or_else(|err| panic!("{err}"));
+        // 1 of 1 *known* targeted steps grounded => 1.0, not 0.5.
+        assert_eq!(result.score, 1.0);
+        assert_eq!(result.evidence.get("targeted"), Some(&serde_json::json!(1)));
     }
 
     #[test]

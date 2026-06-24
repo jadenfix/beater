@@ -48,8 +48,11 @@ async def main():
 asyncio.run(main())
 ```
 
-`instrument()` also best-effort registers a `register_new_step_callback` on the
-agent, so steps are still captured if you forget to pass the hooks to `run()`.
+You must pass the hooks to `run()` (via `**inst.run_kwargs()` or the unpacked
+`on_step_start, on_step_end`). If you cannot, call
+`instrument(agent, register_step_callback=True)` to instead wire a
+`register_new_step_callback` on the agent — but do not enable both, or every
+step is recorded twice.
 
 ### Lower-level: build hooks yourself
 

@@ -318,17 +318,7 @@ fn convert_span(
         );
     }
 
-    // The explicit OTLP span status is authoritative; the browser step status
-    // only fills an unset status, and a browser-reported error must never be
-    // downgraded by (nor allowed to mask) the transport status.
-    let status = match convert_status(span.status.as_ref()) {
-        SpanStatus::Error => SpanStatus::Error,
-        SpanStatus::Ok if browser_status_override(&attributes) == Some(SpanStatus::Error) => {
-            SpanStatus::Error
-        }
-        SpanStatus::Ok => SpanStatus::Ok,
-        SpanStatus::Unset => browser_status_override(&attributes).unwrap_or(SpanStatus::Unset),
-    };
+    let status = resolve_span_status(convert_status(span.status.as_ref()), &attributes);
     let kind = infer_agent_span_kind(&attributes, &span.name, span.kind);
     if temporal_span_kind(&attributes, &span.name).is_some() {
         attributes
@@ -441,24 +431,31 @@ fn infer_agent_span_kind(attrs: &CanonicalAttrs, name: &str, otel_kind: i32) -> 
         if let Some(kind) = AgentSpanKind::parse(&value) {
             return kind;
         }
-        return match value.as_str() {
-            "agent" | "agent.run" => AgentSpanKind::AgentRun,
-            "turn" | "agent.turn" => AgentSpanKind::AgentTurn,
-            "plan" | "agent.plan" => AgentSpanKind::AgentPlan,
-            "chain" | "agent.step" => AgentSpanKind::AgentStep,
-            "llm" | "chat" | "generate_content" | "llm.call" => AgentSpanKind::LlmCall,
-            "tool" | "tool.call" => AgentSpanKind::ToolCall,
-            "mcp" | "mcp.request" => AgentSpanKind::McpRequest,
-            "retriever" | "retrieval.query" => AgentSpanKind::RetrievalQuery,
-            "embedding" => AgentSpanKind::RetrievalQuery,
-            "memory_read" | "memory.read" => AgentSpanKind::MemoryRead,
-            "memory_write" | "memory.write" => AgentSpanKind::MemoryWrite,
-            "guardrail" | "guardrail.check" => AgentSpanKind::GuardrailCheck,
-            "human" | "human_review" | "human.review" => AgentSpanKind::HumanReview,
-            "evaluator" | "evaluator.run" => AgentSpanKind::EvaluatorRun,
-            "replay" | "replay.run" => AgentSpanKind::ReplayRun,
-            _ => AgentSpanKind::AgentStep,
+        let mapped = match value.as_str() {
+            "agent" | "agent.run" => Some(AgentSpanKind::AgentRun),
+            "turn" | "agent.turn" => Some(AgentSpanKind::AgentTurn),
+            "plan" | "agent.plan" => Some(AgentSpanKind::AgentPlan),
+            "chain" | "agent.step" => Some(AgentSpanKind::AgentStep),
+            "llm" | "chat" | "generate_content" | "llm.call" => Some(AgentSpanKind::LlmCall),
+            "tool" | "tool.call" => Some(AgentSpanKind::ToolCall),
+            "mcp" | "mcp.request" => Some(AgentSpanKind::McpRequest),
+            "retriever" | "retrieval.query" => Some(AgentSpanKind::RetrievalQuery),
+            "embedding" => Some(AgentSpanKind::RetrievalQuery),
+            "memory_read" | "memory.read" => Some(AgentSpanKind::MemoryRead),
+            "memory_write" | "memory.write" => Some(AgentSpanKind::MemoryWrite),
+            "guardrail" | "guardrail.check" => Some(AgentSpanKind::GuardrailCheck),
+            "human" | "human_review" | "human.review" => Some(AgentSpanKind::HumanReview),
+            "evaluator" | "evaluator.run" => Some(AgentSpanKind::EvaluatorRun),
+            "replay" | "replay.run" => Some(AgentSpanKind::ReplayRun),
+            _ => None,
         };
+        if let Some(kind) = mapped {
+            return kind;
+        }
+        // An unrecognized declared kind falls through to browser markers and the
+        // OTLP span-kind fallback rather than forcing AgentStep, so a
+        // `browser.action` span with a non-canonical declared kind still
+        // classifies as a tool call.
     }
     // No explicit kind: browser-step spans from external SDKs carry `browser.*`
     // markers but a non-canonical OTLP name, so classify them from the markers.
@@ -509,6 +506,21 @@ fn browser_status_override(attrs: &CanonicalAttrs) -> Option<SpanStatus> {
         Some(SpanStatus::Ok)
     } else {
         None
+    }
+}
+
+/// Combine the OTLP span status with any `browser.step_status`. The explicit
+/// OTLP status is authoritative; the browser status only fills an unset OTLP
+/// status, and a browser-reported error must never be downgraded by (nor allowed
+/// to mask) the transport status.
+fn resolve_span_status(otel_status: SpanStatus, attrs: &CanonicalAttrs) -> SpanStatus {
+    match otel_status {
+        SpanStatus::Error => SpanStatus::Error,
+        SpanStatus::Ok if browser_status_override(attrs) == Some(SpanStatus::Error) => {
+            SpanStatus::Error
+        }
+        SpanStatus::Ok => SpanStatus::Ok,
+        SpanStatus::Unset => browser_status_override(attrs).unwrap_or(SpanStatus::Unset),
     }
 }
 
@@ -780,6 +792,64 @@ mod tests {
                 "normalizer did not round-trip canonical span kind {wire:?}"
             );
         }
+    }
+
+    #[test]
+    fn browser_kind_and_status_precedence() {
+        use beater_schema::{AgentSpanKind, SpanStatus};
+        let internal = span::SpanKind::Internal as i32;
+        let attr = |pairs: &[(&str, &str)]| {
+            let mut attrs = CanonicalAttrs::new();
+            for (k, v) in pairs {
+                attrs.insert(k.to_string(), Value::String(v.to_string()));
+            }
+            attrs
+        };
+
+        // Kind: an explicit `beater.span.kind` wins over the `browser.action`
+        // marker (a browser decision span declares llm.call AND browser.action).
+        let decision = attr(&[
+            ("browser.action", "click"),
+            ("beater.span.kind", "llm.call"),
+        ]);
+        assert_eq!(
+            infer_agent_span_kind(&decision, "browser.act.decision", internal),
+            AgentSpanKind::LlmCall
+        );
+        // Kind: an unrecognized declared kind falls through to the browser marker
+        // (the safety net the explicit-first reorder must preserve).
+        let weird = attr(&[
+            ("browser.action", "click"),
+            ("beater.span.kind", "navigate"),
+        ]);
+        assert_eq!(
+            infer_agent_span_kind(&weird, "navigate", internal),
+            AgentSpanKind::ToolCall
+        );
+        // Kind: `browser.action` alone -> ToolCall.
+        let bare = attr(&[("browser.action", "click")]);
+        assert_eq!(
+            infer_agent_span_kind(&bare, "click", internal),
+            AgentSpanKind::ToolCall
+        );
+
+        // Status: a real OTLP error is never masked by browser.step_status=ok.
+        let ok_attr = attr(&[("browser.step_status", "ok")]);
+        assert_eq!(
+            resolve_span_status(SpanStatus::Error, &ok_attr),
+            SpanStatus::Error
+        );
+        // Status: the browser status fills an unset OTLP status.
+        assert_eq!(
+            resolve_span_status(SpanStatus::Unset, &ok_attr),
+            SpanStatus::Ok
+        );
+        // Status: a browser error surfaces even when OTLP says ok.
+        let err_attr = attr(&[("browser.step_status", "error")]);
+        assert_eq!(
+            resolve_span_status(SpanStatus::Ok, &err_attr),
+            SpanStatus::Error
+        );
     }
 
     #[test]
