@@ -500,35 +500,46 @@ fn spawn_trace_ingested_worker(
     });
 }
 
-/// A computed snapshot of queue health derived from the GLOBAL (unfiltered) bus
-/// dead-letter queue plus the live eval-lane depth, expressed in metric-ready
-/// terms. Kept pure so it is unit-testable without a live bus.
+/// Seconds between `now` and the oldest `failed_at` of the dead letters whose
+/// message `kind` matches `lane` (clamped at 0; 0.0 when none match). Used for
+/// the per-lane `*_oldest_age_seconds` gauges.
 ///
-/// IMPORTANT: every `*_age`/`*_lag` field is DLQ-DERIVED (computed from the
-/// oldest dead-lettered message), NOT a live-backlog peek. The durable bus
-/// exposes only depths and the DLQ — there is no API to read the enqueue time of
-/// the oldest non-failed pending message — so a growing backlog of healthy
-/// (non-failed) messages reports age/lag = 0. The Prometheus HELP text for these
-/// gauges says so explicitly; see `metrics.rs`. Fixing this for real requires a
-/// `DurableBus::oldest_pending_age(kind)` peek, which lives outside this binary's
-/// owned crate.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct QueueStatsSample {
-    /// R13.4 — eval pipeline queue depth (the `trace.ingested` lane feeds the
-    /// search/eval downstream processors). This is the LIVE depth (count of
-    /// pending messages), independent of the DLQ.
-    eval_queue_depth: usize,
-    /// R13.4 — DLQ-derived age in seconds of the oldest dead-lettered eval-lane
-    /// message (0 when the eval-lane DLQ is empty). Not a live-backlog age.
-    eval_queue_oldest_age_seconds: f64,
-    /// R13.6 — dead-letter queue count across ALL tenants (whole deployment).
-    dlq_count: usize,
-    /// R13.6 — age in seconds of the oldest dead-lettered message across all
-    /// tenants (by `failed_at`).
-    dlq_oldest_age_seconds: f64,
-    /// R13.8 — DLQ-derived per-lane (`trace.ingested`) queue lag in seconds
-    /// (oldest dead-lettered enqueue age for that lane). Not a live-backlog lag.
-    queue_lag_seconds: f64,
+/// ponytail: O(n) scan over the whole DLQ per lane per tick. The DLQ is small
+/// and the tick is 5s, so a few linear passes are fine; if the DLQ grows large,
+/// group by `kind` once per tick instead.
+fn lane_oldest_failure_seconds(
+    dead_letters: &[DeadLetter],
+    lane_kind: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> f64 {
+    oldest_age_seconds(
+        dead_letters
+            .iter()
+            .filter(|dl| dl.message.kind == lane_kind)
+            .map(|dl| dl.failed_at),
+        now,
+    )
+}
+
+/// Seconds between `now` and the oldest `enqueued_at` of the dead letters whose
+/// message `kind` matches `lane` (clamped at 0; 0.0 when none match). This is the
+/// DLQ-DERIVED queue lag for a lane — NOT a live-backlog peek. The durable bus
+/// exposes only depths and the DLQ (no API for the enqueue time of the oldest
+/// non-failed pending message), so a growing backlog of healthy messages reports
+/// lag = 0; the Prometheus HELP text says so. A real fix needs a
+/// `DurableBus::oldest_pending_age(kind)` peek outside this binary's owned crate.
+fn lane_oldest_enqueue_seconds(
+    dead_letters: &[DeadLetter],
+    lane_kind: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> f64 {
+    oldest_age_seconds(
+        dead_letters
+            .iter()
+            .filter(|dl| dl.message.kind == lane_kind)
+            .map(|dl| dl.message.enqueued_at),
+        now,
+    )
 }
 
 /// Seconds between `now` and the minimum of `timestamps` (clamped at 0), or 0.0
@@ -542,41 +553,6 @@ where
         .min()
         .map(|ts| (now - ts).num_milliseconds().max(0) as f64 / 1000.0)
         .unwrap_or(0.0)
-}
-
-/// Pure derivation of [`QueueStatsSample`] from the GLOBAL dead-letter queue and
-/// the live eval-lane depth at a reference time `now`. Separated from I/O so it
-/// can be tested deterministically.
-///
-/// `dead_letters` MUST be the unfiltered, deployment-wide DLQ (every tenant) so
-/// the depth/age gauges reflect the whole deployment (the bug this replaces only
-/// ever sampled the default tenant's subset). Per-lane figures filter by the
-/// dead-lettered message `kind`.
-fn compute_queue_stats(
-    dead_letters: &[DeadLetter],
-    eval_queue_depth: usize,
-    now: chrono::DateTime<chrono::Utc>,
-) -> QueueStatsSample {
-    // Whole-deployment DLQ count + oldest-failure age (all lanes, all tenants).
-    let dlq_count = dead_letters.len();
-    let dlq_oldest_age_seconds =
-        oldest_age_seconds(dead_letters.iter().map(|dl| dl.failed_at), now);
-
-    // Per-lane (`trace.ingested`) figures, attributed by message kind. The lane
-    // label `trace.ingested` corresponds to messages of kind TRACE_INGESTED_KIND.
-    let eval_lane_enqueued = dead_letters
-        .iter()
-        .filter(|dl| dl.message.kind == TRACE_INGESTED_KIND)
-        .map(|dl| dl.message.enqueued_at);
-    let queue_lag_seconds = oldest_age_seconds(eval_lane_enqueued, now);
-
-    QueueStatsSample {
-        eval_queue_depth,
-        eval_queue_oldest_age_seconds: queue_lag_seconds,
-        dlq_count,
-        dlq_oldest_age_seconds,
-        queue_lag_seconds,
-    }
 }
 
 /// R13.4 / R13.6 / R13.8 — periodically sample GLOBAL queue health (across all
@@ -624,30 +600,24 @@ fn spawn_queue_stats_sampler(
                 .filter(|dl| dl.message.kind == TRACE_WRITE_BATCH_KIND)
                 .count();
             let now = chrono::Utc::now();
-            let trace_write_oldest_age = oldest_age_seconds(
-                dead_letters
-                    .iter()
-                    .filter(|dl| dl.message.kind == TRACE_WRITE_BATCH_KIND)
-                    .map(|dl| dl.failed_at),
-                now,
-            );
-            let trace_ingested_oldest_age = oldest_age_seconds(
-                dead_letters
-                    .iter()
-                    .filter(|dl| dl.message.kind == TRACE_INGESTED_KIND)
-                    .map(|dl| dl.failed_at),
-                now,
-            );
+            // DLQ-derived eval-lane lag (oldest ingested enqueue age). The same
+            // value feeds the R13.4 eval-queue age gauge and the R13.8 lane lag.
+            let eval_lane_lag = lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now);
 
-            let sample = compute_queue_stats(&dead_letters, eval_queue_depth, now);
-            metrics.set_eval_queue(sample.eval_queue_depth, sample.eval_queue_oldest_age_seconds);
+            metrics.set_eval_queue(eval_queue_depth, eval_lane_lag);
             // Sampler owns BOTH the per-lane DLQ depth (global) and the per-lane
             // oldest-age gauge. Workers only ever set depth.
             metrics.set_dlq_depth("trace.ingested", trace_ingested_dlq);
             metrics.set_dlq_depth("trace.write", trace_write_dlq);
-            metrics.set_dlq_oldest_age("trace.ingested", trace_ingested_oldest_age);
-            metrics.set_dlq_oldest_age("trace.write", trace_write_oldest_age);
-            metrics.set_queue_lag("trace.ingested", &tenant_label, sample.queue_lag_seconds);
+            metrics.set_dlq_oldest_age(
+                "trace.ingested",
+                lane_oldest_failure_seconds(&dead_letters, TRACE_INGESTED_KIND, now),
+            );
+            metrics.set_dlq_oldest_age(
+                "trace.write",
+                lane_oldest_failure_seconds(&dead_letters, TRACE_WRITE_BATCH_KIND, now),
+            );
+            metrics.set_queue_lag("trace.ingested", &tenant_label, eval_lane_lag);
         }
     });
 }
@@ -1004,50 +974,62 @@ mod queue_stats_tests {
     }
 
     #[test]
-    fn compute_queue_stats_uses_oldest_timestamps() {
+    fn lane_helpers_use_oldest_timestamps() {
         let now = Utc::now();
         let dead_letters = vec![dead_letter(30, 20, now), dead_letter(90, 60, now)];
-        let sample = compute_queue_stats(&dead_letters, 5, now);
-        assert_eq!(sample.eval_queue_depth, 5);
-        assert_eq!(sample.dlq_count, 2);
         // Oldest failed_at is 60s ago; oldest enqueued is 90s ago.
-        assert!((sample.dlq_oldest_age_seconds - 60.0).abs() < 1.5);
-        assert!((sample.queue_lag_seconds - 90.0).abs() < 1.5);
+        assert!(
+            (lane_oldest_failure_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 60.0).abs()
+                < 1.5
+        );
+        assert!(
+            (lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 90.0).abs()
+                < 1.5
+        );
     }
 
     #[test]
-    fn compute_queue_stats_empty_dlq_is_zero_age() {
+    fn lane_helpers_empty_dlq_is_zero_age() {
         let now = Utc::now();
-        let sample = compute_queue_stats(&[], 3, now);
-        assert_eq!(sample.eval_queue_depth, 3);
-        assert_eq!(sample.dlq_count, 0);
-        assert_eq!(sample.dlq_oldest_age_seconds, 0.0);
-        assert_eq!(sample.queue_lag_seconds, 0.0);
+        assert_eq!(
+            lane_oldest_failure_seconds(&[], TRACE_INGESTED_KIND, now),
+            0.0
+        );
+        assert_eq!(
+            lane_oldest_enqueue_seconds(&[], TRACE_INGESTED_KIND, now),
+            0.0
+        );
     }
 
-    /// R13.6 regression for the must-fix: the DLQ count/age must reflect the
-    /// WHOLE deployment (every tenant), not just the default tenant's subset.
+    /// R13.6 regression for the must-fix: the per-lane gauges scan the WHOLE
+    /// deployment DLQ (every tenant), not just the default tenant's subset. The
+    /// helper has no tenant filter, so dead letters from any tenant are visible.
     #[test]
-    fn compute_queue_stats_counts_all_tenants_globally() {
+    fn lane_helpers_span_all_tenants_globally() {
         let now = Utc::now();
         // Dead letters from three different tenants. The old code sampled only
-        // one tenant via queue_status's tenant filter and would have counted 1.
+        // one tenant via queue_status's tenant filter and would have seen 5s.
         let dead_letters = vec![
             dead_letter_for("tenant-a", TRACE_INGESTED_KIND, 10, 5, now),
             dead_letter_for("tenant-b", TRACE_INGESTED_KIND, 40, 30, now),
             dead_letter_for("tenant-c", TRACE_INGESTED_KIND, 70, 50, now),
         ];
-        let sample = compute_queue_stats(&dead_letters, 0, now);
-        assert_eq!(sample.dlq_count, 3, "all tenants must be visible globally");
         // Oldest failure across tenants is 50s ago; oldest enqueue is 70s ago.
-        assert!((sample.dlq_oldest_age_seconds - 50.0).abs() < 1.5);
-        assert!((sample.queue_lag_seconds - 70.0).abs() < 1.5);
+        assert!(
+            (lane_oldest_failure_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 50.0).abs()
+                < 1.5,
+            "all tenants must be visible globally"
+        );
+        assert!(
+            (lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 70.0).abs()
+                < 1.5
+        );
     }
 
     /// R13.8: per-lane queue lag is attributed by message kind — write-batch
     /// dead letters must not bleed into the trace.ingested lane lag.
     #[test]
-    fn compute_queue_stats_lag_is_per_lane_by_kind() {
+    fn lane_lag_is_per_lane_by_kind() {
         let now = Utc::now();
         let dead_letters = vec![
             // An old write-batch failure that should NOT affect ingested lag.
@@ -1055,12 +1037,15 @@ mod queue_stats_tests {
             // A newer ingested failure that DOES define the ingested lane lag.
             dead_letter_for("demo", TRACE_INGESTED_KIND, 40, 30, now),
         ];
-        let sample = compute_queue_stats(&dead_letters, 0, now);
-        // Global DLQ count spans both lanes.
-        assert_eq!(sample.dlq_count, 2);
         // Lane lag is from the ingested message (40s), not the write-batch (300s).
-        assert!((sample.queue_lag_seconds - 40.0).abs() < 1.5);
-        // Global oldest failure age still spans all lanes (290s).
-        assert!((sample.dlq_oldest_age_seconds - 290.0).abs() < 1.5);
+        assert!(
+            (lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 40.0).abs()
+                < 1.5
+        );
+        // The write lane still sees its own failure age (290s).
+        assert!(
+            (lane_oldest_failure_seconds(&dead_letters, TRACE_WRITE_BATCH_KIND, now) - 290.0).abs()
+                < 1.5
+        );
     }
 }
