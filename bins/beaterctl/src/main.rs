@@ -2141,9 +2141,6 @@ struct ResolvedOperation {
     path_template: String,
 }
 
-/// The HTTP methods utoipa/OpenAPI can attach to a path item.
-const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "options", "head", "patch"];
-
 /// Find the operation with the given `operationId` in the OpenAPI document.
 ///
 /// `spec` is the OpenAPI document serialized to JSON (e.g. from
@@ -2153,27 +2150,16 @@ fn resolve_operation(
     spec: &serde_json::Value,
     operation_id: &str,
 ) -> anyhow::Result<ResolvedOperation> {
-    let paths = spec
-        .get("paths")
-        .and_then(serde_json::Value::as_object)
-        .context("OpenAPI document has no `paths` object")?;
-    for (path_template, item) in paths {
-        let Some(item) = item.as_object() else {
-            continue;
-        };
-        for method in HTTP_METHODS {
-            let Some(op) = item.get(method) else {
-                continue;
-            };
-            if op.get("operationId").and_then(serde_json::Value::as_str) == Some(operation_id) {
-                return Ok(ResolvedOperation {
-                    method: method.to_ascii_uppercase(),
-                    path_template: path_template.clone(),
-                });
-            }
-        }
-    }
-    anyhow::bail!("no operation with operationId `{operation_id}` found in the OpenAPI spec")
+    beater_api::openapi::operations(spec)
+        .into_iter()
+        .find(|op| op.operation_id == operation_id)
+        .map(|op| ResolvedOperation {
+            method: op.method.to_ascii_uppercase(),
+            path_template: op.path.to_string(),
+        })
+        .with_context(|| {
+            format!("no operation with operationId `{operation_id}` found in the OpenAPI spec")
+        })
 }
 
 /// Parse `key=value` params into an ordered list of pairs.

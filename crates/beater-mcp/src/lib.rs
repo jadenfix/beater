@@ -99,49 +99,35 @@ fn build_tools() -> Vec<ToolSpec> {
 
     let mut tools = Vec::new();
 
-    let Some(paths) = doc.get("paths").and_then(Value::as_object) else {
-        return tools;
-    };
-
-    for (path, item) in paths {
+    for op in beater_api::openapi::operations(&doc) {
         // Only expose versioned API operations as tools.
-        if !path.starts_with("/v1") {
+        if !op.path.starts_with("/v1") {
             continue;
         }
-        let Some(item) = item.as_object() else {
-            continue;
-        };
-        for method in ["get", "post", "put", "delete", "patch"] {
-            let Some(op) = item.get(method).and_then(Value::as_object) else {
-                continue;
-            };
-            let Some(operation_id) = op.get("operationId").and_then(Value::as_str) else {
-                continue;
-            };
+        let operation = op.operation;
 
-            let description = op
-                .get("summary")
-                .and_then(Value::as_str)
-                .or_else(|| op.get("description").and_then(Value::as_str))
-                .unwrap_or(operation_id)
-                .to_string();
+        let description = operation
+            .get("summary")
+            .and_then(Value::as_str)
+            .or_else(|| operation.get("description").and_then(Value::as_str))
+            .unwrap_or(op.operation_id)
+            .to_string();
 
-            let (input_schema, path_params, query_params, has_body) =
-                build_input_schema(op, component_schemas.as_ref());
-            let output_schema = build_output_schema(op, component_schemas.as_ref());
+        let (input_schema, path_params, query_params, has_body) =
+            build_input_schema(operation, component_schemas.as_ref());
+        let output_schema = build_output_schema(operation, component_schemas.as_ref());
 
-            tools.push(ToolSpec {
-                name: operation_id.to_string(),
-                method: method.to_ascii_uppercase(),
-                path_template: path.clone(),
-                input_schema,
-                output_schema,
-                description,
-                path_params,
-                query_params,
-                has_body,
-            });
-        }
+        tools.push(ToolSpec {
+            name: op.operation_id.to_string(),
+            method: op.method.to_ascii_uppercase(),
+            path_template: op.path.to_string(),
+            input_schema,
+            output_schema,
+            description,
+            path_params,
+            query_params,
+            has_body,
+        });
     }
 
     // Deterministic ordering keeps tools/list stable across runs.

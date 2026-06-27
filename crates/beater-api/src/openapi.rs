@@ -6,6 +6,7 @@
 //! is derived from the real request/response types (no hand-maintained mirrors).
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use serde_json::{Map, Value};
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -113,9 +114,61 @@ pub fn urlencode(value: &str) -> String {
     utf8_percent_encode(value, UNRESERVED).to_string()
 }
 
+/// HTTP methods that may carry an operation under a path item, per OpenAPI.
+const OPERATION_METHODS: [&str; 7] = ["get", "put", "post", "delete", "options", "head", "patch"];
+
+/// One operation discovered in the OpenAPI document, borrowing from the
+/// serialized spec.
+pub struct SpecOperation<'a> {
+    /// The unique `operationId`.
+    pub operation_id: &'a str,
+    /// Lower-case HTTP method as it appears in the spec (e.g. `"get"`).
+    pub method: &'a str,
+    /// Path template, e.g. `/v1/traces/{tenant_id}`.
+    pub path: &'a str,
+    /// The full Operation Object, for callers that need its parameters,
+    /// request body, responses, etc.
+    pub operation: &'a Map<String, Value>,
+}
+
+/// Enumerate every operation in a serialized OpenAPI document (`doc` is the
+/// spec rendered to JSON, e.g. `serde_json::to_value(openapi())`), walking each
+/// path item × HTTP method that carries an `operationId`.
+///
+/// This is the single source of truth for "how do we find operations in the
+/// spec," shared by the MCP tool catalog and the CLI's operation resolver so
+/// neither hand-rolls the paths × methods walk. Returns an empty list when the
+/// document has no `paths` object.
+pub fn operations(doc: &Value) -> Vec<SpecOperation<'_>> {
+    let mut ops = Vec::new();
+    let Some(paths) = doc.get("paths").and_then(Value::as_object) else {
+        return ops;
+    };
+    for (path, item) in paths {
+        let Some(item) = item.as_object() else {
+            continue;
+        };
+        for method in OPERATION_METHODS {
+            let Some(operation) = item.get(method).and_then(Value::as_object) else {
+                continue;
+            };
+            let Some(operation_id) = operation.get("operationId").and_then(Value::as_str) else {
+                continue;
+            };
+            ops.push(SpecOperation {
+                operation_id,
+                method,
+                path,
+                operation,
+            });
+        }
+    }
+    ops
+}
+
 #[cfg(test)]
 mod tests {
-    use super::urlencode;
+    use super::{operations, urlencode};
 
     #[test]
     fn passes_unreserved_and_escapes_the_rest() {
@@ -124,5 +177,23 @@ mod tests {
         // Reserved/space/unicode are percent-escaped with uppercase hex.
         assert_eq!(urlencode("a b/c?d#e"), "a%20b%2Fc%3Fd%23e");
         assert_eq!(urlencode("café"), "caf%C3%A9");
+    }
+
+    #[test]
+    fn enumerates_operations_from_the_live_spec() -> Result<(), serde_json::Error> {
+        let doc = serde_json::to_value(super::openapi())?;
+        let ops = operations(&doc);
+        // Every advertised operation has an id, a known method, and a path.
+        assert!(!ops.is_empty());
+        assert!(ops
+            .iter()
+            .all(|op| !op.operation_id.is_empty() && op.path.starts_with('/')));
+        // operationIds are unique across the surface.
+        let mut ids: Vec<&str> = ops.iter().map(|op| op.operation_id).collect();
+        ids.sort_unstable();
+        let unique = ids.len();
+        ids.dedup();
+        assert_eq!(ids.len(), unique, "duplicate operationId in spec");
+        Ok(())
     }
 }
