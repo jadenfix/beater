@@ -211,39 +211,60 @@ fn self_host_files_define_gate_two_compose_surface() {
     assert!(gate2_workflow.contains("cargo test -p beaterd --test self_host_contract"));
     assert!(gate2_workflow.contains("cargo test -p beaterd --test gate2_outside_validator"));
 
-    let dashboard_workflow = read(root.join(".github/workflows/dashboard-ui.yml"));
-    assert!(dashboard_workflow.contains("pull_request:"));
-    assert!(dashboard_workflow.contains("push:"));
-    assert!(dashboard_workflow.contains("branches: [main]"));
-    assert!(dashboard_workflow.contains("workflow_dispatch:"));
-    assert!(dashboard_workflow.contains("contents: read"));
-    assert!(dashboard_workflow.contains("CARGO_NET_RETRY: \"10\""));
-    assert!(dashboard_workflow.contains("CARGO_HTTP_MULTIPLEXING: \"false\""));
-    assert!(dashboard_workflow.contains("timeout-minutes: 20"));
-    assert!(dashboard_workflow.contains("live-browser-proof:"));
-    assert!(dashboard_workflow.contains("timeout-minutes: 25"));
-    assert!(dashboard_workflow.contains("needs: verify"));
-    assert!(dashboard_workflow.contains("container:"));
-    assert!(dashboard_workflow.contains("image: mcr.microsoft.com/playwright:v1.57.0-noble"));
-    assert!(dashboard_workflow.contains("actions/setup-node@v4"));
-    assert!(dashboard_workflow.contains("actions/setup-python@v5"));
-    assert!(dashboard_workflow.contains("node-version: 24"));
-    assert!(dashboard_workflow.contains("python-version: \"3.12\""));
-    assert!(dashboard_workflow.contains("build-essential"));
-    assert!(dashboard_workflow.contains("pkg-config"));
-    assert!(dashboard_workflow.contains("https://sh.rustup.rs"));
-    assert!(dashboard_workflow.contains("$HOME/.cargo/bin"));
-    assert!(dashboard_workflow.contains("cache: npm"));
-    assert!(dashboard_workflow.contains("cache-dependency-path: web/dashboard/package-lock.json"));
-    assert!(dashboard_workflow.contains("working-directory: web/dashboard"));
-    assert!(dashboard_workflow.contains("npm ci"));
-    assert!(dashboard_workflow.contains("scripts/check-openapi-drift.sh"));
-    assert!(dashboard_workflow.contains("npm test"));
-    assert!(dashboard_workflow.contains("npm run build"));
-    assert!(dashboard_workflow.contains("scripts/gate2-proof.sh"));
-    assert!(dashboard_workflow.contains("BEATER_GATE2_SKIP_PLAYWRIGHT_INSTALL: \"1\""));
-    assert!(!dashboard_workflow.contains("BEATER_GATE2_SKIP_BROWSER"));
-    assert!(!dashboard_workflow.contains("npx playwright install --with-deps chromium"));
+    // The old dashboard-ui.yml was split into two workflows: frontend.yml
+    // (tests + lint + the production build) and gate2-browser-proof.yml (the
+    // live, Playwright-container browser proof). Assert the surface on each.
+    let frontend_workflow = read(root.join(".github/workflows/frontend.yml"));
+    assert!(frontend_workflow.contains("pull_request:"));
+    assert!(frontend_workflow.contains("push:"));
+    assert!(frontend_workflow.contains("branches: [main]"));
+    assert!(frontend_workflow.contains("workflow_dispatch:"));
+    assert!(frontend_workflow.contains("contents: read"));
+    assert!(frontend_workflow.contains("CARGO_NET_RETRY: \"10\""));
+    assert!(frontend_workflow.contains("CARGO_HTTP_MULTIPLEXING: \"false\""));
+    assert!(frontend_workflow.contains("timeout-minutes: 20"));
+    assert!(frontend_workflow.contains("actions/setup-node@v4"));
+    assert!(frontend_workflow.contains("node-version: 24"));
+    assert!(frontend_workflow.contains("cache: npm"));
+    assert!(frontend_workflow.contains("cache-dependency-path: web/dashboard/package-lock.json"));
+    assert!(frontend_workflow.contains("working-directory: web/dashboard"));
+    assert!(frontend_workflow.contains("npm ci"));
+    assert!(frontend_workflow.contains("npm test"));
+    assert!(frontend_workflow.contains("npm run build"));
+    assert!(frontend_workflow.contains("scripts/check-openapi-drift.sh"));
+    assert!(!frontend_workflow.contains("BEATER_GATE2_SKIP_BROWSER"));
+    assert!(!frontend_workflow.contains("npx playwright install --with-deps chromium"));
+
+    let browser_proof_workflow = read(root.join(".github/workflows/gate2-browser-proof.yml"));
+    assert!(browser_proof_workflow.contains("pull_request:"));
+    assert!(browser_proof_workflow.contains("push:"));
+    assert!(browser_proof_workflow.contains("branches: [main]"));
+    assert!(browser_proof_workflow.contains("workflow_dispatch:"));
+    assert!(browser_proof_workflow.contains("contents: read"));
+    assert!(browser_proof_workflow.contains("CARGO_NET_RETRY: \"10\""));
+    assert!(browser_proof_workflow.contains("CARGO_HTTP_MULTIPLEXING: \"false\""));
+    assert!(browser_proof_workflow.contains("live-browser-proof:"));
+    assert!(browser_proof_workflow.contains("timeout-minutes: 25"));
+    assert!(browser_proof_workflow.contains("container:"));
+    assert!(browser_proof_workflow.contains("image: mcr.microsoft.com/playwright:v1.57.0-noble"));
+    assert!(browser_proof_workflow.contains("actions/setup-node@v4"));
+    assert!(browser_proof_workflow.contains("actions/setup-python@v5"));
+    assert!(browser_proof_workflow.contains("node-version: 24"));
+    assert!(browser_proof_workflow.contains("python-version: \"3.12\""));
+    assert!(browser_proof_workflow.contains("build-essential"));
+    assert!(browser_proof_workflow.contains("pkg-config"));
+    assert!(browser_proof_workflow.contains("https://sh.rustup.rs"));
+    assert!(browser_proof_workflow.contains("$HOME/.cargo/bin"));
+    assert!(browser_proof_workflow.contains("cache: npm"));
+    assert!(
+        browser_proof_workflow.contains("cache-dependency-path: web/dashboard/package-lock.json")
+    );
+    assert!(browser_proof_workflow.contains("working-directory: web/dashboard"));
+    assert!(browser_proof_workflow.contains("npm ci"));
+    assert!(browser_proof_workflow.contains("scripts/gate2-proof.sh"));
+    assert!(browser_proof_workflow.contains("BEATER_GATE2_SKIP_PLAYWRIGHT_INSTALL: \"1\""));
+    assert!(!browser_proof_workflow.contains("BEATER_GATE2_SKIP_BROWSER"));
+    assert!(!browser_proof_workflow.contains("npx playwright install --with-deps chromium"));
 
     let gate1_live_workflow = read(root.join(".github/workflows/gate1-live-smoke.yml"));
     assert!(gate1_live_workflow.contains("pull_request:"));
@@ -451,7 +472,13 @@ fn migrations_cover_trace_store_and_queue_contracts() {
     assert!(clickhouse.contains("CREATE TABLE IF NOT EXISTS beater.raw_envelopes"));
     assert!(clickhouse.contains("CREATE TABLE IF NOT EXISTS beater.spans"));
     assert!(clickhouse.contains("ORDER BY (tenant_id, project_id, environment_id, trace_id"));
-    assert!(clickhouse.contains("CREATE MATERIALIZED VIEW IF NOT EXISTS beater.trace_runs_mv"));
+    // Run summaries are materialized from `span_json` at query time, so the
+    // migration must NOT (re)introduce a precomputed run-summary table or
+    // materialized view whose aggregate columns the write path never populates.
+    // (Match on the DDL keywords, not bare names, so the explanatory SQL comment
+    // that mentions the removed objects does not trip these guards.)
+    assert!(!clickhouse.contains("CREATE TABLE IF NOT EXISTS beater.trace_runs"));
+    assert!(!clickhouse.contains("CREATE MATERIALIZED VIEW"));
 }
 
 #[test]

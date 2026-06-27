@@ -1,3 +1,5 @@
+pub mod reproject;
+
 use anyhow::{anyhow, Context};
 use beater_core::{sha256_json_hash, ProjectId, Sha256Hash, SpanId, TenantId, Timestamp, TraceId};
 use beater_schema::{CanonicalSpan, ReplayCassette, SpanStatus};

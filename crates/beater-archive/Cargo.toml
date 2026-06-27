@@ -10,8 +10,10 @@ utoipa = { workspace = true }
 anyhow.workspace = true
 arrow-array.workspace = true
 arrow-schema.workspace = true
+async-trait.workspace = true
 beater-core = { path = "../beater-core" }
 beater-schema = { path = "../beater-schema" }
+beater-store = { path = "../beater-store" }
 chrono.workspace = true
 datafusion.workspace = true
 parquet.workspace = true
@@ -20,7 +22,7 @@ serde_json.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-beater-store = { path = "../beater-store" }
+beater-store-obj = { path = "../beater-store-obj" }
 beater-store-sql = { path = "../beater-store-sql" }
 tempfile.workspace = true
 tokio.workspace = true

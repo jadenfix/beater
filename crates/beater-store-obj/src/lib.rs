@@ -112,6 +112,16 @@ impl ArtifactStore for FsArtifactStore {
         }
         Ok(bytes)
     }
+
+    async fn delete_bytes(&self, artifact_ref: &ArtifactRef) -> StoreResult<()> {
+        let path = self.path_for_uri(&artifact_ref.uri)?;
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            // Already gone: treat as success so the sweeper is idempotent.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(StoreError::backend(error)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -217,5 +227,46 @@ mod tests {
             matches!(result, Err(StoreError::Integrity(_))),
             "expected traversal tenant id to be rejected, got {result:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn fs_artifact_store_deletes_and_is_idempotent() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let store = FsArtifactStore::new(tempdir.path()).unwrap_or_else(|err| panic!("{err}"));
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+
+        let artifact = store
+            .put_bytes(
+                &tenant,
+                &project,
+                "application/json",
+                RedactionClass::Sensitive,
+                br#"{"ok":true}"#,
+            )
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        // The object is readable before deletion.
+        store
+            .get_bytes(&artifact)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        // Delete removes the backing bytes.
+        store
+            .delete_bytes(&artifact)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        match store.get_bytes(&artifact).await {
+            Err(StoreError::Backend(_)) => {}
+            other => panic!("expected backend error reading a deleted artifact, got {other:?}"),
+        }
+
+        // Deleting again is a no-op success (idempotent sweeper safety).
+        store
+            .delete_bytes(&artifact)
+            .await
+            .unwrap_or_else(|err| panic!("deleting a missing artifact must succeed: {err}"));
     }
 }

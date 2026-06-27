@@ -1,28 +1,34 @@
+mod metrics;
+mod metrics_http;
+
 use anyhow::Context;
 use beater_api::{router, ApiState};
 use beater_archive::ParquetTraceArchive;
 use beater_audit::SqliteAuditStore;
 use beater_auth::SqliteApiKeyStore;
-use beater_bus::{DurableBus, InMemoryBus, SqliteDurableBus};
+use beater_bus::{DeadLetter, DurableBus, InMemoryBus, SqliteDurableBus};
 use beater_calibration::SqliteCalibrationStore;
 use beater_core::{IdempotencyKey, Money, Page, PageRequest, ProjectId, TenantId, TraceId};
 use beater_datasets::SqliteDatasetStore;
 use beater_experiments::SqliteExperimentStore;
 use beater_gates::SqliteGateStore;
 use beater_human::SqliteHumanReviewStore;
-use beater_ingest::{IngestPolicy, IngestService};
+use beater_ingest::{
+    ImportError, IngestPolicy, IngestService, RawTraceIngestRequest, SourceImporter,
+    TRACE_INGESTED_KIND, TRACE_WRITE_BATCH_KIND,
+};
 use beater_judge::{
     HttpRoutingJudgeProvider, JudgeBrokerService, JudgeProvider, KeywordJudgeProvider,
     SqliteJudgeLedger,
 };
 use beater_otlp::{OtlpGrpcTraceService, TraceServiceServer};
 use beater_schema::{
-    CanonicalTraceBatch, RawEnvelope, RunFilter, RunSummary, SpanFilter, SpanSummary, TraceView,
-    WriteAck,
+    ArtifactRef, AuthContext, CanonicalTraceBatch, RawEnvelope, RedactionClass, RunFilter,
+    RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
 };
 use beater_search::{SearchIndex, TantivySearchIndex, TraceIngestedSearchProcessor};
 use beater_secrets::{EncryptedSqliteProviderSecretStore, SecretKeyring};
-use beater_store::{StoreError, StoreResult, TraceStore};
+use beater_store::{ArtifactStore, StoreError, StoreResult, TraceStore};
 use beater_store_obj::FsArtifactStore;
 use beater_store_sql::{
     migrate_local_beaterd_sqlite, SqliteMetadataStore, SqliteQuotaLimiter, SqliteTraceStore,
@@ -107,6 +113,10 @@ struct Args {
     test_trace_store_fail_write_while_path: Option<PathBuf>,
     #[arg(long, hide = true, env = "BEATER_TEST_HTTP_TRACE_STORE_URL")]
     test_http_trace_store_url: Option<String>,
+    /// Opt in to anonymous self-host usage telemetry. Off by default (R12.5):
+    /// a self-hosted beaterd makes no outbound telemetry call unless this is set.
+    #[arg(long, env = beater_core::SelfHostTelemetryConfig::ENV_VAR)]
+    self_host_telemetry: bool,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -129,9 +139,20 @@ enum JudgeProviderArg {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // R13.1 — install the self-observability foundation (metrics registry +
+    // structured log writer) before any work happens, so every subsystem can
+    // emit into the same process-wide registry.
+    let metrics = metrics::init_observability();
     let args = Args::parse();
     if args.test_http_trace_store_url.is_some() && !cfg!(debug_assertions) {
         anyhow::bail!("--test-http-trace-store-url is only supported in debug/test builds");
+    }
+    // R12.5: self-host telemetry is opt-out. With the flag unset, this resolves
+    // to disabled and beaterd makes no outbound telemetry call.
+    let telemetry = beater_core::SelfHostTelemetryConfig::new(args.self_host_telemetry);
+    match telemetry.endpoint() {
+        Some(endpoint) => eprintln!("self-host telemetry enabled (opt-in); reporting to {endpoint}"),
+        None => eprintln!("self-host telemetry disabled (opt-out default); no outbound reporting"),
     }
     let trace_db_path = args.data_dir.join("traces.sqlite");
     let quota_path = args
@@ -172,7 +193,11 @@ async fn main() -> anyhow::Result<()> {
     }
     migrate_local_sqlite_stores(&sqlite_store_paths)?;
 
-    let artifacts = Arc::new(FsArtifactStore::new(args.data_dir.join("artifacts"))?);
+    // R13.9 — wrap the object store so every read/write outcome is counted.
+    let artifacts = Arc::new(MeteredArtifactStore::new(
+        FsArtifactStore::new(args.data_dir.join("artifacts"))?,
+        metrics.clone(),
+    ));
     let sqlite_traces = Arc::new(SqliteTraceStore::open(trace_db_path)?);
     let traces: Arc<dyn TraceStore> = if let Some(url) = args.test_http_trace_store_url.clone() {
         Arc::new(HttpTraceStore::new(url))
@@ -229,11 +254,19 @@ async fn main() -> anyhow::Result<()> {
         trace_write_max_attempts: args.trace_write_max_attempts,
         ..IngestPolicy::default()
     };
+    // Keep a handle to the global, unfiltered bus so the queue-stats sampler can
+    // observe DLQ depth/age across ALL tenants (R13.4/R13.6/R13.8), not just the
+    // default scope.
+    let queue_stats_bus = bus.clone();
+    // R13.7 — wrap the source importer so normalization failures are counted by
+    // source dialect (and the importer's normalizer version).
     let ingest = IngestService::new(artifacts, traces.clone(), bus, ingest_policy)
         .with_quota_limiter(quota_limiter)
-        .with_importer(std::sync::Arc::new(
+        .with_importer(std::sync::Arc::new(MeteredImporter::new(
             beater_temporal::TemporalHistoryImporter,
-        ));
+            "temporal-history-import-v1",
+            metrics.clone(),
+        )));
     if args.trace_write_drain_interval_ms > 0 {
         let trace_write_hooks = TraceWriteWorkerHooks {
             lease_marker_path: args.test_trace_write_lease_marker.clone(),
@@ -243,6 +276,7 @@ async fn main() -> anyhow::Result<()> {
             ingest.clone(),
             Duration::from_millis(args.trace_write_drain_interval_ms),
             trace_write_hooks,
+            metrics.clone(),
         );
     }
     if args.trace_ingested_drain_interval_ms > 0 {
@@ -257,12 +291,26 @@ async fn main() -> anyhow::Result<()> {
             search.clone(),
             Duration::from_millis(args.trace_ingested_drain_interval_ms),
             trace_ingested_hooks,
+            metrics.clone(),
         );
     }
     let otlp_default_scope = beater_core::TenantScope::new(
         beater_core::TenantId::new(args.default_tenant_id.clone())?,
         beater_core::ProjectId::new(args.default_project_id.clone())?,
         beater_core::EnvironmentId::new(args.default_environment_id.clone())?,
+    );
+    // R13.4 / R13.6 / R13.8 — periodically sample queue depths, dead-letter
+    // backlog, and per-lane lag from the GLOBAL (unfiltered) bus and publish them
+    // to the metrics registry. Depth/age therefore reflect the whole deployment
+    // across all tenants, not just the default scope. Per-lane DLQ age is
+    // attributed by message kind; the per-tenant lag label is the deployment's
+    // default tenant (a stable, bounded label) — cardinality stays bounded by the
+    // small lane set and the cardinality-safe label helpers.
+    spawn_queue_stats_sampler(
+        queue_stats_bus,
+        beater_core::TenantId::new(args.default_tenant_id.clone())?,
+        Duration::from_secs(5),
+        metrics.clone(),
     );
     let otlp_grpc = OtlpGrpcTraceService::new(ingest.clone(), otlp_default_scope);
     let mut state =
@@ -281,7 +329,18 @@ async fn main() -> anyhow::Result<()> {
     // Serve the MCP endpoint (`/mcp`) alongside the HTTP API, sharing the same
     // `ApiState` and auth. The MCP tool catalog is derived from the OpenAPI spec
     // and dispatches through the real router, so it cannot drift from the API.
-    let app = router(state.clone()).merge(beater_mcp::router(state));
+    // R13.5 — record per-request query latency via an axum middleware (labelled
+    // by matched route template + method for bounded cardinality). The
+    // Prometheus `/metrics` route (NOT part of the typed `/v1` contract) is
+    // merged in alongside the API and MCP routers.
+    let latency_metrics = metrics.clone();
+    let app = router(state.clone())
+        .merge(beater_mcp::router(state))
+        .layer(axum::middleware::from_fn(move |req, next| {
+            let latency_metrics = latency_metrics.clone();
+            async move { metrics_http::track_query_latency(latency_metrics, req, next).await }
+        }))
+        .merge(metrics_http::router(metrics.clone()));
     let listener = tokio::net::TcpListener::bind(args.addr)
         .await
         .with_context(|| format!("bind {}", args.addr))?;
@@ -322,6 +381,7 @@ fn spawn_trace_write_worker(
     ingest: IngestService,
     interval: Duration,
     hooks: TraceWriteWorkerHooks,
+    metrics: metrics::Metrics,
 ) {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -341,6 +401,20 @@ fn spawn_trace_write_worker(
                     continue;
                 }
             };
+            // R13.3 — write success rate: count successful and failed writes.
+            let succeeded = report
+                .written_spans
+                .saturating_add(report.written_raw) as u64;
+            metrics.record_write(metrics::OpResult::Success, succeeded);
+            metrics.record_write(
+                metrics::OpResult::Failure,
+                report.failed_writes as u64,
+            );
+            // R13.6 — dead-letter queue depth for the trace.write lane. Workers
+            // own DEPTH only; the *_oldest_age_seconds gauge is owned solely by
+            // the queue-stats sampler so the two writers never race (see
+            // `spawn_queue_stats_sampler`).
+            metrics.set_dlq_depth("trace.write", report.dead_lettered);
             if report.consumed > 0
                 && (report.failed_writes > 0 || report.failed_downstream_publishes > 0)
             {
@@ -382,6 +456,7 @@ fn spawn_trace_ingested_worker(
     search: Arc<dyn SearchIndex>,
     interval: Duration,
     hooks: TraceIngestedWorkerHooks,
+    metrics: metrics::Metrics,
 ) {
     tokio::spawn(async move {
         let search_processor = TraceIngestedSearchProcessor::new(traces, search);
@@ -390,19 +465,28 @@ fn spawn_trace_ingested_worker(
             ticker.tick().await;
             let search_processor = search_processor.clone();
             let hooks = hooks.clone();
+            let lag_metrics = metrics.clone();
             let report = match ingest
                 .drain_trace_ingested(100, move |trace_ref| {
                     let search_processor = search_processor.clone();
                     let hooks = hooks.clone();
+                    let lag_metrics = lag_metrics.clone();
                     async move {
                         apply_trace_ingested_test_hooks(&hooks).await?;
-                        search_processor
+                        let sw = metrics::Stopwatch::start();
+                        let result = search_processor
                             .process_trace(
                                 trace_ref.tenant_id,
                                 trace_ref.project_id,
                                 trace_ref.trace_id,
                             )
-                            .await
+                            .await;
+                        if result.is_ok() {
+                            // R13.2 — observe ingest-to-queryable lag (the time to
+                            // index a trace so it becomes searchable/queryable).
+                            lag_metrics.observe_ingest_lag(sw.elapsed_seconds());
+                        }
+                        result
                     }
                 })
                 .await
@@ -413,12 +497,138 @@ fn spawn_trace_ingested_worker(
                     continue;
                 }
             };
+            // R13.6 — dead-letter queue depth for the trace.ingested lane.
+            // Workers own DEPTH only; the *_oldest_age_seconds gauge is owned
+            // solely by the queue-stats sampler (see `spawn_queue_stats_sampler`).
+            metrics.set_dlq_depth("trace.ingested", report.dead_lettered);
             if report.consumed > 0 && report.failed_work > 0 {
                 eprintln!(
                     "trace.ingested drain completed with failed work: consumed={} failed={} retried={} dlq={}",
                     report.consumed, report.failed_work, report.retried, report.dead_lettered
                 );
             }
+        }
+    });
+}
+
+/// Seconds between `now` and the oldest `failed_at` of the dead letters whose
+/// message `kind` matches `lane` (clamped at 0; 0.0 when none match). Used for
+/// the per-lane `*_oldest_age_seconds` gauges.
+///
+/// ponytail: O(n) scan over the whole DLQ per lane per tick. The DLQ is small
+/// and the tick is 5s, so a few linear passes are fine; if the DLQ grows large,
+/// group by `kind` once per tick instead.
+fn lane_oldest_failure_seconds(
+    dead_letters: &[DeadLetter],
+    lane_kind: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> f64 {
+    oldest_age_seconds(
+        dead_letters
+            .iter()
+            .filter(|dl| dl.message.kind == lane_kind)
+            .map(|dl| dl.failed_at),
+        now,
+    )
+}
+
+/// Seconds between `now` and the oldest `enqueued_at` of the dead letters whose
+/// message `kind` matches `lane` (clamped at 0; 0.0 when none match). This is the
+/// DLQ-DERIVED queue lag for a lane — NOT a live-backlog peek. The durable bus
+/// exposes only depths and the DLQ (no API for the enqueue time of the oldest
+/// non-failed pending message), so a growing backlog of healthy messages reports
+/// lag = 0; the Prometheus HELP text says so. A real fix needs a
+/// `DurableBus::oldest_pending_age(kind)` peek outside this binary's owned crate.
+fn lane_oldest_enqueue_seconds(
+    dead_letters: &[DeadLetter],
+    lane_kind: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> f64 {
+    oldest_age_seconds(
+        dead_letters
+            .iter()
+            .filter(|dl| dl.message.kind == lane_kind)
+            .map(|dl| dl.message.enqueued_at),
+        now,
+    )
+}
+
+/// Seconds between `now` and the minimum of `timestamps` (clamped at 0), or 0.0
+/// when the iterator is empty.
+fn oldest_age_seconds<I>(timestamps: I, now: chrono::DateTime<chrono::Utc>) -> f64
+where
+    I: IntoIterator<Item = chrono::DateTime<chrono::Utc>>,
+{
+    timestamps
+        .into_iter()
+        .min()
+        .map(|ts| (now - ts).num_milliseconds().max(0) as f64 / 1000.0)
+        .unwrap_or(0.0)
+}
+
+/// R13.4 / R13.6 / R13.8 — periodically sample GLOBAL queue health (across all
+/// tenants) and publish it to the metrics registry. The sampler is the SOLE
+/// writer of the `*_oldest_age_seconds` gauges (drain workers only set DLQ
+/// depth), so the two never race on the age series.
+fn spawn_queue_stats_sampler(
+    bus: Arc<dyn DurableBus>,
+    default_tenant: TenantId,
+    interval: Duration,
+    metrics: metrics::Metrics,
+) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        // The lag gauge is labelled by tenant; we attribute the deployment-wide
+        // DLQ-derived lag to the deployment's default tenant — a stable, bounded
+        // label that keeps cardinality flat.
+        let tenant_label = default_tenant.as_str().to_string();
+        loop {
+            ticker.tick().await;
+            // Unfiltered, deployment-wide DLQ — every tenant, so `beater_dlq_depth`
+            // reflects the whole deployment rather than a single tenant subset.
+            let dead_letters = match bus.dlq().await {
+                Ok(dead_letters) => dead_letters,
+                Err(error) => {
+                    eprintln!("queue stats DLQ sample failed: {error}");
+                    continue;
+                }
+            };
+            // Live eval-lane depth (count of pending, non-failed messages).
+            let eval_queue_depth = match bus.depth_for_kind(TRACE_INGESTED_KIND).await {
+                Ok(depth) => depth,
+                Err(error) => {
+                    eprintln!("queue stats eval-depth sample failed: {error}");
+                    continue;
+                }
+            };
+            // Per-lane DLQ depths across all tenants, attributed by message kind.
+            let trace_ingested_dlq = dead_letters
+                .iter()
+                .filter(|dl| dl.message.kind == TRACE_INGESTED_KIND)
+                .count();
+            let trace_write_dlq = dead_letters
+                .iter()
+                .filter(|dl| dl.message.kind == TRACE_WRITE_BATCH_KIND)
+                .count();
+            let now = chrono::Utc::now();
+            // DLQ-derived eval-lane lag (oldest ingested enqueue age). The same
+            // value feeds the R13.4 eval-queue age gauge and the R13.8 lane lag.
+            let eval_lane_lag = lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now);
+
+            metrics.set_eval_queue(eval_queue_depth, eval_lane_lag);
+            // Sampler owns BOTH the per-lane DLQ depth (global) and the per-lane
+            // oldest-age gauge. Workers only ever set depth.
+            metrics.set_dlq_depth("trace.ingested", trace_ingested_dlq);
+            metrics.set_dlq_depth("trace.write", trace_write_dlq);
+            metrics.set_dlq_oldest_age(
+                "trace.ingested",
+                lane_oldest_failure_seconds(&dead_letters, TRACE_INGESTED_KIND, now),
+            );
+            metrics.set_dlq_oldest_age(
+                "trace.write",
+                lane_oldest_failure_seconds(&dead_letters, TRACE_WRITE_BATCH_KIND, now),
+            );
+            metrics.set_queue_lag("trace.ingested", &tenant_label, eval_lane_lag);
         }
     });
 }
@@ -636,5 +846,223 @@ impl TraceStore for FailSwitchTraceStore {
         page: PageRequest,
     ) -> StoreResult<Page<SpanSummary>> {
         self.inner.query_spans(tenant, filter, page).await
+    }
+}
+
+/// R13.9 — an [`ArtifactStore`] decorator that records read/write outcomes into
+/// the object-store operations counter. Delegates all behaviour to the inner
+/// store; only adds a success/failure observation per call.
+#[derive(Clone)]
+struct MeteredArtifactStore<S> {
+    inner: S,
+    metrics: metrics::Metrics,
+}
+
+impl<S> MeteredArtifactStore<S> {
+    fn new(inner: S, metrics: metrics::Metrics) -> Self {
+        Self { inner, metrics }
+    }
+
+    fn record<T>(
+        &self,
+        op: metrics::ObjectStoreOp,
+        result: &StoreResult<T>,
+    ) {
+        let outcome = if result.is_ok() {
+            metrics::OpResult::Success
+        } else {
+            metrics::OpResult::Failure
+        };
+        self.metrics.record_object_store_op(op, outcome);
+    }
+}
+
+#[async_trait::async_trait]
+impl<S: ArtifactStore> ArtifactStore for MeteredArtifactStore<S> {
+    async fn put_bytes(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        mime_type: &str,
+        redaction_class: RedactionClass,
+        bytes: &[u8],
+    ) -> StoreResult<ArtifactRef> {
+        let result = self
+            .inner
+            .put_bytes(tenant_id, project_id, mime_type, redaction_class, bytes)
+            .await;
+        self.record(metrics::ObjectStoreOp::Write, &result);
+        result
+    }
+
+    async fn get_bytes(&self, artifact_ref: &ArtifactRef) -> StoreResult<Vec<u8>> {
+        let result = self.inner.get_bytes(artifact_ref).await;
+        self.record(metrics::ObjectStoreOp::Read, &result);
+        result
+    }
+
+    async fn delete_bytes(&self, artifact_ref: &ArtifactRef) -> StoreResult<()> {
+        let result = self.inner.delete_bytes(artifact_ref).await;
+        self.record(metrics::ObjectStoreOp::Delete, &result);
+        result
+    }
+}
+
+/// R13.7 — a [`SourceImporter`] decorator that counts normalization failures by
+/// source dialect and normalizer version. Delegates `source()` and `normalize()`
+/// to the inner importer, incrementing the failure counter on `Err`.
+struct MeteredImporter<I> {
+    inner: I,
+    version: &'static str,
+    metrics: metrics::Metrics,
+}
+
+impl<I> MeteredImporter<I> {
+    fn new(inner: I, version: &'static str, metrics: metrics::Metrics) -> Self {
+        Self {
+            inner,
+            version,
+            metrics,
+        }
+    }
+}
+
+impl<I: SourceImporter> SourceImporter for MeteredImporter<I> {
+    fn source(&self) -> &'static str {
+        self.inner.source()
+    }
+
+    fn normalize(
+        &self,
+        scope: &beater_core::TenantScope,
+        raw_bytes: &[u8],
+        auth: Option<AuthContext>,
+    ) -> Result<RawTraceIngestRequest, ImportError> {
+        let result = self.inner.normalize(scope, raw_bytes, auth);
+        if result.is_err() {
+            self.metrics
+                .record_normalizer_failure(self.inner.source(), self.version);
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod queue_stats_tests {
+    use super::*;
+    use beater_bus::BusMessage;
+    use beater_core::{IdempotencyKey, ProjectId, TenantId};
+    use chrono::{Duration as ChronoDuration, Utc};
+
+    fn dead_letter_for(
+        tenant: &str,
+        kind: &str,
+        enqueued_offset_s: i64,
+        failed_offset_s: i64,
+        now: chrono::DateTime<Utc>,
+    ) -> DeadLetter {
+        let mut message = BusMessage::new(
+            TenantId::new(tenant).expect("tenant"),
+            ProjectId::new("demo").expect("project"),
+            IdempotencyKey::new("k").expect("key"),
+            kind,
+            vec![],
+        );
+        message.enqueued_at = now - ChronoDuration::seconds(enqueued_offset_s);
+        DeadLetter {
+            message,
+            reason: "boom".to_string(),
+            failed_at: now - ChronoDuration::seconds(failed_offset_s),
+        }
+    }
+
+    fn dead_letter(
+        enqueued_offset_s: i64,
+        failed_offset_s: i64,
+        now: chrono::DateTime<Utc>,
+    ) -> DeadLetter {
+        dead_letter_for(
+            "demo",
+            TRACE_INGESTED_KIND,
+            enqueued_offset_s,
+            failed_offset_s,
+            now,
+        )
+    }
+
+    #[test]
+    fn lane_helpers_use_oldest_timestamps() {
+        let now = Utc::now();
+        let dead_letters = vec![dead_letter(30, 20, now), dead_letter(90, 60, now)];
+        // Oldest failed_at is 60s ago; oldest enqueued is 90s ago.
+        assert!(
+            (lane_oldest_failure_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 60.0).abs()
+                < 1.5
+        );
+        assert!(
+            (lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 90.0).abs()
+                < 1.5
+        );
+    }
+
+    #[test]
+    fn lane_helpers_empty_dlq_is_zero_age() {
+        let now = Utc::now();
+        assert_eq!(
+            lane_oldest_failure_seconds(&[], TRACE_INGESTED_KIND, now),
+            0.0
+        );
+        assert_eq!(
+            lane_oldest_enqueue_seconds(&[], TRACE_INGESTED_KIND, now),
+            0.0
+        );
+    }
+
+    /// R13.6 regression for the must-fix: the per-lane gauges scan the WHOLE
+    /// deployment DLQ (every tenant), not just the default tenant's subset. The
+    /// helper has no tenant filter, so dead letters from any tenant are visible.
+    #[test]
+    fn lane_helpers_span_all_tenants_globally() {
+        let now = Utc::now();
+        // Dead letters from three different tenants. The old code sampled only
+        // one tenant via queue_status's tenant filter and would have seen 5s.
+        let dead_letters = vec![
+            dead_letter_for("tenant-a", TRACE_INGESTED_KIND, 10, 5, now),
+            dead_letter_for("tenant-b", TRACE_INGESTED_KIND, 40, 30, now),
+            dead_letter_for("tenant-c", TRACE_INGESTED_KIND, 70, 50, now),
+        ];
+        // Oldest failure across tenants is 50s ago; oldest enqueue is 70s ago.
+        assert!(
+            (lane_oldest_failure_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 50.0).abs()
+                < 1.5,
+            "all tenants must be visible globally"
+        );
+        assert!(
+            (lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 70.0).abs()
+                < 1.5
+        );
+    }
+
+    /// R13.8: per-lane queue lag is attributed by message kind — write-batch
+    /// dead letters must not bleed into the trace.ingested lane lag.
+    #[test]
+    fn lane_lag_is_per_lane_by_kind() {
+        let now = Utc::now();
+        let dead_letters = vec![
+            // An old write-batch failure that should NOT affect ingested lag.
+            dead_letter_for("demo", TRACE_WRITE_BATCH_KIND, 300, 290, now),
+            // A newer ingested failure that DOES define the ingested lane lag.
+            dead_letter_for("demo", TRACE_INGESTED_KIND, 40, 30, now),
+        ];
+        // Lane lag is from the ingested message (40s), not the write-batch (300s).
+        assert!(
+            (lane_oldest_enqueue_seconds(&dead_letters, TRACE_INGESTED_KIND, now) - 40.0).abs()
+                < 1.5
+        );
+        // The write lane still sees its own failure age (290s).
+        assert!(
+            (lane_oldest_failure_seconds(&dead_letters, TRACE_WRITE_BATCH_KIND, now) - 290.0).abs()
+                < 1.5
+        );
     }
 }

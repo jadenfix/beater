@@ -40,7 +40,7 @@ Gate 2 completion evidence.
 | R2.1 | Canonical entities exist: Run, Span, Event, Artifact, DatasetVersion, Experiment, EvaluatorVersion, EvalResult, Gate, GateRun, ReviewQueue, ReviewTask, Annotation, CalibrationReport, UsageRecord, AuditEvent. | Schema definitions plus `migrations/sqlite`, `migrations/postgres`, and `migrations/clickhouse` schema contracts; `beaterd` executes the SQLite contract through a checksummed migration ledger before opening local stores; Postgres/ClickHouse runtime backends still required |
 | R2.2 | Every raw event has `schema_version`, source dialect, source schema version/URL, payload hash, and raw artifact ref. | Unit tests and sample stored raw envelopes |
 | R2.3 | Normalized spans store `normalizer_version`, canonical attrs, unmapped attrs, and raw ref. | Golden normalizer tests |
-| R2.4 | Old raw traces can be re-normalized after schema changes. | Migration/replay test that reprojects an old fixture into a new canonical version |
+| R2.4 | Old canonical spans can be migrated to a newer canonical schema version after schema changes. | Migration/replay test (`beater-replay` `reproject`) that reprojects an old canonical fixture into a new canonical version by reclassifying its attribute bag. NOTE: this is a canonical-attribute reclassification of an existing span, not yet a full re-normalization from the preserved raw bytes; raw bytes remain preserved (R2.2) for a future bytes-driven re-normalizer |
 | R2.5 | Standards projections do not claim false losslessness. | Docs and export tests showing raw preservation for round-trip |
 
 ## R3. TraceStore and Storage
@@ -60,7 +60,7 @@ Gate 2 completion evidence.
 
 | ID | Requirement | Evidence required |
 | --- | --- | --- |
-| R4.1 | Backpressure is bounded and observable. | In-memory/SQLite bus capacity tests; buffered ingest API 429 full-stack test; load test still required before GA |
+| R4.1 | Backpressure is bounded and observable. | In-memory/SQLite bus capacity tests; buffered ingest API 429 full-stack test; in-process queue-depth gauge is asserted (`queue_depth_gauge_tracks_buffered_backlog_in_process`), but the sustained-load bound is owned by R13 and a load test is still required before GA |
 | R4.2 | Durable buffer exists. | SQLite durable bus reopen/dedupe tests, `beaterd` SQLite bus default, buffered trace-write queue; NATS JetStream and Vercel Queues adapters still required for scale/hosted GA |
 | R4.3 | DLQ captures invalid or repeatedly failed events. | Bus DLQ/replay tests, ack/inflight retry tests, trace-write and trace-ingested worker invalid payload DLQ tests, DLQ replay API full-stack test, `beaterctl bus-fixture` |
 | R4.4 | At-least-once delivery is reconciled by idempotency keys. | SQLite bus idempotent publish tests, SQLite `TraceStore` duplicate write tests, API duplicate native-ingest full-stack fixture |

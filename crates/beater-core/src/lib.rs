@@ -293,6 +293,57 @@ impl<T> Page<T> {
     }
 }
 
+/// Self-host telemetry posture (R12.5).
+///
+/// Beater is opt-out: a self-hosted `beaterd` reports **no** anonymous usage
+/// telemetry to Beater Cloud unless the operator explicitly opts in. This type
+/// is the single source of truth for the disabled-by-default posture and the
+/// fixed endpoint. Operators opt in via the `--self-host-telemetry` flag (env
+/// `BEATER_SELF_HOST_TELEMETRY`); until then no outbound endpoint is exposed, so
+/// an offline self-host can firewall it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SelfHostTelemetryConfig {
+    enabled: bool,
+}
+
+impl SelfHostTelemetryConfig {
+    /// The env var operators set to opt **in** to anonymous self-host telemetry.
+    pub const ENV_VAR: &'static str = "BEATER_SELF_HOST_TELEMETRY";
+
+    /// The only destination self-host telemetry is ever sent to, and only when
+    /// it is explicitly enabled. Kept here so offline deployments can block it.
+    pub const ENDPOINT: &'static str = "https://telemetry.beater.dev/v1/usage";
+
+    /// Construct an explicit posture. The binary resolves `enabled` from the
+    /// `--self-host-telemetry` flag (which reads `ENV_VAR` via clap), so opt-in
+    /// parsing lives in one place rather than being duplicated here.
+    pub fn new(enabled: bool) -> Self {
+        Self { enabled }
+    }
+
+    /// Whether anonymous self-host telemetry reporting is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// The destination usage telemetry is reported to, or `None` when disabled.
+    /// Self-host installs that never opt in therefore make no outbound call.
+    pub fn endpoint(&self) -> Option<&'static str> {
+        if self.enabled {
+            Some(Self::ENDPOINT)
+        } else {
+            None
+        }
+    }
+}
+
+impl Default for SelfHostTelemetryConfig {
+    /// Opt-out by default: self-host telemetry is disabled.
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,5 +399,19 @@ mod tests {
                 ["currency"],
             "USD"
         );
+    }
+
+    #[test]
+    fn self_host_telemetry_defaults_to_opt_out() {
+        // The whole point of R12.5: self-host telemetry is OFF unless opted in,
+        // so an un-configured self-host has no outbound telemetry target.
+        let default = SelfHostTelemetryConfig::default();
+        assert!(!default.is_enabled());
+        assert_eq!(default.endpoint(), None);
+
+        // Opting in is the only thing that exposes the endpoint.
+        let opted_in = SelfHostTelemetryConfig::new(true);
+        assert!(opted_in.is_enabled());
+        assert_eq!(opted_in.endpoint(), Some(SelfHostTelemetryConfig::ENDPOINT));
     }
 }

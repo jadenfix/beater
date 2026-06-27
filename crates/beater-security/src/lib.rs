@@ -155,6 +155,45 @@ pub fn verify_api_key(
         .map_err(|_| SecurityError::ApiKeyVerificationFailed)
 }
 
+/// Header carrying a stable, per-delivery idempotency key on outbound webhooks.
+///
+/// Beater delivers webhooks with at-least-once semantics: a single logical
+/// delivery may be retried (network failure, 5xx, timeout) and the receiver can
+/// see the same payload more than once. Every retry of the *same* delivery
+/// carries the *same* value in this header so receivers can dedupe, while two
+/// distinct deliveries (even with identical bodies) get distinct keys.
+pub const WEBHOOK_IDEMPOTENCY_KEY_HEADER: &str = "beater-idempotency-key";
+
+/// Compute the per-delivery idempotency key for an outbound webhook.
+///
+/// The key is the HMAC-SHA256 of the delivery identity (`delivery_id`) and the
+/// exact bytes of the body, keyed by the endpoint's signing secret, rendered as
+/// lowercase hex with a `bt_whk_` prefix. Properties relied on by callers:
+///
+/// - **Stable across retries**: identical `(delivery_id, body)` always yields the
+///   same key, so a receiver can dedupe at-least-once retries.
+/// - **Per-delivery**: two deliveries with a different `delivery_id` (or a
+///   different body) produce different keys even when everything else matches.
+/// - **Opaque**: derived from the signing secret, so the value does not leak the
+///   raw body and cannot be forged without the secret.
+pub fn webhook_idempotency_key(
+    signing_secret: &[u8],
+    delivery_id: &str,
+    body: &[u8],
+) -> Result<String, SecurityError> {
+    let mut mac = HmacSha256::new_from_slice(signing_secret)
+        .map_err(|err| SecurityError::Other(anyhow::anyhow!(err.to_string())))?;
+    // Length-prefix the delivery id so it cannot be confused with leading body
+    // bytes (canonical-encoding hygiene for the MAC input).
+    mac.update(&(delivery_id.len() as u64).to_be_bytes());
+    mac.update(delivery_id.as_bytes());
+    mac.update(body);
+    Ok(format!(
+        "bt_whk_{}",
+        beater_core::lower_hex(&mac.finalize().into_bytes())
+    ))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebhookSignature {
     pub timestamp: i64,
@@ -285,6 +324,40 @@ mod tests {
             ),
             Err(SecurityError::MissingScope(scope)) if scope == "pii:unmask"
         ));
+    }
+
+    #[test]
+    fn webhook_idempotency_key_is_stable_per_delivery_and_unique_across_deliveries() {
+        let secret = b"endpoint-signing-secret";
+        let body = br#"{"event":"trace.alert","id":42}"#;
+
+        // Stable across retries: same delivery id + body -> identical key, so a
+        // receiver can dedupe at-least-once retries.
+        let first =
+            webhook_idempotency_key(secret, "delivery-1", body).unwrap_or_else(|err| panic!("{err}"));
+        let retry =
+            webhook_idempotency_key(secret, "delivery-1", body).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(first, retry);
+        assert!(first.starts_with("bt_whk_"));
+        // The opaque key must not leak the raw body bytes.
+        assert!(!first.contains("trace.alert"));
+
+        // A different delivery id yields a different key even with an identical body.
+        let other_delivery =
+            webhook_idempotency_key(secret, "delivery-2", body).unwrap_or_else(|err| panic!("{err}"));
+        assert_ne!(first, other_delivery);
+
+        // A different body for the same delivery id also diverges.
+        let other_body = webhook_idempotency_key(secret, "delivery-1", br#"{"event":"other"}"#)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_ne!(first, other_body);
+
+        // A different signing secret produces a different key (forgery resistance).
+        let other_secret =
+            webhook_idempotency_key(b"different-secret", "delivery-1", body).unwrap_or_else(|err| panic!("{err}"));
+        assert_ne!(first, other_secret);
+
+        assert_eq!(WEBHOOK_IDEMPOTENCY_KEY_HEADER, "beater-idempotency-key");
     }
 
     #[test]

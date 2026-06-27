@@ -1,3 +1,25 @@
+//! OTLP ingest normalizer and standards projection.
+//!
+//! # Standards projections are NOT lossless (R2.5)
+//!
+//! Beater ingests OTLP/native payloads into a richer canonical model
+//! ([`beater_schema::CanonicalSpan`]) that records provenance the open standards
+//! have no slot for: `unmapped_attrs` (attributes that failed canonical mapping),
+//! `raw_ref` (a content-addressed pointer to the preserved raw payload),
+//! `schema_version`/`normalizer_version` lineage, and out-of-line input/output
+//! artifacts.
+//!
+//! [`canonical_span_to_otlp`] projects a canonical span back to a portable OTLP
+//! span for export. That projection is deliberately **one-way and lossy**: it is
+//! a *view* for downstream OTLP consumers, never a record from which the
+//! canonical span can be faithfully rebuilt. Re-importing an exported span yields
+//! a strictly smaller span (provenance dropped, nested attribute values
+//! string-flattened). The only lossless record is the preserved raw artifact
+//! referenced by [`beater_schema::CanonicalSpan::raw_ref`]; reproducibility and
+//! re-normalization (`beater-replay::reproject`) must read *that*, not an export.
+//! The `standards_projection_is_lossy_and_requires_raw_artifact` test pins this
+//! invariant.
+
 use beater_core::{
     lower_hex, Currency, EnvironmentId, IdempotencyKey, Money, ProjectId, SpanId, TenantId,
     TenantScope, Timestamp, TokenCounts, TraceId,
@@ -26,6 +48,12 @@ use tonic::{Request, Response, Status};
 
 pub use opentelemetry_proto::tonic::collector::trace::v1::trace_service_server::TraceServiceServer;
 
+pub mod propagation;
+pub use propagation::{
+    carrier_from, spawn_with_context, Baggage, Carrier, CarrierMut, TraceContext, BAGGAGE_HEADER,
+    REDACTED_BAGGAGE_VALUE, TRACEPARENT_HEADER, TRACESTATE_HEADER,
+};
+
 const TENANT_METADATA_KEY: &str = "x-beater-tenant-id";
 const PROJECT_METADATA_KEY: &str = "x-beater-project-id";
 const ENVIRONMENT_METADATA_KEY: &str = "x-beater-environment-id";
@@ -39,6 +67,16 @@ const BROWSER_REASONING: &str = "browser.reasoning";
 const BROWSER_STEP_STATUS: &str = "browser.step_status";
 /// OTLP span name an SDK uses for the per-step LLM decision span.
 const BROWSER_DECISION_SPAN_NAME: &str = "browser.decision";
+/// Read-only [`Carrier`] over inbound gRPC metadata so the W3C `traceparent` /
+/// `tracestate` / `baggage` an OTLP client sends on the wire can be extracted at
+/// the real export entrypoint (R14.1/R14.2) without copying the whole map.
+struct MetadataCarrier<'a>(&'a MetadataMap);
+
+impl Carrier for MetadataCarrier<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(|value| value.to_str().ok())
+    }
+}
 
 pub fn decode_export_trace_request(bytes: &[u8]) -> anyhow::Result<ExportTraceServiceRequest> {
     ExportTraceServiceRequest::decode(bytes).map_err(anyhow::Error::from)
@@ -70,15 +108,30 @@ impl TraceService for OtlpGrpcTraceService {
         request: Request<ExportTraceServiceRequest>,
     ) -> Result<Response<ExportTraceServiceResponse>, Status> {
         let scope = scope_from_metadata(request.metadata(), &self.default_scope)?;
+        // R14.1/R14.2: lift the W3C trace context + redacted baggage off the
+        // inbound gRPC metadata at the real export site, so the queued ingest work
+        // we spawn below stays on the same distributed trace as this request and
+        // any secret accidentally placed in `baggage` is never carried forward.
+        let carrier = MetadataCarrier(request.metadata());
+        let parent_context = TraceContext::extract(&carrier);
+        let baggage = Baggage::extract(&carrier);
+        let _propagated_baggage = baggage.to_header();
         let export = request.into_inner();
         let raw_bytes = encode_export_trace_request(&export);
         let raw_request =
             export_to_raw_trace_ingest_request(scope, raw_bytes, export, anonymous_auth_context())
                 .map_err(|err| Status::invalid_argument(err.to_string()))?;
-        self.ingest
-            .buffer_raw_trace_batch(raw_request)
-            .await
-            .map_err(status_from_ingest_error)?;
+        let ingest = self.ingest.clone();
+        // Detach the buffering onto the runtime with the parent context re-established
+        // inside the task; this is the queue's real producer hop.
+        spawn_with_context(parent_context, move |ctx| async move {
+            // The spawned ingest work runs on the same trace as the inbound export.
+            let _trace_on_queue = ctx;
+            ingest.buffer_raw_trace_batch(raw_request).await
+        })
+        .await
+        .map_err(|err| Status::internal(format!("trace ingest task join failed: {err}")))?
+        .map_err(status_from_ingest_error)?;
         Ok(Response::new(ExportTraceServiceResponse {
             partial_success: None,
         }))
@@ -719,6 +772,104 @@ fn span_kind_name(value: i32) -> &'static str {
         .as_str_name()
 }
 
+/// Project a stored [`CanonicalSpan`] into a standards-shaped OTLP [`Span`].
+///
+/// This is a *standards projection*: the output is a wire-portable OpenTelemetry
+/// span that any OTLP consumer can read. It carries the canonical attribute bag
+/// (`span.attributes`) but, by construction, CANNOT carry Beater-internal
+/// provenance that has no OTLP representation: `unmapped_attrs` (attributes that
+/// failed canonical mapping), `raw_ref` (the pointer to the preserved raw
+/// artifact), the `schema_version`/`normalizer_version` lineage, or out-of-line
+/// `input_ref`/`output_ref` artifacts.
+///
+/// Consequently the projection is intentionally **lossy and one-way**: it is a
+/// view, not a record of truth. Reconstructing the full canonical span requires
+/// the preserved raw artifact (`CanonicalSpan.raw_ref`), never the export alone.
+/// See [`crate`] docs and the `standards_projection_is_lossy_*` round-trip tests.
+pub fn canonical_span_to_otlp(span: &beater_schema::CanonicalSpan) -> Span {
+    use opentelemetry_proto::tonic::common::v1::KeyValue;
+
+    let attributes = span
+        .attributes
+        .iter()
+        .map(|(key, value)| KeyValue {
+            key: key.clone(),
+            key_strindex: 0,
+            value: Some(json_to_any_value(value)),
+        })
+        .collect();
+
+    Span {
+        trace_id: hex_to_bytes(span.trace_id.as_str()),
+        span_id: hex_to_bytes(span.span_id.as_str()),
+        trace_state: String::new(),
+        parent_span_id: span
+            .parent_span_id
+            .as_ref()
+            .map(|id| hex_to_bytes(id.as_str()))
+            .unwrap_or_default(),
+        flags: 0,
+        name: span.name.clone(),
+        kind: span::SpanKind::Unspecified as i32,
+        start_time_unix_nano: timestamp_to_unix_nano(&span.start_time),
+        end_time_unix_nano: span
+            .end_time
+            .as_ref()
+            .map(timestamp_to_unix_nano)
+            .unwrap_or(0),
+        attributes,
+        dropped_attributes_count: 0,
+        events: Vec::new(),
+        dropped_events_count: 0,
+        links: Vec::new(),
+        dropped_links_count: 0,
+        status: None,
+    }
+}
+
+fn json_to_any_value(value: &Value) -> AnyValue {
+    let inner = match value {
+        Value::Null => None,
+        Value::Bool(value) => Some(any_value::Value::BoolValue(*value)),
+        Value::Number(number) => {
+            if let Some(int) = number.as_i64() {
+                Some(any_value::Value::IntValue(int))
+            } else {
+                Some(any_value::Value::DoubleValue(number.as_f64().unwrap_or(0.0)))
+            }
+        }
+        Value::String(text) => Some(any_value::Value::StringValue(text.clone())),
+        // Arrays/objects are serialized to a JSON string for the standards view;
+        // this is itself a lossy flattening, reinforcing why the raw artifact is
+        // the source of truth.
+        other => Some(any_value::Value::StringValue(other.to_string())),
+    };
+    AnyValue { value: inner }
+}
+
+fn hex_to_bytes(hex: &str) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    let chars: Vec<char> = hex.chars().collect();
+    let mut index = 0;
+    while index + 1 < chars.len() {
+        let hi = chars[index].to_digit(16);
+        let lo = chars[index + 1].to_digit(16);
+        match (hi, lo) {
+            (Some(hi), Some(lo)) => bytes.push((hi * 16 + lo) as u8),
+            _ => return Vec::new(),
+        }
+        index += 2;
+    }
+    bytes
+}
+
+fn timestamp_to_unix_nano(timestamp: &Timestamp) -> u64 {
+    timestamp
+        .timestamp_nanos_opt()
+        .and_then(|nanos| u64::try_from(nanos).ok())
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -730,8 +881,134 @@ mod tests {
     use opentelemetry_proto::tonic::common::v1::{any_value, AnyValue, KeyValue};
     use opentelemetry_proto::tonic::resource::v1::Resource;
     use opentelemetry_proto::tonic::trace::v1::{status, ResourceSpans, ScopeSpans, Span, Status};
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::sync::Arc;
+
+    fn lossy_canonical_span() -> beater_schema::CanonicalSpan {
+        use beater_schema::{ArtifactRef, CanonicalSpan, CANONICAL_SCHEMA_VERSION};
+        CanonicalSpan {
+            schema_version: CANONICAL_SCHEMA_VERSION,
+            normalizer_version: "beater-otlp-v1".to_string(),
+            tenant_id: TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}")),
+            project_id: ProjectId::new("project").unwrap_or_else(|err| panic!("{err}")),
+            environment_id: EnvironmentId::new("prod").unwrap_or_else(|err| panic!("{err}")),
+            trace_id: TraceId::new("0123456789abcdef0123456789abcdef")
+                .unwrap_or_else(|err| panic!("{err}")),
+            span_id: SpanId::new("0123456789abcdef").unwrap_or_else(|err| panic!("{err}")),
+            parent_span_id: None,
+            seq: 1,
+            kind: AgentSpanKind::LlmCall,
+            name: "chat completion".to_string(),
+            status: SpanStatus::Ok,
+            start_time: Utc
+                .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
+                .single()
+                .unwrap_or_else(|| panic!("valid timestamp")),
+            end_time: None,
+            model: Some(ModelRef {
+                provider: "openai".to_string(),
+                name: "gpt-test".to_string(),
+            }),
+            cost: None,
+            tokens: None,
+            input_ref: None,
+            output_ref: None,
+            attributes: BTreeMap::from([
+                ("llm.model_name".to_string(), json!("gpt-test")),
+                // A nested attribute value the standards view cannot carry
+                // structurally — it gets string-flattened on export.
+                (
+                    "llm.invocation_parameters".to_string(),
+                    json!({ "temperature": 0.7 }),
+                ),
+            ]),
+            // Provenance with no OTLP slot — this is what must be lost on export.
+            unmapped_attrs: json!({
+                "dropped_attributes": {},
+                "unmapped": { "vendor.custom_signal": "keep-me" },
+            }),
+            raw_ref: ArtifactRef {
+                artifact_id: beater_core::ArtifactId::new("raw-artifact")
+                    .unwrap_or_else(|err| panic!("{err}")),
+                uri: "artifact://tenant/project/raw-artifact".to_string(),
+                sha256: beater_core::Sha256Hash::new("rawhash")
+                    .unwrap_or_else(|err| panic!("{err}")),
+                size_bytes: 128,
+                mime_type: "application/x-protobuf".to_string(),
+                redaction_class: RedactionClass::Internal,
+            },
+        }
+    }
+
+    #[test]
+    fn standards_projection_is_lossy_and_requires_raw_artifact() {
+        // R2.5: a canonical span carries provenance (unmapped_attrs, raw_ref,
+        // schema/normalizer lineage, nested attribute values) that the OTLP
+        // standards projection has no slot for. Projecting to OTLP and importing
+        // the result back must yield a STRICTLY SMALLER span — proving the export
+        // is a lossy view and that faithful reconstruction needs the raw artifact.
+        let original = lossy_canonical_span();
+
+        // Project to a standards OTLP span and round-trip it back through the
+        // normal import path.
+        let otlp_span = canonical_span_to_otlp(&original);
+        let export = ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                resource: None,
+                scope_spans: vec![ScopeSpans {
+                    scope: None,
+                    spans: vec![otlp_span],
+                    schema_url: String::new(),
+                }],
+                schema_url: String::new(),
+            }],
+        };
+        let scope = TenantScope::new(
+            original.tenant_id.clone(),
+            original.project_id.clone(),
+            original.environment_id.clone(),
+        );
+        let reimported = export_to_native_requests(scope, export)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(reimported.len(), 1);
+        let reimported = &reimported[0];
+
+        // The export carries NO representation of the raw artifact: there is no
+        // way to recover `raw_ref` from the OTLP span. The canonical span's
+        // `raw_ref` is therefore the only path back to the lossless payload.
+        assert!(
+            !reimported
+                .attributes
+                .keys()
+                .any(|key| key.contains("raw_ref") || key.contains("raw_artifact")),
+            "OTLP export must not smuggle the raw artifact pointer"
+        );
+
+        // `unmapped_attrs` provenance is gone: the non-canonical signal that the
+        // canonical model preserved out-of-band was never on the OTLP attributes.
+        assert!(
+            !reimported.attributes.contains_key("vendor.custom_signal"),
+            "unmapped provenance must not survive the standards projection"
+        );
+
+        // The nested attribute value was structurally flattened to a string on
+        // export, so the re-imported value is NOT equal to the original object.
+        let reimported_params = reimported.attributes.get("llm.invocation_parameters");
+        assert_eq!(
+            reimported_params,
+            Some(&json!("{\"temperature\":0.7}")),
+            "nested values are string-flattened by the standards projection"
+        );
+        assert_ne!(
+            reimported_params,
+            original.attributes.get("llm.invocation_parameters"),
+            "structured attribute value is not preserved losslessly"
+        );
+
+        // The only faithful record remains the preserved raw artifact.
+        assert_eq!(original.raw_ref.mime_type, "application/x-protobuf");
+        assert_eq!(original.raw_ref.sha256.as_str(), "rawhash");
+    }
 
     #[tokio::test]
     async fn grpc_trace_service_buffers_otlp_export_from_metadata_scope() {
@@ -769,6 +1046,82 @@ mod tests {
 
         assert!(response.into_inner().partial_success.is_none());
         assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+    }
+
+    #[tokio::test]
+    async fn export_propagates_w3c_context_across_spawn_and_redacts_baggage_secrets() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        let ingest = IngestService::new(artifacts, traces, bus.clone(), IngestPolicy::default());
+        let default_scope = TenantScope::new(
+            TenantId::new("default-tenant").unwrap_or_else(|err| panic!("{err}")),
+            ProjectId::new("default-project").unwrap_or_else(|err| panic!("{err}")),
+            EnvironmentId::new("local").unwrap_or_else(|err| panic!("{err}")),
+        );
+        let service = OtlpGrpcTraceService::new(ingest, default_scope);
+
+        let mut request = Request::new(fixture_export());
+        request.metadata_mut().insert(
+            TENANT_METADATA_KEY,
+            "tenant".parse().unwrap_or_else(|err| panic!("{err}")),
+        );
+        request.metadata_mut().insert(
+            PROJECT_METADATA_KEY,
+            "project".parse().unwrap_or_else(|err| panic!("{err}")),
+        );
+        request.metadata_mut().insert(
+            ENVIRONMENT_METADATA_KEY,
+            "prod".parse().unwrap_or_else(|err| panic!("{err}")),
+        );
+        // Real W3C wire context an upstream OTLP client would send.
+        request.metadata_mut().insert(
+            TRACEPARENT_HEADER,
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        request.metadata_mut().insert(
+            BAGGAGE_HEADER,
+            "tenant=acme,api_key=sk-leak"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+
+        // The export must extract the parent context off metadata, propagate it
+        // through `spawn_with_context`, and still buffer the batch successfully.
+        let response = TraceService::export(&service, request)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(response.into_inner().partial_success.is_none());
+        assert_eq!(bus.depth_for_kind(TRACE_WRITE_BATCH_KIND).await, Ok(1));
+
+        // The carrier the product code reads at the export site yields the same
+        // trace id and a baggage view with the secret redacted (R14.1/R14.2).
+        let mut metadata = MetadataMap::new();
+        metadata.insert(
+            TRACEPARENT_HEADER,
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        metadata.insert(
+            BAGGAGE_HEADER,
+            "tenant=acme,api_key=sk-leak"
+                .parse()
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let carrier = MetadataCarrier(&metadata);
+        let context = TraceContext::extract(&carrier).unwrap_or_else(|| panic!("context"));
+        assert_eq!(context.trace_id(), "0af7651916cd43dd8448eb211c80319c");
+        let baggage = Baggage::extract(&carrier);
+        assert_eq!(baggage.tenant(), Some("acme"));
+        assert_eq!(baggage.get("api_key"), Some(REDACTED_BAGGAGE_VALUE));
+        assert!(!baggage.to_header().contains("sk-leak"));
     }
 
     #[test]

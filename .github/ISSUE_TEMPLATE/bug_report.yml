@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a problem with beaterd, the SDKs, the CLI, or the dashboard.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Beater self-hosts with one `beaterd` binary, so
+        please include enough to reproduce locally (see `docs/local-dev.md`).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I send an OTLP trace with attribute X, the dashboard shows Y instead of Z.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps. Include the trace/span attributes if relevant.
+      placeholder: |
+        1. `docker compose up`
+        2. Run `examples/python/five_line_otel.py`
+        3. Open the dashboard ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - beaterd server
+        - SDK (Rust / Python / TypeScript / other)
+        - MCP tools / CLI
+        - Dashboard (web)
+        - Ingest / OTLP
+        - Storage / migrations
+        - Docs / examples
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `git rev-parse HEAD` or the image tag you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: beaterd stderr, compose logs, or SDK output. Will be rendered as code.
+      render: shell

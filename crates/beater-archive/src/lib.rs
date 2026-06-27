@@ -14,6 +14,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod sweeper;
+pub use sweeper::{OrphanedArtifactSweeper, SweepReport};
+
 const TABLE_NAME: &str = "spans";
 
 #[derive(Clone, Debug)]

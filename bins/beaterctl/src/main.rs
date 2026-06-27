@@ -53,7 +53,7 @@ use beater_schema::{
 };
 use beater_secrets::{
     EncryptedSqliteProviderSecretStore, ProviderSecretStore, PutProviderSecretRequest,
-    SecretKeyring,
+    SecretEncryptionKey, SecretKeyring,
 };
 use beater_security::ApiScope;
 use beater_store::{StoreError, TraceStore};
@@ -254,6 +254,33 @@ enum Command {
         data_dir: PathBuf,
         #[arg(long)]
         api_key_id: String,
+    },
+    /// Re-encrypt every stored provider secret under the keyring's active key
+    /// (R9.3 key rotation). Rows are decrypted under whichever key they were
+    /// written with and re-wrapped under `--active-key-id` in a single
+    /// transaction; the call is idempotent (a second run re-wraps nothing).
+    ///
+    /// SAFETY: rotation scans for stale rows and then re-wraps them under a fresh
+    /// transaction, so it MUST run with no concurrent writers to the provider
+    /// secret store (no API process taking writes) — a secret inserted between
+    /// the scan and the rotation transaction would be missed by this pass. Stop
+    /// writers, run this, then resume. Provide `--retiring-key-base64` /
+    /// `--retiring-key-id` when the active key file is the new key so the old key
+    /// is still available to decrypt rows written under it.
+    SecretRotate {
+        #[arg(long, default_value = ".beater")]
+        data_dir: PathBuf,
+        /// Key id new ciphertext is wrapped under (the active key in the local
+        /// key file at `<data_dir>/provider-secrets.key`).
+        #[arg(long, default_value = "local-v1")]
+        active_key_id: String,
+        /// Base64 of a retiring key that some rows are still encrypted under, so
+        /// they can be decrypted and re-wrapped under the active key.
+        #[arg(long)]
+        retiring_key_base64: Option<String>,
+        /// Key id of the retiring key supplied via `--retiring-key-base64`.
+        #[arg(long)]
+        retiring_key_id: Option<String>,
     },
 }
 
@@ -1757,8 +1784,57 @@ async fn main() -> anyhow::Result<()> {
                 .context("revoke api key")?;
             println!("{}", serde_json::to_string_pretty(&revoked)?);
         }
+        Command::SecretRotate {
+            data_dir,
+            active_key_id,
+            retiring_key_base64,
+            retiring_key_id,
+        } => {
+            // Load the active key (id + material) from the local key file.
+            let active_key = SecretEncryptionKey::from_base64(
+                active_key_id.clone(),
+                &active_key_file_base64(&data_dir)?,
+            )?;
+            // Build a rotation keyring: active key + (optionally) a retiring key
+            // so rows still encrypted under the old key remain decryptable.
+            let mut keys = vec![active_key];
+            match (retiring_key_base64, retiring_key_id) {
+                (Some(encoded), Some(key_id)) => {
+                    keys.push(SecretEncryptionKey::from_base64(key_id, &encoded)?);
+                }
+                (None, None) => {}
+                _ => anyhow::bail!(
+                    "--retiring-key-base64 and --retiring-key-id must be supplied together"
+                ),
+            }
+            let keyring = SecretKeyring::with_keys(active_key_id.clone(), keys)?;
+            let store = EncryptedSqliteProviderSecretStore::open(
+                data_dir.join("provider-secrets.sqlite"),
+                keyring,
+            )?;
+            // NOTE: must run with no concurrent writers (see SecretRotate docs).
+            let rotated = store
+                .rotate_to_active_key()
+                .context("rotate provider secrets to active key")?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "active_key_id": active_key_id,
+                    "rotated_rows": rotated,
+                    "warning": "run with no concurrent writers to the provider secret store"
+                }))?
+            );
+        }
     }
     Ok(())
+}
+
+/// Read the raw base64 of the local provider-secret key file.
+fn active_key_file_base64(data_dir: &Path) -> anyhow::Result<String> {
+    let path = data_dir.join("provider-secrets.key");
+    let encoded = std::fs::read_to_string(&path)
+        .with_context(|| format!("read provider secret key file {}", path.display()))?;
+    Ok(encoded.trim().to_string())
 }
 
 fn local_bus(data_dir: &Path) -> anyhow::Result<Arc<dyn DurableBus>> {

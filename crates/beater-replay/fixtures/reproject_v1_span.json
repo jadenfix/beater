@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "normalizer_version": "beater-otlp-v1",
+  "tenant_id": "tenant",
+  "project_id": "project",
+  "environment_id": "prod",
+  "trace_id": "trace",
+  "span_id": "span-1",
+  "parent_span_id": null,
+  "seq": 1,
+  "kind": "llm.call",
+  "name": "chat completion",
+  "status": "ok",
+  "start_time": "2026-01-01T00:00:00Z",
+  "end_time": "2026-01-01T00:00:01Z",
+  "model": {
+    "provider": "openai",
+    "name": "gpt-test"
+  },
+  "cost": {
+    "amount_micros": 1200,
+    "currency": "USD"
+  },
+  "tokens": {
+    "input": 10,
+    "output": 5,
+    "reasoning": 0,
+    "cache_read": 0
+  },
+  "input_ref": null,
+  "output_ref": null,
+  "attributes": {
+    "llm.model_name": "gpt-test",
+    "llm.provider": "openai",
+    "openinference.span.kind": "LLM",
+    "vendor.custom_signal": "keep-me",
+    "user.session": 42
+  },
+  "unmapped_attrs": {
+    "dropped_attributes": {},
+    "unmapped": {
+      "preexisting.unmapped": "was-here-in-v1"
+    }
+  },
+  "raw_ref": {
+    "artifact_id": "artifact",
+    "uri": "artifact://tenant/project/artifact",
+    "sha256": "hash",
+    "size_bytes": 0,
+    "mime_type": "application/x-protobuf",
+    "redaction_class": "internal"
+  }
+}

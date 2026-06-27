@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use beater_core::{ProjectId, TenantId, Timestamp, TraceId};
 use beater_schema::{CanonicalSpan, SpanStatus, TraceView};
-use beater_security::sign_webhook;
+use beater_security::{sign_webhook, webhook_idempotency_key, WEBHOOK_IDEMPOTENCY_KEY_HEADER};
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -208,10 +208,25 @@ impl AlertEngine {
         let body = alert_payload(policy, &input);
         let body_bytes = serde_json::to_vec(&body).context("serialize alert payload")?;
         let signature = sign_webhook(policy.signing_secret.as_bytes(), &body_bytes, input.now)?;
+        // Stable per-delivery idempotency key (R9.4): the delivery identity is the
+        // logical firing — dedupe key (tenant:project:policy:group) bucketed by the
+        // dedupe window. Retries of the *same* logical delivery (same input, within
+        // the same window) recompute the identical id, so the receiver can dedupe;
+        // a later firing of the same group (next window) gets a distinct id.
+        let delivery_id = delivery_identity(policy, &group_key, input.now);
+        let idempotency_key = webhook_idempotency_key(
+            policy.signing_secret.as_bytes(),
+            &delivery_id,
+            &body_bytes,
+        )?;
         let mut headers = BTreeMap::new();
         headers.insert("content-type".to_string(), "application/json".to_string());
         headers.insert("beater-signature".to_string(), signature.header_value());
         headers.insert("beater-alert-policy".to_string(), policy.policy_id.clone());
+        headers.insert(
+            WEBHOOK_IDEMPOTENCY_KEY_HEADER.to_string(),
+            idempotency_key,
+        );
         let delivery = WebhookDelivery {
             endpoint_url: policy.endpoint_url.clone(),
             headers,
@@ -241,6 +256,15 @@ fn alert_payload(policy: &AlertPolicy, input: &AlertInput) -> serde_json::Value 
         "links": input.links,
         "emitted_at": input.now,
     })
+}
+
+/// Logical delivery identity for the idempotency key. Combines the dedupe key
+/// with a window bucket so that retries of the same firing (same `now` bucket)
+/// are identical while a fresh firing in a later window is distinct.
+fn delivery_identity(policy: &AlertPolicy, dedupe_key: &str, now: Timestamp) -> String {
+    let window = policy.dedupe_window_seconds.max(1);
+    let bucket = now.timestamp().div_euclid(window);
+    format!("{dedupe_key}:{bucket}")
 }
 
 fn dedupe_key(policy: &AlertPolicy, input: &AlertInput) -> String {
@@ -281,6 +305,209 @@ fn trace_latency_ms(spans: &[CanonicalSpan]) -> Option<u64> {
     let end = spans.iter().filter_map(|span| span.end_time).max()?;
     let millis = end.signed_duration_since(start).num_milliseconds();
     Some(millis.max(0) as u64)
+}
+
+/// Outcome of feeding a span into the [`TailBuffer`].
+///
+/// Spans for an incomplete trace are *held* (`Buffered`) and never sampled; the
+/// online sampling decision is deferred until the trace's
+/// [`beater_schema::TraceCompletionState`] flips to a terminal value, at which
+/// point the buffered spans are flushed through [`decide_trace_sampling`] exactly
+/// once (`Sampled`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TailBufferOutcome {
+    /// The span was accumulated; the trace is not yet complete so no sampling
+    /// decision has been made. Carries the running buffered span count.
+    Buffered { buffered_spans: usize },
+    /// The trace reached completion on this span; the accumulated trace was run
+    /// through [`decide_trace_sampling`] and is now evicted from the buffer.
+    Sampled {
+        decision: SamplingDecision,
+        sampled_spans: usize,
+    },
+    /// The current span was buffered, but accepting it pushed the open-trace count
+    /// over the in-memory cap, so the *oldest* still-open trace was force-flushed
+    /// through [`decide_trace_sampling`] and evicted to reclaim memory. Carries the
+    /// running buffered span count for the current trace and the forced decision
+    /// (with span count) for the evicted one.
+    Evicted {
+        buffered_spans: usize,
+        evicted_decision: SamplingDecision,
+        evicted_spans: usize,
+    },
+}
+
+/// Tail-sampling buffer: accumulates the spans of in-flight traces and holds the
+/// online sampling decision until the trace is observed to be complete.
+///
+/// A streaming sampler that decided per span would have to keep or drop a trace
+/// before its error/latency/cost are known. The tail buffer instead retains every
+/// span keyed by `trace_id` and only invokes [`decide_trace_sampling`] once the
+/// caller reports a terminal [`beater_schema::TraceCompletionState`] (e.g.
+/// `RootEnded`, `Complete`, `IdleComplete`, `LateWindowClosed`). That guarantees
+/// the policy observes the *whole* trace — including late-arriving error/slow/
+/// costly spans.
+///
+/// The buffer is purely in-process and ordering-agnostic: spans may be offered in
+/// any order, and completion is driven by the caller's
+/// `beater_ingest::trace_completion_state` evaluation rather than by wall-clock
+/// timers inside the buffer.
+/// ponytail: the open-trace ceiling is `DEFAULT_MAX_OPEN_TRACES` traces held
+/// purely in process memory. A trace whose completion never flips terminal would
+/// otherwise be buffered forever (memory leak); at the cap we force-flush the
+/// oldest open trace instead of growing without bound. The upgrade path is durable
+/// (spill-to-disk / external) buffering, which would raise or remove this ceiling.
+const DEFAULT_MAX_OPEN_TRACES: usize = 100_000;
+
+#[derive(Debug)]
+pub struct TailBuffer {
+    policy: OnlineSamplingPolicy,
+    by_trace: BTreeMap<TraceId, BufferedTrace>,
+    /// In-memory ceiling on concurrently open traces. See `ponytail` note above.
+    max_open_traces: usize,
+    /// Monotonic counter stamped on each newly opened trace so the *oldest* open
+    /// trace can be identified for forced eviction at the cap.
+    next_insert_seq: u64,
+}
+
+impl Default for TailBuffer {
+    fn default() -> Self {
+        Self {
+            policy: OnlineSamplingPolicy::default(),
+            by_trace: BTreeMap::new(),
+            max_open_traces: DEFAULT_MAX_OPEN_TRACES,
+            next_insert_seq: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct BufferedTrace {
+    tenant_id: TenantId,
+    spans: Vec<CanonicalSpan>,
+    /// Order in which this trace was first opened; used to evict the oldest.
+    insert_seq: u64,
+}
+
+/// Terminal completion states that flush the tail buffer. `Open` keeps the trace
+/// buffered; everything else is treated as "the trace is done, decide now".
+fn completion_is_terminal(state: &beater_schema::TraceCompletionState) -> bool {
+    !matches!(state, beater_schema::TraceCompletionState::Open)
+}
+
+impl TailBuffer {
+    pub fn new(policy: OnlineSamplingPolicy) -> Self {
+        Self {
+            policy,
+            by_trace: BTreeMap::new(),
+            max_open_traces: DEFAULT_MAX_OPEN_TRACES,
+            next_insert_seq: 0,
+        }
+    }
+
+    /// Override the in-memory open-trace ceiling (see the `ponytail` note on
+    /// [`DEFAULT_MAX_OPEN_TRACES`]). A cap of zero is clamped to one so at least
+    /// the current trace can be held. Intended for tests and tuned deployments.
+    pub fn with_max_open_traces(mut self, max_open_traces: usize) -> Self {
+        self.max_open_traces = max_open_traces.max(1);
+        self
+    }
+
+    /// Number of traces currently held open (not yet sampled).
+    pub fn open_traces(&self) -> usize {
+        self.by_trace.len()
+    }
+
+    /// Spans currently buffered for `trace_id` (zero once flushed).
+    pub fn buffered_spans(&self, trace_id: &TraceId) -> usize {
+        self.by_trace
+            .get(trace_id)
+            .map(|trace| trace.spans.len())
+            .unwrap_or(0)
+    }
+
+    /// Accumulate `span` and, if `completion` is terminal, flush the buffered
+    /// trace through [`decide_trace_sampling`]. Spans are held until completion,
+    /// so a non-terminal `completion` normally yields [`TailBufferOutcome::Buffered`].
+    ///
+    /// If accepting a *new* trace pushes the open-trace count over the in-memory
+    /// cap (see the `ponytail` note on [`DEFAULT_MAX_OPEN_TRACES`]), the oldest open
+    /// trace is force-flushed and evicted, yielding [`TailBufferOutcome::Evicted`].
+    pub fn offer(
+        &mut self,
+        span: CanonicalSpan,
+        completion: &beater_schema::TraceCompletionState,
+    ) -> TailBufferOutcome {
+        let trace_id = span.trace_id.clone();
+        let next_seq = self.next_insert_seq;
+        let mut opened_new = false;
+        let entry = self.by_trace.entry(trace_id.clone()).or_insert_with(|| {
+            opened_new = true;
+            BufferedTrace {
+                tenant_id: span.tenant_id.clone(),
+                spans: Vec::new(),
+                insert_seq: next_seq,
+            }
+        });
+        if opened_new {
+            self.next_insert_seq += 1;
+        }
+        entry.spans.push(span);
+
+        if completion_is_terminal(completion) {
+            // Terminal: evict and run the whole-trace sampling decision exactly once.
+            return self
+                .flush_trace(&trace_id)
+                .map(|(decision, sampled_spans)| TailBufferOutcome::Sampled {
+                    decision,
+                    sampled_spans,
+                })
+                .unwrap_or_else(|| unreachable!("trace was just inserted"));
+        }
+
+        let buffered_spans = self.buffered_spans(&trace_id);
+
+        // Bounded guard: only a freshly opened trace can grow the open set, so the
+        // cap is only ever breached here. Force-flush the oldest open trace so a
+        // never-completing trace cannot leak memory forever.
+        if opened_new && self.by_trace.len() > self.max_open_traces {
+            if let Some((evicted_decision, evicted_spans)) = self.evict_oldest(&trace_id) {
+                return TailBufferOutcome::Evicted {
+                    buffered_spans,
+                    evicted_decision,
+                    evicted_spans,
+                };
+            }
+        }
+
+        TailBufferOutcome::Buffered { buffered_spans }
+    }
+
+    /// Remove `trace_id` and run the whole-trace sampling decision over its
+    /// buffered spans. Returns `None` if no such trace is buffered.
+    fn flush_trace(&mut self, trace_id: &TraceId) -> Option<(SamplingDecision, usize)> {
+        let buffered = self.by_trace.remove(trace_id)?;
+        let sampled_spans = buffered.spans.len();
+        let trace = TraceView {
+            tenant_id: buffered.tenant_id,
+            trace_id: trace_id.clone(),
+            spans: buffered.spans,
+        };
+        let decision = decide_trace_sampling(&trace, &self.policy);
+        Some((decision, sampled_spans))
+    }
+
+    /// Force-flush the oldest open trace other than `keep` (the just-opened trace),
+    /// reclaiming its memory. Returns the forced decision and its span count.
+    fn evict_oldest(&mut self, keep: &TraceId) -> Option<(SamplingDecision, usize)> {
+        let oldest = self
+            .by_trace
+            .iter()
+            .filter(|(id, _)| *id != keep)
+            .min_by_key(|(_, trace)| trace.insert_seq)
+            .map(|(id, _)| id.clone())?;
+        self.flush_trace(&oldest)
+    }
 }
 
 #[cfg(test)]
@@ -396,6 +623,59 @@ mod tests {
         );
     }
 
+    #[test]
+    fn webhook_delivery_carries_stable_idempotency_key_across_retries() {
+        let now = Utc::now();
+        let policy = AlertPolicy {
+            policy_id: "low-score".to_string(),
+            endpoint_url: "https://example.test/webhook".to_string(),
+            signing_secret: "secret".to_string(),
+            severity: AlertSeverity::Critical,
+            fire_when_score_at_or_below: 0.5,
+            dedupe_window_seconds: 300,
+            maintenance_windows: Vec::new(),
+        };
+
+        // Two independent engines model a redelivery/retry of the same logical
+        // firing (e.g. after a worker crash) where dedupe state is not shared.
+        let first = AlertEngine::new()
+            .evaluate(&policy, fixture_alert_input(now))
+            .unwrap_or_else(|err| panic!("{err}"))
+            .delivery
+            .unwrap_or_else(|| panic!("expected delivery"));
+        let retry = AlertEngine::new()
+            .evaluate(&policy, fixture_alert_input(now))
+            .unwrap_or_else(|err| panic!("{err}"))
+            .delivery
+            .unwrap_or_else(|| panic!("expected delivery"));
+
+        let key = first
+            .headers
+            .get(WEBHOOK_IDEMPOTENCY_KEY_HEADER)
+            .unwrap_or_else(|| panic!("idempotency header must be attached"));
+        assert!(key.starts_with("bt_whk_"), "unexpected key shape: {key}");
+        // Stable across a retry of the same logical delivery.
+        assert_eq!(
+            retry.headers.get(WEBHOOK_IDEMPOTENCY_KEY_HEADER),
+            Some(key),
+            "idempotency key must be stable across retries of the same firing"
+        );
+
+        // A logically distinct firing (different group) gets a different key.
+        let mut other_input = fixture_alert_input(now);
+        other_input.group_key = "eval:exact:other-group".to_string();
+        let other = AlertEngine::new()
+            .evaluate(&policy, other_input)
+            .unwrap_or_else(|err| panic!("{err}"))
+            .delivery
+            .unwrap_or_else(|| panic!("expected delivery"));
+        assert_ne!(
+            other.headers.get(WEBHOOK_IDEMPOTENCY_KEY_HEADER),
+            Some(key),
+            "distinct firings must produce distinct idempotency keys"
+        );
+    }
+
     fn fixture_alert_input(now: Timestamp) -> AlertInput {
         AlertInput {
             tenant_id: TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}")),
@@ -460,5 +740,220 @@ mod tests {
                 },
             }],
         }
+    }
+
+    fn fixture_span(
+        tenant: &TenantId,
+        trace_id: &str,
+        span_id: &str,
+        status: SpanStatus,
+        latency_ms: i64,
+        cost_micros: i64,
+    ) -> CanonicalSpan {
+        let started = Utc::now();
+        CanonicalSpan {
+            schema_version: CANONICAL_SCHEMA_VERSION,
+            normalizer_version: "test".to_string(),
+            tenant_id: tenant.clone(),
+            project_id: ProjectId::new("project").unwrap_or_else(|err| panic!("{err}")),
+            environment_id: beater_core::EnvironmentId::new("prod")
+                .unwrap_or_else(|err| panic!("{err}")),
+            trace_id: TraceId::new(trace_id).unwrap_or_else(|err| panic!("{err}")),
+            span_id: beater_core::SpanId::new(span_id).unwrap_or_else(|err| panic!("{err}")),
+            parent_span_id: None,
+            seq: 1,
+            kind: AgentSpanKind::AgentRun,
+            name: "run".to_string(),
+            status,
+            start_time: started,
+            end_time: Some(started + Duration::milliseconds(latency_ms)),
+            model: None,
+            cost: Some(Money::usd_micros(cost_micros)),
+            tokens: Some(TokenCounts::default()),
+            input_ref: None,
+            output_ref: None,
+            attributes: BTreeMap::new(),
+            unmapped_attrs: serde_json::json!({}),
+            raw_ref: ArtifactRef {
+                artifact_id: beater_core::ArtifactId::new("raw")
+                    .unwrap_or_else(|err| panic!("{err}")),
+                uri: "artifact://tenant/project/raw".to_string(),
+                sha256: beater_core::Sha256Hash::new("ab".repeat(32))
+                    .unwrap_or_else(|err| panic!("{err}")),
+                size_bytes: 2,
+                mime_type: "application/json".to_string(),
+                redaction_class: RedactionClass::Internal,
+            },
+        }
+    }
+
+    #[test]
+    fn tail_buffer_holds_spans_until_completion_then_samples_whole_trace() {
+        use beater_schema::TraceCompletionState;
+
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        // Sample nothing routinely + keep errors: the keep decision can only come
+        // from the *late* error span, proving the whole trace is observed at tail.
+        let policy = OnlineSamplingPolicy {
+            sample_rate_per_mille: 0,
+            keep_errors: true,
+            slow_ms_threshold: None,
+            high_cost_micros_threshold: None,
+        };
+        let mut buffer = TailBuffer::new(policy);
+        let trace_id = TraceId::new("trace").unwrap_or_else(|err| panic!("{err}"));
+
+        // First (healthy) span arrives while the trace is still Open: it must be
+        // held, never sampled.
+        let held = buffer.offer(
+            fixture_span(&tenant, "trace", "span-1", SpanStatus::Ok, 10, 0),
+            &TraceCompletionState::Open,
+        );
+        assert_eq!(held, TailBufferOutcome::Buffered { buffered_spans: 1 });
+        assert_eq!(buffer.open_traces(), 1);
+        assert_eq!(buffer.buffered_spans(&trace_id), 1);
+
+        // A second, still-Open span: still buffered, still no decision.
+        let still_held = buffer.offer(
+            fixture_span(&tenant, "trace", "span-2", SpanStatus::Ok, 10, 0),
+            &TraceCompletionState::Open,
+        );
+        assert_eq!(
+            still_held,
+            TailBufferOutcome::Buffered { buffered_spans: 2 }
+        );
+
+        // The root ends and carries the error: now the trace is complete and the
+        // accumulated three spans are sampled together as ErrorTrace.
+        let outcome = buffer.offer(
+            fixture_span(&tenant, "trace", "root", SpanStatus::Error, 10, 0),
+            &TraceCompletionState::RootEnded,
+        );
+        match outcome {
+            TailBufferOutcome::Sampled {
+                decision,
+                sampled_spans,
+            } => {
+                assert_eq!(sampled_spans, 3);
+                assert!(decision.selected);
+                assert_eq!(decision.reason, SamplingReason::ErrorTrace);
+            }
+            other => panic!("expected Sampled at completion, got {other:?}"),
+        }
+        // Trace evicted after sampling.
+        assert_eq!(buffer.open_traces(), 0);
+        assert_eq!(buffer.buffered_spans(&trace_id), 0);
+    }
+
+    #[test]
+    fn tail_buffer_keeps_traces_independent_and_drops_uninteresting_completed_trace() {
+        use beater_schema::TraceCompletionState;
+
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let policy = OnlineSamplingPolicy {
+            sample_rate_per_mille: 0,
+            keep_errors: true,
+            slow_ms_threshold: None,
+            high_cost_micros_threshold: None,
+        };
+        let mut buffer = TailBuffer::new(policy);
+
+        // Two interleaved traces buffer independently.
+        buffer.offer(
+            fixture_span(&tenant, "trace-a", "a1", SpanStatus::Ok, 1, 0),
+            &TraceCompletionState::Open,
+        );
+        buffer.offer(
+            fixture_span(&tenant, "trace-b", "b1", SpanStatus::Ok, 1, 0),
+            &TraceCompletionState::Open,
+        );
+        assert_eq!(buffer.open_traces(), 2);
+
+        // trace-a completes with no error/slow/cost signal and routine rate 0:
+        // it is sampled (decided) but RoutineDropped.
+        let outcome = buffer.offer(
+            fixture_span(&tenant, "trace-a", "a2", SpanStatus::Ok, 1, 0),
+            &TraceCompletionState::LateWindowClosed,
+        );
+        match outcome {
+            TailBufferOutcome::Sampled { decision, .. } => {
+                assert!(!decision.selected);
+                assert_eq!(decision.reason, SamplingReason::RoutineDropped);
+            }
+            other => panic!("expected Sampled, got {other:?}"),
+        }
+        // trace-b is untouched and still open.
+        assert_eq!(buffer.open_traces(), 1);
+        assert_eq!(
+            buffer.buffered_spans(&TraceId::new("trace-b").unwrap_or_else(|err| panic!("{err}"))),
+            1
+        );
+    }
+
+    /// ponytail guard: a trace whose completion never flips terminal would buffer
+    /// forever. At the in-memory cap, opening one more trace force-flushes the
+    /// *oldest* open trace and evicts it, so the open set stays bounded.
+    #[test]
+    fn tail_buffer_evicts_oldest_open_trace_at_the_cap() {
+        use beater_schema::TraceCompletionState;
+
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let policy = OnlineSamplingPolicy {
+            sample_rate_per_mille: 0,
+            keep_errors: true,
+            slow_ms_threshold: None,
+            high_cost_micros_threshold: None,
+        };
+        // Cap of 2 open traces. None of these ever report a terminal completion,
+        // so without the guard they would accumulate without bound.
+        let mut buffer = TailBuffer::new(policy).with_max_open_traces(2);
+        let trace_a = TraceId::new("trace-a").unwrap_or_else(|err| panic!("{err}"));
+        let trace_b = TraceId::new("trace-b").unwrap_or_else(|err| panic!("{err}"));
+        let trace_c = TraceId::new("trace-c").unwrap_or_else(|err| panic!("{err}"));
+
+        // trace-a (oldest) then trace-b: both within the cap, both buffered.
+        assert_eq!(
+            buffer.offer(
+                fixture_span(&tenant, "trace-a", "a1", SpanStatus::Ok, 1, 0),
+                &TraceCompletionState::Open,
+            ),
+            TailBufferOutcome::Buffered { buffered_spans: 1 }
+        );
+        assert_eq!(
+            buffer.offer(
+                fixture_span(&tenant, "trace-b", "b1", SpanStatus::Ok, 1, 0),
+                &TraceCompletionState::Open,
+            ),
+            TailBufferOutcome::Buffered { buffered_spans: 1 }
+        );
+        assert_eq!(buffer.open_traces(), 2);
+
+        // trace-c opens past the cap: the oldest open trace (trace-a) is force-
+        // flushed and evicted. trace-c itself is buffered.
+        let outcome = buffer.offer(
+            fixture_span(&tenant, "trace-c", "c1", SpanStatus::Ok, 1, 0),
+            &TraceCompletionState::Open,
+        );
+        match outcome {
+            TailBufferOutcome::Evicted {
+                buffered_spans,
+                evicted_decision,
+                evicted_spans,
+            } => {
+                assert_eq!(buffered_spans, 1, "trace-c span is held");
+                assert_eq!(evicted_spans, 1, "trace-a's single span was flushed");
+                // Routine rate 0 with no error/slow/cost signal -> dropped on flush.
+                assert!(!evicted_decision.selected);
+                assert_eq!(evicted_decision.reason, SamplingReason::RoutineDropped);
+            }
+            other => panic!("expected Evicted at the cap, got {other:?}"),
+        }
+
+        // Open set stayed bounded at the cap; the oldest (trace-a) was evicted while
+        // the newer trace-b and trace-c remain.
+        assert_eq!(buffer.open_traces(), 2);
+        assert_eq!(buffer.buffered_spans(&trace_a), 0);
+        assert_eq!(buffer.buffered_spans(&trace_b), 1);
+        assert_eq!(buffer.buffered_spans(&trace_c), 1);
     }
 }

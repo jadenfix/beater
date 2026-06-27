@@ -12,6 +12,19 @@ beater-store = { path = "../beater-store" }
 chrono.workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true
+# Scale TraceStore backends. Compiled by default so the trait impls and the
+# conformance harness always type-check; the live integration tests against a
+# real server are `#[ignore]`d and only run on a Docker CI runner.
+tokio = { workspace = true, optional = true }
+tokio-postgres = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+
+[features]
+default = ["postgres", "clickhouse"]
+# Postgres-backed `TraceStore` (hot store / control-plane path).
+postgres = ["dep:tokio", "dep:tokio-postgres"]
+# ClickHouse-backed `TraceStore` (scale path, driven over the HTTP interface).
+clickhouse = ["dep:tokio", "dep:reqwest"]
 
 [dev-dependencies]
 beater-store-conformance = { path = "../beater-store-conformance" }
@@ -19,6 +32,9 @@ beater-store-memory = { path = "../beater-store-memory" }
 beater-store-obj = { path = "../beater-store-obj" }
 tempfile.workspace = true
 tokio.workspace = true
+# Live Postgres/ClickHouse integration tests spin up throwaway containers; the
+# tests are `#[ignore]`d so a Docker-less `cargo test` still passes.
+testcontainers.workspace = true
 
 [lints]
 workspace = true

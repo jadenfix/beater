@@ -1,0 +1,12 @@
+// WIT world for deterministic evaluator scorers run under the WASI Component
+// Model. A scorer component imports nothing from the host (no WASI, no clock, no
+// randomness) so its output is a pure function of its input — the determinism
+// guarantee the deterministic-WASI evaluator lane depends on.
+package beater:scorer@0.1.0;
+
+world deterministic-scorer {
+    // Score a single evaluation case. `case-json` is the canonical-JSON
+    // serialization of an `EvaluationCase`. The result is the score in basis
+    // points (0..=10000); the host rejects out-of-range values.
+    export score: func(case-json: string) -> s32;
+}

@@ -1,8 +1,9 @@
 use beater_core::Money;
-use beater_schema::EvaluatorLane;
+use beater_schema::{EvalReproducibility, EvaluatorLane};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 #[derive(Debug, thiserror::Error)]
 pub enum EvalError {
@@ -563,6 +564,104 @@ fn sample_variance(values: &[f64]) -> f64 {
         / (values.len() - 1) as f64
 }
 
+/// What the platform can still provide when an [`EvalResult`] is rerun. The
+/// reproducibility manifest recorded at scoring time pins the inputs that made a
+/// score reproducible; on rerun those inputs may have disappeared (a judge model
+/// retired, a deterministic evaluator's wasm artifact garbage-collected, an input
+/// artifact expired). This describes the *current* availability so
+/// [`detect_non_reproducible_reason`] can compare it against the pinned manifest.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RerunEnvironment {
+    /// Judge model ids still served (e.g. not deprecated/retired).
+    pub available_judge_model_ids: BTreeSet<String>,
+    /// Deterministic-evaluator wasm hashes still resolvable in the registry.
+    pub available_wasm_hashes: BTreeSet<String>,
+    /// Input-artifact content hashes still present in object storage.
+    pub available_input_artifact_hashes: BTreeSet<String>,
+}
+
+impl RerunEnvironment {
+    /// Construct from owned strings; convenience for callers that hold `Vec`s.
+    pub fn new(
+        judge_model_ids: impl IntoIterator<Item = String>,
+        wasm_hashes: impl IntoIterator<Item = String>,
+        input_artifact_hashes: impl IntoIterator<Item = String>,
+    ) -> Self {
+        Self {
+            available_judge_model_ids: judge_model_ids.into_iter().collect(),
+            available_wasm_hashes: wasm_hashes.into_iter().collect(),
+            available_input_artifact_hashes: input_artifact_hashes.into_iter().collect(),
+        }
+    }
+}
+
+/// Determine whether an evaluation is still reproducible given the inputs its
+/// [`EvalReproducibility`] manifest pinned and what the [`RerunEnvironment`] can
+/// still supply. Returns `Some(reason)` — the human-readable value to store in
+/// [`beater_schema::EvalResult::non_reproducible_reason`] — when one or more
+/// pinned inputs are unavailable, or `None` when the rerun is fully reproducible.
+///
+/// Detection covers the three inputs that most often go missing:
+/// * `judge_model_id` — the judge model was retired/deprecated;
+/// * `wasm_hash` — the deterministic evaluator's wasm artifact is gone;
+/// * `input_artifact_hashes` — one or more input artifacts expired.
+///
+/// A manifest that pinned no judge model and no wasm hash (e.g. a pure
+/// deterministic evaluator with inline inputs) is reproducible as long as its
+/// input artifacts are available.
+pub fn detect_non_reproducible_reason(
+    manifest: &EvalReproducibility,
+    environment: &RerunEnvironment,
+) -> Option<String> {
+    let mut reasons = Vec::new();
+
+    if let Some(judge_model_id) = &manifest.judge_model_id {
+        if !environment
+            .available_judge_model_ids
+            .contains(judge_model_id)
+        {
+            reasons.push(format!(
+                "judge model '{judge_model_id}' is no longer available (deprecated or retired)"
+            ));
+        }
+    }
+
+    if let Some(wasm_hash) = &manifest.wasm_hash {
+        if !environment
+            .available_wasm_hashes
+            .contains(wasm_hash.as_str())
+        {
+            reasons.push(format!(
+                "evaluator wasm artifact '{}' is unavailable",
+                wasm_hash.as_str()
+            ));
+        }
+    }
+
+    let missing_inputs: Vec<&str> = manifest
+        .input_artifact_hashes
+        .iter()
+        .filter(|hash| {
+            !environment
+                .available_input_artifact_hashes
+                .contains(hash.as_str())
+        })
+        .map(|hash| hash.as_str())
+        .collect();
+    if !missing_inputs.is_empty() {
+        reasons.push(format!(
+            "input artifact(s) unavailable: {}",
+            missing_inputs.join(", ")
+        ));
+    }
+
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(reasons.join("; "))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -704,6 +803,34 @@ mod tests {
         }
     }
 
+    fn judge_manifest() -> EvalReproducibility {
+        use beater_core::{
+            AgentReleaseId, DatasetCaseId, DatasetVersionId, EvaluatorVersionId, Sha256Hash,
+        };
+        EvalReproducibility {
+            dataset_version_id: DatasetVersionId::new("dsv-1")
+                .unwrap_or_else(|err| panic!("{err}")),
+            dataset_case_id: DatasetCaseId::new("case-1").unwrap_or_else(|err| panic!("{err}")),
+            agent_release_id: AgentReleaseId::new("rel-1").unwrap_or_else(|err| panic!("{err}")),
+            prompt_version_id: None,
+            evaluator_version_id: EvaluatorVersionId::new("ev-1")
+                .unwrap_or_else(|err| panic!("{err}")),
+            code_hash: None,
+            wasm_hash: None,
+            wasi_abi_version: None,
+            judge_model_id: Some("gpt-judge-2024-01".to_string()),
+            judge_provider: Some("openai".to_string()),
+            judge_parameters: serde_json::json!({ "temperature": 0.0 }),
+            judge_seed: Some(7),
+            judge_rubric_version: Some("v1".to_string()),
+            normalizer_version: "beater-otlp-v1".to_string(),
+            trace_schema_version: 1,
+            input_artifact_hashes: vec![
+                Sha256Hash::new("input-hash-a").unwrap_or_else(|err| panic!("{err}")),
+            ],
+        }
+    }
+
     #[test]
     fn browser_evaluator_catalog_ids_match_entries() {
         for kind in [
@@ -793,6 +920,25 @@ mod tests {
     }
 
     #[test]
+    fn deprecated_judge_model_marks_rerun_non_reproducible() {
+        // R5.5 deprecated-model test: the judge model that produced the original
+        // score has been retired, so it is absent from the rerun environment.
+        let manifest = judge_manifest();
+        let environment = RerunEnvironment::new(
+            // The deprecated model id is NOT present; a newer model is.
+            ["gpt-judge-2025-06".to_string()],
+            std::iter::empty(),
+            ["input-hash-a".to_string()],
+        );
+        let reason = detect_non_reproducible_reason(&manifest, &environment)
+            .unwrap_or_else(|| panic!("deprecated judge model must be flagged"));
+        assert!(
+            reason.contains("gpt-judge-2024-01") && reason.contains("no longer available"),
+            "reason should name the deprecated model: {reason}"
+        );
+    }
+
+    #[test]
     fn browser_step_efficiency_enforces_budget() {
         let steps = vec![
             browser_step("click", Some("#a"), true, "ok"),
@@ -876,5 +1022,41 @@ mod tests {
                 .score,
             0.0
         );
+    }
+
+    #[test]
+    fn reproducible_rerun_returns_no_reason() {
+        let manifest = judge_manifest();
+        let environment = RerunEnvironment::new(
+            ["gpt-judge-2024-01".to_string()],
+            std::iter::empty(),
+            ["input-hash-a".to_string()],
+        );
+        assert_eq!(detect_non_reproducible_reason(&manifest, &environment), None);
+    }
+
+    #[test]
+    fn missing_wasm_and_input_artifacts_are_reported_together() {
+        use beater_core::Sha256Hash;
+        let mut manifest = judge_manifest();
+        manifest.judge_model_id = None;
+        manifest.judge_provider = None;
+        manifest.wasm_hash =
+            Some(Sha256Hash::new("wasm-hash-1").unwrap_or_else(|err| panic!("{err}")));
+        manifest.input_artifact_hashes = vec![
+            Sha256Hash::new("input-hash-a").unwrap_or_else(|err| panic!("{err}")),
+            Sha256Hash::new("input-hash-b").unwrap_or_else(|err| panic!("{err}")),
+        ];
+        // Neither the wasm artifact nor input-hash-b is still available.
+        let environment = RerunEnvironment::new(
+            std::iter::empty(),
+            std::iter::empty(),
+            ["input-hash-a".to_string()],
+        );
+        let reason = detect_non_reproducible_reason(&manifest, &environment)
+            .unwrap_or_else(|| panic!("missing artifacts must be flagged"));
+        assert!(reason.contains("wasm-hash-1"), "{reason}");
+        assert!(reason.contains("input-hash-b"), "{reason}");
+        assert!(!reason.contains("input-hash-a"), "{reason}");
     }
 }

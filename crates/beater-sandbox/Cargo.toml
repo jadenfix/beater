@@ -11,6 +11,7 @@ thiserror.workspace = true
 wasmtime.workspace = true
 
 [dev-dependencies]
+beater-schema = { path = "../beater-schema" }
 wat.workspace = true
 
 [lints]

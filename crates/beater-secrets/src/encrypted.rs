@@ -94,6 +94,41 @@ impl SecretKeyring {
         }
     }
 
+    /// Construct a keyring from multiple keys, naming one as the active (write)
+    /// key. Retired keys remain available for decrypting ciphertext written under
+    /// them, which is what makes an online key rotation possible: callers add the
+    /// new key as `active_key_id` while keeping the old keys so existing rows can
+    /// still be read (and re-wrapped) until they are migrated.
+    pub fn with_keys(
+        active_key_id: impl Into<String>,
+        keys: impl IntoIterator<Item = SecretEncryptionKey>,
+    ) -> anyhow::Result<Self> {
+        let active_key_id = active_key_id.into();
+        let mut map = BTreeMap::new();
+        for key in keys {
+            let key_id = key.key_id.clone();
+            if map.insert(key_id.clone(), key).is_some() {
+                return Err(anyhow!(
+                    "secret keyring contains a duplicate key id {key_id}"
+                ));
+            }
+        }
+        if !map.contains_key(&active_key_id) {
+            return Err(anyhow!(
+                "secret keyring active key id {active_key_id} is not present in the supplied keys"
+            ));
+        }
+        Ok(Self {
+            active_key_id,
+            keys: Arc::new(map),
+        })
+    }
+
+    /// The id of the key new ciphertext is wrapped under.
+    pub fn active_key_id(&self) -> &str {
+        &self.active_key_id
+    }
+
     pub fn generated_for_tests() -> anyhow::Result<Self> {
         Ok(Self::single(SecretEncryptionKey::generate("test-v1")?))
     }
@@ -294,6 +329,82 @@ impl EncryptedSqliteProviderSecretStore {
             )
             .map_err(|err| anyhow!("decrypt provider secret: {err}"))?;
         String::from_utf8(plaintext).context("provider secret is not valid utf-8")
+    }
+
+    /// Re-wrap every stored ciphertext that is not already wrapped under the
+    /// keyring's active key. Each row is decrypted with the key it was written
+    /// under (which must still be present in the keyring) and re-encrypted with a
+    /// fresh nonce under the active key, then written back in a single
+    /// transaction. This is the online half of a key rotation: load a keyring via
+    /// [`SecretKeyring::with_keys`] containing both the retiring and the new
+    /// active key, call this, and once it returns the old key material can be
+    /// dropped. Idempotent — a second call re-wraps nothing.
+    ///
+    /// # Concurrency (TOCTOU)
+    ///
+    /// The stale-row scan ([`load_rows_not_under_key`]) and the re-wrap
+    /// transaction acquire the store lock separately, so a row inserted by a
+    /// concurrent writer *between* the scan and the transaction would be missed
+    /// by this pass (it would stay under its original key). Rotation must
+    /// therefore run with **no concurrent writers** to the provider secret store
+    /// — quiesce the API/write path, run rotation, then resume. (The operator
+    /// entrypoint is `beaterctl secret-rotate`, which surfaces this requirement.)
+    ///
+    /// Returns the number of rows re-encrypted.
+    pub fn rotate_to_active_key(&self) -> anyhow::Result<usize> {
+        let active_key_id = self.keyring.active_key_id().to_string();
+        let stale = self.load_rows_not_under_key(&active_key_id)?;
+        if stale.is_empty() {
+            return Ok(0);
+        }
+        let mut connection = self.lock()?;
+        let tx = connection
+            .transaction()
+            .context("begin provider secret rotation transaction")?;
+        for row in &stale {
+            let plaintext = self.decrypt_secret(&row.metadata, row.encrypted.clone())?;
+            let rewrapped = self.encrypt_secret(&row.metadata, &plaintext)?;
+            tx.execute(
+                r#"
+                UPDATE encrypted_provider_secrets
+                SET key_id = ?1, nonce = ?2, ciphertext = ?3
+                WHERE provider_secret_id = ?4
+                "#,
+                params![
+                    rewrapped.key_id,
+                    rewrapped.nonce,
+                    rewrapped.ciphertext,
+                    row.metadata.provider_secret_id.as_str(),
+                ],
+            )
+            .context("re-encrypt provider secret under active key")?;
+        }
+        tx.commit()
+            .context("commit provider secret rotation transaction")?;
+        Ok(stale.len())
+    }
+
+    fn load_rows_not_under_key(&self, active_key_id: &str) -> anyhow::Result<Vec<EncryptedSecretRow>> {
+        let connection = self.lock()?;
+        let mut statement = connection
+            .prepare(
+                r#"
+                SELECT provider_secret_id, tenant_id, project_id, provider, display_name,
+                       active, created_at, rotated_at, key_id, nonce, ciphertext
+                FROM encrypted_provider_secrets
+                WHERE key_id <> ?1
+                ORDER BY provider_secret_id ASC
+                "#,
+            )
+            .context("prepare provider secret rotation scan")?;
+        let rows = statement
+            .query_map(params![active_key_id], decode_encrypted_secret_row)
+            .context("scan provider secrets for rotation")?;
+        let mut records = Vec::new();
+        for row in rows {
+            records.push(row.context("decode provider secret row for rotation")?);
+        }
+        Ok(records)
     }
 }
 
@@ -608,6 +719,83 @@ mod tests {
             .get_secret(tenant_id, project_id, metadata.provider_secret_id)
             .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn rotating_re_wraps_ciphertext_under_new_active_key() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let db_path = tempdir.path().join("provider-secrets.sqlite");
+        let tenant_id = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let project_id = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+
+        // Write a secret under the old (v1) key.
+        let old_key = SecretEncryptionKey::new("secrets-v1", [3_u8; KEY_BYTES])
+            .unwrap_or_else(|err| panic!("{err}"));
+        let store =
+            EncryptedSqliteProviderSecretStore::open(&db_path, SecretKeyring::single(old_key.clone()))
+                .unwrap_or_else(|err| panic!("{err}"));
+        let metadata = store
+            .put_secret(PutProviderSecretRequest {
+                tenant_id: tenant_id.clone(),
+                project_id: project_id.clone(),
+                provider: "openai".to_string(),
+                display_name: "rotating judge".to_string(),
+                secret_value: "sk-rotating-secret".to_string(),
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        drop(store);
+
+        // Reopen with a keyring that has the new active key plus the old key for
+        // decrypting existing rows, then rotate.
+        let new_key = SecretEncryptionKey::new("secrets-v2", [4_u8; KEY_BYTES])
+            .unwrap_or_else(|err| panic!("{err}"));
+        let rotating_keyring = SecretKeyring::with_keys("secrets-v2", [new_key.clone(), old_key])
+            .unwrap_or_else(|err| panic!("{err}"));
+        let store = EncryptedSqliteProviderSecretStore::open(&db_path, rotating_keyring)
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let rewrapped = store.rotate_to_active_key().unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(rewrapped, 1, "the single stale row should be re-wrapped");
+        // Re-running is a no-op once everything is under the active key.
+        assert_eq!(
+            store.rotate_to_active_key().unwrap_or_else(|err| panic!("{err}")),
+            0
+        );
+
+        // The secret still decrypts to the original plaintext after rotation.
+        let loaded = store
+            .get_secret(
+                tenant_id.clone(),
+                project_id.clone(),
+                metadata.provider_secret_id.clone(),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("{err}"))
+            .unwrap_or_else(|| panic!("rotated provider secret should exist"));
+        assert_eq!(loaded.secret_value(), "sk-rotating-secret");
+        drop(store);
+
+        // The new active key alone (no old key) can now read the row — proving the
+        // stored ciphertext is genuinely wrapped under v2, not still under v1.
+        let new_only = EncryptedSqliteProviderSecretStore::open(
+            &db_path,
+            SecretKeyring::single(new_key),
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        let loaded = new_only
+            .get_secret(tenant_id, project_id, metadata.provider_secret_id)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"))
+            .unwrap_or_else(|| panic!("rotated provider secret should be readable under v2 alone"));
+        assert_eq!(loaded.secret_value(), "sk-rotating-secret");
+    }
+
+    #[test]
+    fn keyring_requires_active_key_to_be_present() {
+        let key = SecretEncryptionKey::new("present", [1_u8; KEY_BYTES])
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(SecretKeyring::with_keys("missing", [key]).is_err());
     }
 
     #[test]
