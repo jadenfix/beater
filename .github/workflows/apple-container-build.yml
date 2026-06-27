@@ -22,13 +22,24 @@ jobs:
     # is available; macos-26 is the arm64 image.
     runs-on: macos-26
     timeout-minutes: 60
+    # Authenticate the api.github.com call below so it is billed against this
+    # repo's token bucket rather than the shared unauthenticated pool (which is
+    # IP-rate-limited and returns 403 on busy runners).
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Apple container
         run: |
           set -euo pipefail
-          url="$(curl -fsSL https://api.github.com/repos/apple/container/releases/latest \
+          # Authenticated + versioned-media-type request: unauthenticated calls
+          # to the GitHub REST API share a low per-IP rate limit and routinely
+          # 403 on shared macOS runners.
+          url="$(curl -fsSL \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/apple/container/releases/latest \
             | grep -oE 'https://[^"]+\.pkg' | head -1)"
           echo "Installing $url"
           curl -fsSL "$url" -o /tmp/container.pkg
