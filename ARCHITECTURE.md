@@ -93,18 +93,25 @@ Open-core boundary:
 
 ### 3.1 OSS
 
+Target compose (the shape we are building toward — items not yet wired are
+marked):
+
 ```text
 docker compose up
-  beaterd       # one Rust process: API, OTLP, jobs, eval, replay
-  postgres      # metadata and optional local TraceStore
-  clickhouse    # optional scale TraceStore
-  nats          # JetStream durable bus
-  minio         # object storage
+  beaterd       # one Rust process: API, OTLP, jobs, eval, replay   [built]
+  postgres      # metadata + optional local TraceStore               [PgTraceStore implemented, not runtime-wired]
+  clickhouse    # optional scale TraceStore                          [ClickHouseTraceStore implemented, not runtime-wired]
+  nats          # JetStream durable bus                              [planned: bus is SqliteDurableBus today]
+  minio         # object storage                                     [planned: artifacts are local filesystem today]
 ```
 
-Local development can run with SQLite plus local filesystem object storage, but
-the same code paths must work with Postgres, ClickHouse, NATS JetStream, and
-S3-compatible storage.
+As of `origin/main`, `beaterd` boots with SQLite stores, a `SqliteDurableBus`,
+and a filesystem `FsArtifactStore` only; there is no backend selector that wires
+Postgres/ClickHouse, NATS, or S3 into the running service (see §19.2 Phase 0
+#0.1, #0.5 and §7.2). The architecture contract is that the same code paths
+*must* work against Postgres, ClickHouse, a NATS/Kafka bus, and S3-compatible
+storage once those backends are wired — the trait boundaries (§7.1) exist
+precisely so that wiring is additive, not a rewrite.
 
 ### 3.2 Hosted
 
@@ -154,50 +161,101 @@ Primary source links:
 
 The operational split is logical first, physical later.
 
+The crate list below reflects the workspace as it exists on `origin/main`
+(verified 2026-06-27). Crates marked **[planned]** are described elsewhere in
+this document as future work and do not yet exist; everything else is a real
+workspace member in `Cargo.toml`. Where this section once named a crate that the
+code never grew (`beater-normalize`, `beater-store-ch`, `beater-sdk`,
+`beater-telemetry`), the note explains where that responsibility actually lives.
+
 ```text
 beater/
   Cargo.toml
   crates/
     beater-core/          # IDs, entity types, typed money, clocks, tenant scope
-    beater-schema/        # canonical event/run/span/eval schemas, mappings, rollups
-    beater-otlp/          # tonic/prost OTLP HTTP/gRPC receive and export
-    beater-normalize/     # OTLP/OI/GenAI/Vercel/LangSmith/Phoenix -> canonical
+    beater-schema/        # canonical event/run/span/eval schemas, mappings, rollups, conventions
+    beater-otlp/          # tonic/prost OTLP HTTP/gRPC receive/export AND the
+                          #   OTLP/OpenInference/GenAI -> canonical normalizer
+                          #   (there is no separate beater-normalize crate)
+    beater-temporal/      # Temporal workflow-history -> canonical span normalization
     beater-ingest/        # auth, quota, raw append, normalization, sampling
     beater-store/         # TraceStore, MetadataStore, ArtifactStore, QuotaLimiter traits and StoreError
-    beater-store-sql/     # SQLite TraceStore/MetadataStore/QuotaLimiter for dev/small installs
-    beater-store-ch/      # ClickHouse TraceStore for scale
-    beater-store-obj/     # object_store-backed artifacts and raw envelopes
-    beater-bus/           # NATS JetStream default, Vercel Queues, Kafka adapter
-    beater-eval/          # evaluator catalog, scoring contracts, aggregation
-    beater-calibration/   # judge-vs-human agreement and kappa reports
+    beater-store-conformance/ # shared trait-conformance test suite run against every backend
+    beater-store-memory/  # in-memory TraceStore/MetadataStore/QuotaLimiter for tests/dev
+    beater-store-sql/     # SQLite stores (runtime default) PLUS PgTraceStore and
+                          #   ClickHouseTraceStore (implemented, NOT yet runtime-wired);
+                          #   ClickHouse lives here, not in a beater-store-ch crate
+    beater-store-obj/     # FsArtifactStore (filesystem) for artifacts/raw envelopes
+    beater-bus/           # SqliteDurableBus (the durable bus today); NATS/Kafka are [planned]
+    beater-eval/          # evaluator catalog, scoring contracts, paired comparison, aggregation
+    beater-calibration/   # judge-vs-human agreement and Cohen's-kappa reports
     beater-usage/         # usage ledger, billing meters, spend summaries
     beater-audit/         # privileged access audit events and readback
     beater-sandbox/       # Wasmtime/WASI Component Model evaluator runtime
     beater-secrets/       # opaque provider-secret refs, BYOK metadata, revocation
+    beater-security/      # crypto primitives: Argon2 keys, ChaCha20 envelope, signed webhooks
     beater-judge/         # LLM/embedding judge broker, BYOK, calibration
     beater-replay/        # cassettes, forked replay, deterministic replay
     beater-datasets/      # datasets, versions, examples, trace promotion
     beater-experiments/   # candidate-vs-baseline comparisons and statistics
     beater-gates/         # CI/CD gates and policy evaluation
     beater-human/         # review queues, annotations, human labels
-    beater-auth/          # API keys, JWT/session, RBAC, audit scopes
+    beater-search/        # Tantivy full-text index over spans
+    beater-archive/       # Parquet cold-tier archive (Arrow/DataFusion read path)
+    beater-alerts/        # alert evaluation over trace/score signals
+    beater-auth/          # API keys, JWT/session, RBAC types, audit scopes
+    beater-accounts/      # users, password auth, browser sessions, org membership
+    beater-oauth/         # OAuth 2.1 core: clients, PKCE codes, access/refresh tokens
+    beater-oauth-server/  # OAuth 2.1 HTTP surface (wired into beaterd)
+    beater-mcp/           # MCP server exposing every /v1 operation as a tool
+    beater-browser/       # browser-agent observability contract (shared foundation)
+    beater-browser-cdp/         # Chrome DevTools Protocol backend
+    beater-browser-playwright/  # Playwright driver backend
+    beater-browser-webdriver/   # WebDriver/fantoccini backend
+    beater-browser-capture/     # console + network + DOM capture per browser step
+    beater-browser-harness/     # browser-agent run harness
     beater-api/           # axum routers, OpenAPI, SSE/read APIs
-    beater-sdk/           # native Rust SDK and tracing layers
-    beater-telemetry/     # dogfooding, metrics, health, SLO instrumentation
+    xtask/                # build/regen tasks (regen-spec, regen-semconv, loadgen)
+    beater-stats/         # [planned] CIs, test selection, p-values, power, FWER/FDR (see §5A, §9.3, §19.5)
+    beater-scorers/       # [planned] custom-scorer registry over the WASI sandbox (§19.5)
+    beater-online/        # [planned] online-eval scoring worker (§19.6)
+    beater-prompts/       # [planned] prompt registry/versioning/playground (§19.6)
+    beater-rbac/          # [planned] role/permission resolution inside authorize() (§19.7)
+    beater-identity/      # [planned] OIDC/SAML/SCIM (§19.7)
+    beater-billing/       # [planned] plans/subscriptions/Stripe metered sync (§19.7)
+    beater-bench/         # [planned] criterion benches + load fixtures (§19.2)
   bins/
-    beaterd/              # default all-in-one binary
+    beaterd/              # default all-in-one binary (also holds metrics.rs / Prometheus facade)
     beaterctl/            # CLI: init, ingest test, eval run, gate, export
-    beater-worker/        # later thin bin over worker modules
-    beater-ingestd/       # later thin bin over ingest modules
+    beater-worker/        # [planned] later thin bin over worker modules
+    beater-ingestd/       # [planned] later thin bin over ingest modules
+  sdks/
+    rust/                 # native Rust SDK + tracing layers (a standalone package,
+                          #   excluded from the workspace; there is no beater-sdk crate)
+    clients/*             # 7 generated SDK clients (py/ts/go/java/c/cpp/...) from the OpenAPI spec
+    openapi/, semconv/    # single-source contract artifacts
   api/
-    *.rs                  # Vercel Rust Function entrypoints where needed
+    *.rs                  # [planned] Vercel Rust Function entrypoints where needed
   web/
     dashboard/            # Next.js dashboard consuming generated OpenAPI client
-  migrations/
-    postgres/
-    clickhouse/
+  migrations/             # SQLite migrations today; Postgres/ClickHouse migrations [planned] (§19.2 #0.6)
   docker-compose.yml
 ```
+
+Metrics, health, and SLO instrumentation are NOT a separate `beater-telemetry`
+crate; they live in `bins/beaterd/src/metrics.rs` (the Prometheus facade) and
+`metrics_http.rs`. The native Rust SDK is `sdks/rust`, intentionally **excluded
+from the cargo workspace** (`exclude = ["sdks"]`) so generated and hand-written
+SDK packages stay out of the core build/test graph; it is not a `beater-sdk`
+workspace crate.
+
+Browser-observability family note: `beater-browser*` is a six-crate family that
+turns browser-driving agents into first-class observed agents. `beater-browser`
+defines the shared contract; `-cdp`, `-playwright`, and `-webdriver` are
+interchangeable driver backends; `-capture` records console, network, and DOM
+state per step (perception + economics + timing); `-harness` runs browser-agent
+cases. Each browser step normalizes into the same canonical spans (§5.2) so the
+eval, replay, and statistics machinery applies unchanged.
 
 The dashboard can use TypeScript/React for product velocity, but all platform
 logic, ingestion, storage, eval, replay, API contracts, and SDK primitives remain
@@ -215,11 +273,11 @@ The default Rust stack should be boring and production-proven:
 | Vercel Rust Functions | `vercel_runtime` |
 | serialization | `serde`, `serde_json`, `rmp-serde` where useful |
 | schema/OpenAPI | `utoipa` |
-| metadata DB | `sqlx` with Postgres and SQLite |
-| ClickHouse | official `clickhouse` crate |
-| object storage | `object_store` |
-| durable bus | `async-nats` JetStream by default; Kafka adapter for enterprise |
-| Vercel queue adapter | Vercel Queues HTTP API |
+| metadata DB | SQLite via `rusqlite` today (runtime default); Postgres via `tokio-postgres` for the unwired `PgTraceStore`; `sqlx` is aspirational, not yet adopted |
+| ClickHouse | driven over its HTTP interface via `reqwest` (no native driver), in `beater-store-sql` — there is no separate `clickhouse`-crate dependency |
+| object storage | `FsArtifactStore` (filesystem) today; `object_store`/S3 is **[planned]**, no dependency yet |
+| durable bus | `SqliteDurableBus` today; `async-nats` JetStream / Kafka are **[planned]** with no dependency in-tree |
+| Vercel queue adapter | **[planned]** — Vercel Queues HTTP API |
 | WASI sandbox | `wasmtime` Component Model |
 | cold analytics | `arrow`, `parquet`, `datafusion` |
 | full-text search | `tantivy` |
@@ -345,6 +403,155 @@ tenant_id + project_id + trace_id + span_id + seq + payload_hash
 Late spans are accepted. Out-of-order writes are normal. Trace completeness is a
 state machine, not a boolean.
 
+## 5A. The Agent Model (the object under evaluation)
+
+Everything else in this document — ingest, storage, evals, replay, statistics,
+the RSI loop (§20) — exists to **measure and improve one thing: an agent.** This
+section formalizes that agent from first principles as a statistical object, so a
+developer iterating on an agent and the RSI loop both have a precise target. It is
+additive to §5: the agent is *projected onto* the canonical entities and spans of
+§5; it is not a new storage schema.
+
+### 5A.1 An agent is a policy; a run is a sampled trajectory
+
+Model the agent under evaluation as a **policy** `π` — a (usually stochastic)
+mapping from context to actions. Executing `π` once on an input produces a
+**trajectory** `τ`: an ordered sequence of canonical spans
+
+```text
+τ = [ agent.plan, agent.step, llm.call, tool.call, retrieval.query,
+      memory.read, memory.write, guardrail.check, ... ]
+```
+
+i.e. exactly the §5.2 taxonomy. A `Run` (§5.1) is one realized sample
+`τ ~ π(· | case)` for a `DatasetCase`; an `ExperimentRun` is a batch of such
+samples for a fixed `(π, dataset version)`. Because `π` is stochastic, **a single
+run is one draw from a distribution** — never the agent. Any honest claim about an
+agent is a claim about the *distribution of τ*, which is why §9.3's N-trial
+repetition and standard errors are not optional polish but the definition of
+measuring `π` at all.
+
+`π` is not monolithic. Its **mutable components** are the levers the platform and
+the RSI loop can change:
+
+```text
+π = f( system_prompt, customer/user_prompt, code, tool_set,
+       memory_config, model_params )
+```
+
+These are exactly the typed change kinds of §20.1's `propose_change`.
+
+### 5A.2 RSI as constrained optimization over π
+
+Recursive self-improvement (§20) is, formally, a constrained optimization:
+
+```text
+maximize    J(π)        = E_{case ~ D_holdout, τ ~ π}[ objective(τ, case) ]
+over        the mutable components of π  (§5A.1)
+subject to  policy constraints C  (load-bearing prompts/tools unchanged unless
+                                    contradictory; safety/guardrail invariants)
+```
+
+where `J(π)` is estimated on a **held-out** objective, never the data the loop
+proposed against. Two anti-Goodhart invariants make the optimization honest:
+
+- **The evaluator is frozen during an optimization episode.** The judge model,
+  rubric (locked JSON, §9.1.1), deterministic scorers, *and the dataset split* do
+  not change while a loop is improving `π`. If the ruler can move, the loop
+  optimizes the ruler, not the agent.
+- **Propose/simulate read TRAIN; acceptance reads untouched HOLDOUT.** See §5A.4.
+
+**Convergence criteria** (the loop stops, rather than churning): no proposed
+change clears the §9.3 confidence-bound *and* power bar on holdout (the gain is
+indistinguishable from noise or underpowered); or a fixed episode budget
+(iterations / AI-credits, §20.6) is exhausted; or every remaining candidate
+touches a policy-constrained component. A change is **accepted only** when its
+holdout improvement is statistically significant under §9.3 *and* does not regress
+any guardrail/safety dimension below threshold.
+
+### 5A.3 Measurable agent dimensions
+
+An agent is not a scalar. Beater measures it along many **typed dimensions**, each
+a metric with: a **definition**, an **estimator** (point + the CI method from
+§9.3), the **assumptions** that estimator needs, and **where it attaches** in the
+canonical schema (§5). "Attaches" names the span/entity the evidence is read from.
+
+| # | Dimension | Definition (point estimate) | Estimator + CI (§9.3) | Assumptions | Attaches to |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **Task success (outcome)** | P(final output meets the case's success criterion) | proportion; **Wilson**, clustered if multi-turn | a checkable success criterion per case | `agent.run` outcome vs `DatasetCase.expected` |
+| 2 | **Trajectory / process quality** | joint promise+progress score over the step sequence (NOT a mean of independent per-step scores) [arXiv:2511.08325; arXiv:2507.21504] | process-reward score; **bootstrap, trajectory-clustered SE** | steps within a trajectory are correlated (so: cluster) | `agent.plan`/`agent.step` chain |
+| 3 | **Tool-call correctness** | fraction of tool calls that, *executed*, produce the correct effect (EXECUTION-based, not AST/syntax) | per-call binary → **Wilson**; per-trajectory clustered | a seeded/replayable tool environment | `tool.call`/`mcp.request` spans |
+| 4 | **Planning / decomposition quality** | does the plan cover the sub-goals with no redundant/missing steps | rubric judge or structural check; bootstrap | a reference decomposition or rubric | `agent.plan` span |
+| 5 | **Reasoning faithfulness** | does the stated reasoning actually entail the action/answer | judge (faithfulness); calibrated → bootstrap | judge calibration valid (§9.1.1) | `llm.call` reasoning vs `output_ref` |
+| 6 | **Instruction / policy adherence** | fraction of explicit constraints obeyed | per-constraint binary → **Wilson** | constraints are enumerable & checkable | `guardrail.check`, system_prompt vs trajectory |
+| 7 | **Self-calibration** | agreement between stated confidence and actual correctness | **Brier score** + **ECE** (expected calibration error) — proper scoring rules; bootstrap CI | the agent emits a confidence/probability | confidence attr on `llm.call` vs outcome (#1) |
+| 8 | **Robustness (distribution shift / adversarial)** | success on perturbed/adversarial inputs vs clean | paired delta clean→shifted; **paired test (§9.3 #3)** | a defined perturbation/adversarial set | run pairs over original vs perturbed case |
+| 9 | **Cost** | spend per successful task (and per run) | mean/quantiles; **bootstrap** (skewed) | cost field populated & trustworthy | `cost` on `llm.call`/`tool.call`, rolled to run |
+| 10 | **Latency** | wall-clock per run / per step | p50/p95/p99; **bootstrap** | clock-skew corrected (§8) | span `start/end_time` |
+| 11 | **Token efficiency** | tokens (or tokens/success) per task | mean/quantiles; bootstrap | token counts populated | `tokens` on `llm.call` |
+| 12 | **Reliability / variance** | run-to-run outcome variance at fixed input (N-trial) | variance / success-rate spread across N draws; bootstrap | repeated draws are exchangeable | N `Run`s of the same case |
+| 13 | **Safety / guardrail conformance** | rate of guardrail violations (jailbreak, PII leak, unsafe action) | proportion; **Wilson** (one-sided, conservative) | violation is detectable by a check/judge | `guardrail.check` spans + output scans |
+| 14 | **Memory / retrieval quality** | did retrieval surface the relevant context; was memory written/read correctly | retrieval relevance (judge) + write/read consistency (deterministic) | a relevance label or reference | `retrieval.query`, `memory.read/write` |
+| 15 | **Generalization** | holdout success − train success (the gap) | paired/Δ with CI; flag if gap CI excludes 0 | a genuine train/holdout split (§5A.4) | runs partitioned by split |
+| 16 | **Data-label trust** | fraction of dataset labels the evidence contradicts (challenged labels) | proportion of disputed labels; Wilson | labels are independently checkable | `DatasetCase` vs human review (§9.1.1, §20.1 `challenge_labels`) |
+
+Every dimension is scored by a §9.4 grading algorithm and aggregated by §9.3.
+Dimensions are not collapsed into one number by default: an agent that is cheaper
+but less safe is *worse* on the safety axis, and the gate (§9.3, §11) can veto on
+any single axis. This is the multi-comparison setting of §9.3 #4 — improving 16
+dimensions at once *requires* FWER/FDR control or the loop will manufacture false
+wins.
+
+### 5A.4 Anti-overfit / generalization discipline for RSI
+
+Because the RSI loop actively searches over `π`, it is a textbook overfitting
+risk: given enough proposals it *will* find a change that beats a fixed dataset by
+chance. The discipline that prevents this is mandatory, not advisory:
+
+- **Train/holdout split on `DatasetCase`.** Every dataset version carries a
+  stable, hashed split. Propose/simulate steps (§20.1 `propose_change`,
+  `simulate`) read **train only**.
+- **Acceptance gates run on the untouched holdout.** A change is accepted only on
+  holdout evidence that clears §9.3's significance *and* power bars. The holdout is
+  never shown to the proposal step in the same episode.
+- **Contamination controls.** Prevent leakage of holdout cases (or near-duplicates)
+  into prompts, few-shot exemplars, memory, or tool fixtures; detect near-dup
+  overlap between train and holdout; rotate/refresh holdout if it is suspected
+  compromised.
+- **Freeze the evaluator during an episode** (§5A.2): judge model, rubric,
+  deterministic scorers, and split are pinned for the whole optimization episode,
+  so the measured gain is attributable to `π`, not to a moved ruler.
+
+### 5A.5 Modeling assumptions (stated, checked, relaxed)
+
+The agent model rests on assumptions; naming them is what separates measurement
+from wishful thinking. For each, how Beater checks or relaxes it:
+
+- **Independence vs clustering.** Default analyses assume i.i.d. cases. This is
+  *violated* for multi-turn conversations and shared prompt templates — handled by
+  **clustered standard errors** (§9.3 #1). Checked by: declaring a cluster id on
+  every case; relaxed by coarsening clusters when they are themselves correlated.
+- **Stationarity.** Estimates assume the agent, judge, and providers are stable
+  over the measurement window. *Violated* by model deprecation/provider drift —
+  handled by recalibration triggers (§9.1.1, §9.3) and by freezing the evaluator
+  within an episode (§5A.2). Checked by: re-running a fixed canary set over time
+  and watching for kappa/score drift.
+- **Judge-calibration validity.** Judge-derived dimensions assume the §9.1.1
+  distributional calibration still holds. *Violated* when the human reference set
+  is stale or too small (the open questions flagged in §9.1.1). Checked by:
+  periodic judge-vs-human agreement (`beater-calibration`, Cohen's kappa);
+  relaxed by re-fitting `F_human`/`F_model`.
+- **Sampling / representativeness.** `J(π)` generalizes only if the dataset is a
+  representative sample of the deployment distribution. *Violated* by a biased or
+  tiny dataset — handled by power/MDE planning (§9.3 #5, refuse underpowered),
+  generalization-gap monitoring (dim #15), and online evals (§19.6) that compare
+  offline estimates against production score distributions.
+
+The payoff: a developer can read off *exactly* which dimension regressed, with a
+real interval and a stated assumption, and the RSI loop (§20) has a precise,
+overfit-resistant objective `J(π)` to optimize against rather than a single fragile
+score.
+
 ## 6. Standards and Normalization
 
 Input dialects:
@@ -410,14 +617,25 @@ pub trait TraceStore: Send + Sync {
 }
 ```
 
-Backends:
+Backends (status as of `origin/main`, 2026-06-27):
 
-- `SqliteTraceStore` in `beater-store-sql`: SQLite for tiny local installs and
-  tests.
-- `ClickHouseTraceStore`: hot analytical trace store for production scale.
-- `ParquetTraceArchive`: cold tier queried through DataFusion.
+- `SqliteTraceStore` in `beater-store-sql`: **[built, runtime default]** — the
+  only `TraceStore` `beaterd` actually constructs today.
+- `InMemoryTraceStore` in `beater-store-memory`: **[built]** — used by tests and
+  for ephemeral dev.
+- `PgTraceStore` (Postgres, `tokio-postgres`) and `ClickHouseTraceStore`
+  (ClickHouse over HTTP via `reqwest`), both in `beater-store-sql`:
+  **[built but NOT runtime-wired]** — the types and trait impls exist and pass
+  the `beater-store-conformance` suite, but `beaterd` has no backend selector,
+  so neither is reachable from the running service yet (§19.2 #0.1).
+- `ParquetTraceArchive` in `beater-archive`: **[built, local-fs only]** — cold
+  tier with an Arrow/DataFusion read path; not yet writing to object storage or
+  scheduled (§19.2 #0.5).
 
-Product code depends on `TraceStore`, not concrete backend crates.
+Every backend is validated against one shared trait-conformance test suite in
+`beater-store-conformance`, so a newly wired backend must satisfy the same
+contract before it can be selected. Product code depends on `TraceStore`, not
+concrete backend crates.
 
 SQLite and memory stores may use
 `beater_store::query_runs_by_materializing_spans` as a dev/local fallback. That
@@ -428,16 +646,22 @@ backend over tenant-leading sort keys.
 
 ### 7.2 Data Planes
 
-| Plane | Default OSS | Hosted scale | Purpose |
-| --- | --- | --- | --- |
-| Metadata | Postgres, SQLite dev | Postgres | orgs, projects, prompts, datasets, RBAC, billing metadata |
-| Hot traces | Postgres/SQLite dev, ClickHouse optional | ClickHouse | runs, spans, events, scores, indexed attrs |
-| Raw/artifacts | filesystem dev, MinIO/S3 | S3/R2/GCS/Vercel Blob where suitable | raw envelopes, payloads, cassettes, exports |
-| Durable bus | NATS JetStream | Vercel Queues at edge, NATS or Kafka in cells | ingest buffering, eval jobs, replay jobs |
-| Cold traces | Parquet + DataFusion | Parquet + DataFusion | long retention and export |
-| Full text | Tantivy | Tantivy or managed equivalent | prompt/output/error search |
+The table is the target topology. The **Built today** column states what
+`origin/main` actually runs; "→" marks the planned migration the trait boundary
+is designed to absorb without product-code changes.
 
-Redis is optional cache/pubsub, not the default durability primitive.
+| Plane | Built today (OSS) | Target OSS / Hosted scale | Purpose |
+| --- | --- | --- | --- |
+| Metadata | SQLite (`SqliteMetadataStore`) | → Postgres | orgs, projects, prompts, datasets, RBAC, billing metadata |
+| Hot traces | SQLite (`SqliteTraceStore`) | → Postgres/SQLite dev, ClickHouse for scale (impls exist, unwired) | runs, spans, events, scores, indexed attrs |
+| Raw/artifacts | filesystem (`FsArtifactStore`) | → MinIO/S3, S3/R2/GCS/Vercel Blob | raw envelopes, payloads, cassettes, exports |
+| Durable bus | `SqliteDurableBus` | → NATS JetStream / Vercel Queues at edge / Kafka in cells | ingest buffering, eval jobs, replay jobs |
+| Cold traces | Parquet + Arrow/DataFusion, local-fs (`beater-archive`) | → Parquet on object store, scheduled demotion | long retention and export |
+| Full text | Tantivy (`beater-search`) | → Tantivy or managed equivalent | prompt/output/error search |
+
+Redis is optional cache/pubsub, not the default durability primitive — and is
+not in-tree today. The §7.3 ClickHouse rules and §3.2 "Managed data" describe the
+hosted target, not the current runtime.
 
 ### 7.3 ClickHouse Rules
 
@@ -567,6 +791,103 @@ Judge lane:
 - Examples: faithfulness, pairwise judge, trajectory quality, retrieval
   relevance, handoff quality, rubric grading, semantic safety checks.
 
+#### 9.1.1 Judge Reliability & Debiasing Protocol
+
+An LLM judge is itself a noisy, biased measurement instrument. Treating its raw
+score as ground truth is the single most common way an eval platform silently
+lies. Beater's judge broker therefore implements a debiasing protocol as a
+first-class part of the lane, not an optional add-on. The protocol below is the
+*default recipe*; every clause is grounded in the literature and several
+magnitudes come from 2026 preprints that have not been independently replicated —
+those are flagged **[directional]** and the magnitude, not the direction, is what
+should be treated as uncertain.
+
+**The biases are real, model-dependent, and must be mitigated — not assumed
+away.** Position bias, verbosity/length bias, and self-preference bias all
+persist in current frontier judges and vary by model:
+
+- *Self-preference* (a judge scoring its own family's outputs higher) is not a
+  fixed constant: across a 20-model study the self-preference coefficient ranges
+  from roughly **+0.307 to −0.229**, i.e. some models actively *dis*-prefer their
+  own outputs. Crucially, **higher capability does not guarantee fairness** — the
+  most capable judge is not automatically the least biased
+  [arXiv:2404.18796; arXiv:2410.21819].
+- *Position bias* (preferring the first- or second-presented answer) and
+  *verbosity bias* (rewarding length irrespective of quality) are likewise
+  present and model-dependent [arXiv:2411.15594].
+
+Because the magnitude and even the *sign* are model-specific, Beater never hard-
+codes a bias correction; it measures bias per judge model on the calibration set
+(§9.1.1 calibration) and applies mitigation structurally.
+
+**Default single-judge recipe (the broker's out-of-the-box judge):**
+
+1. **Merged chain-of-thought + a LOCKED JSON rubric.** The judge reasons step by
+   step *before* emitting a structured score against a rubric whose criteria,
+   weights, and scale are frozen for the duration of an eval/optimization episode.
+   CoT is the strongest single mitigation on adversarial data
+   [arXiv:2604.23178] **[directional]**.
+2. **Position-swap ON TOP OF CoT+rubric only.** Each pairwise comparison is run in
+   both A/B orders and reconciled. *Position-swap applied alone can HURT accuracy*
+   — it is only safe layered on top of CoT+rubric, so the broker refuses to enable
+   swap without them [arXiv:2604.23178] **[directional]**.
+3. **Mid-tier judge model (~$0.001/eval).** A locked, mid-tier judge is the
+   default; capability beyond mid-tier buys little fairness (see above) at large
+   cost.
+
+**Distributional calibration is the single biggest accuracy lever.** Raw judge
+scores are mapped to a human-anchored distribution by Wasserstein quantile-
+matching:
+
+```text
+g(z) = F_human^{-1}( F_model(z) )
+```
+
+where `F_model` is the empirical CDF of the judge's raw scores and `F_human` the
+empirical CDF of human reference labels. Removing this calibration step collapses
+judge-human agreement — reported quadratic-weighted kappa falling from **0.73 to
+0.26** when calibration is dropped [arXiv:2601.08654, "Rulers"] **[directional]**.
+In Beater this calibration **lives in the judge broker** (alongside the existing
+`beater-calibration` agreement/kappa reporting), is fit from a **human reference-
+label set**, and is pinned into `EvalResult` reproducibility metadata so a score's
+calibration provenance is auditable. Open questions to resolve before treating
+calibration as load-bearing in production gates: **recalibration cadence** (how
+often `F_model`/`F_human` must be re-fit as the judge model or rubric drifts) and
+the **minimum label count** for a stable `F_human` — both are currently
+undetermined and should be measured, not guessed.
+
+**Ensemble policy — small calibrated panels, NOT large ones.** A small calibrated
+panel of ~3 diverse *smaller* judges (the "Panel of LLM evaluators", PoLL) can
+beat a single large judge at **>7× lower cost** [arXiv:2404.18796]. But the gain
+saturates fast because **judge errors are strongly correlated**: an analysis of a
+~9-judge panel found an *effective* sample size of only **≈2.18 independent
+votes**, and **model-family diversity does NOT restore independence**
+[arXiv:2605.29800] **[directional]**. The design consequence is explicit: **do
+not build large panels.** Prefer a small panel (≈3) and spend the diversity budget
+on **decorrelated prompts/rubrics** rather than more models.
+
+**Per-dimension forced-choice decomposition.** Decomposing a holistic judgment
+into per-dimension forced-choice comparisons reduces self-preference bias by
+about **31%** [arXiv:2604.22891] **[directional]**. The structured-rubric judge
+(§19.5 #3.2) emits `per_criterion` scores precisely so this decomposition is the
+default shape, not a special case.
+
+**Refuted assumptions — do NOT design around these.** Two intuitions that older
+eval folklore relied on were measured to fail and Beater must not assume either:
+
+- *"Pairwise comparison is strictly better than pointwise scoring"* — **refuted**
+  (held in 0 of 3 tested settings). Beater treats pairwise vs pointwise as an
+  empirical, per-task choice, not a default.
+- *"Position bias is negligible in modern judges"* — **refuted** (held in 0 of 3
+  settings). Position mitigation stays mandatory.
+
+**Honesty caveat.** Several single-recipe magnitudes above (the CoT/position-swap
+interaction, the QWK 0.73→0.26 calibration collapse, the ≈2.18 effective votes,
+the 31% self-preference reduction) come from **unreplicated 2026 preprints**.
+Treat the *directions* as well-supported and the *magnitudes* as directional;
+Beater's own calibration reports (§9.1.1, §9.3) are the source of truth for any
+gate, not these published numbers.
+
 ### 9.2 EvalResult Reproducibility Contract
 
 Every `EvalResult` pins:
@@ -589,26 +910,152 @@ Every `EvalResult` pins:
 
 ### 9.3 Statistical Rigor
 
-Experiment comparison must include:
+Every eval is an **experiment**, and the platform must report it like one:
+standard errors, not bare point estimates, and a decision rule that knows its own
+assumptions. Today the statistics are a single hand-rolled normal-approximation:
+`compare_paired_scores` in `beater-eval` computes a paired delta, a sample
+variance, a standard error, and a fixed-`z` (1.96 / 2.576) Wald confidence
+interval, with a Bonferroni-style alpha split and no real p-value. That is
+adequate for a first gate and wrong for the assumptions the platform actually
+faces (binary metrics, small N, clustered questions, many simultaneous metrics).
 
-- candidate vs baseline deltas
-- N-trial repetition for noisy evaluators
-- confidence intervals
-- variance by case and metric
-- significance testing before declaring wins
-- minimum sample-size policy per metric and gate
-- explicit test choice by metric type, such as paired bootstrap, permutation
-  test, McNemar, or t-test only when assumptions are met
-- multiple-comparison handling when one experiment evaluates many metrics or
-  cohorts
-- pairwise position-bias mitigation by swapping A/B order
-- judge calibration artifact with judge-vs-human agreement, confusion counts,
-  and Cohen's kappa where applicable
+This subsection specifies the **target** statistics layer as a concrete,
+assumption-aware algorithm spec. It lives in a new **`beater-stats`** crate
+(built on `statrs`; §19.5 #3.4) that `beater-experiments`, the gate runner
+(§11), the online-eval worker (§19.6), and the RSI loop (§5A, §20) all call. Each
+estimator below states **what it computes, the assumption it requires, and when
+it is invalid** — a gate that cannot satisfy an estimator's assumptions must
+refuse to decide, not silently use the wrong test.
+
+**1. Report standard errors; cluster them when questions are not independent.**
+Point estimates are never reported without an error bar. When questions are
+non-independent — multi-turn conversations sharing context, or many cases drawn
+from the same prompt template — naive i.i.d. standard errors are *too small* and
+inflate false wins. `beater-stats` computes **clustered standard errors** with
+the cluster id being the conversation/template/seed group
+[Miller, "Adding Error Bars to Evals", arXiv:2411.00640]. *Assumption:* clusters
+are independent of each other even if items within a cluster are not. *Invalid
+when:* clusters themselves are correlated (e.g. all from one adversarial seed) —
+then the cluster definition must be coarsened.
+
+**2. Confidence intervals by metric type — prefer Wilson/bootstrap over CLT at
+small N.**
+
+- **Binary / proportion metrics** (pass-rate, exact-match): **Wilson score
+  interval**, not the normal/Wald interval the current code uses. *Assumption:*
+  Bernoulli trials. *Invalid when:* trials are clustered (combine with #1) or N is
+  effectively tiny — report the interval but flag low power (#5).
+- **Bounded / continuous metrics** (judge scores in [0,1], latency, cost):
+  **bootstrap percentile interval** (resample cases, or resample clusters for
+  clustered data). *Assumption:* the sample is representative of the population of
+  cases. *Invalid when:* N is so small the empirical distribution is degenerate —
+  fall back to reporting raw spread and refusing a significance claim.
+- Naive CLT/normal intervals are used **only** when N is large and the metric is
+  unbounded and roughly symmetric; otherwise they are disallowed.
+
+**3. Significance test selection by metric type AND satisfied assumptions.** The
+test is chosen by the data, and `beater-stats` records which assumption justified
+the choice:
+
+| Metric / situation | Test | Required assumption |
+| --- | --- | --- |
+| Paired continuous, ~normal differences | paired *t*-test | normal-ish paired differences, n not tiny |
+| Paired binary (pass/fail flips) | **McNemar / exact binomial** | paired Bernoulli outcomes |
+| Paired continuous, non-normal | **Wilcoxon signed-rank** | symmetric difference distribution |
+| Any, assumptions unclear / small N | **paired bootstrap / permutation** | exchangeability under the null |
+
+A paired *t*-test is used *only when its normality assumption is met*; otherwise
+the engine selects Wilcoxon or bootstrap. Pairwise judge comparisons retain the
+position-swap mitigation from §9.1.1 before any of these tests see the scores.
+
+**4. Multiple-comparison control — Holm-Bonferroni (FWER) and Benjamini-Hochberg
+(FDR), not naive division.** When one experiment evaluates many metrics, cohorts,
+or slices, raw per-comparison alpha inflates false wins. `beater-stats` applies
+**Holm-Bonferroni** when the goal is to control the family-wise error rate
+(strict: "no false win anywhere") and **Benjamini-Hochberg** when the goal is to
+control the false-discovery rate (exploratory: "most of the flagged wins are
+real"). The current crude Bonferroni *division* of alpha is replaced; it is both
+too conservative and applied at the wrong layer.
+
+**5. Power / MDE / minimum-sample planning before declaring a win.** Before a gate
+can return *pass*, `beater-stats` checks that the comparison was adequately
+powered to detect the minimum detectable effect (MDE) at the gate's alpha/power.
+`power.rs` exposes `required_sample_size(effect, alpha, power)` and
+`achieved_power(n, effect, alpha)`. **Gates refuse underpowered comparisons** with
+an explicit *inconclusive* (not *pass*), so a green CI never means "we ran too few
+cases to see a regression."
+
+**6. Online / continuous monitoring MUST use anytime-valid (sequential)
+inference.** Offline experiments have a fixed horizon; online evals (§12
+alerting, §19.5, §19.6) are *peeked at continuously*. Fixed-horizon tests under
+peeking inflate false-positives by **5–10× even at n=10,000**
+[arXiv:1512.04922]. Therefore any continuously-monitored signal uses
+**always-valid p-values / confidence sequences** — mixture-SPRT (mSPRT) and
+betting-style confidence sequences [arXiv:2402.03683] — which remain valid no
+matter how often they are inspected. *Tradeoff:* anytime-valid intervals are
+**wider** than fixed-horizon intervals at the same nominal coverage; that is the
+price of unlimited peeking and is accepted. *Assumption:* observations are
+bounded or sub-Gaussian — **satisfied automatically by 0–1 eval scores**, which is
+why this is tractable for Beater's metrics. This ties directly to §12 alert
+baselines, §19.5 online statistics, and the §19.6 online-eval worker: alert
+conditions on a live score stream are evaluated against a confidence sequence, not
+a fixed-N test.
+
+**Carried-over requirements** (unchanged in intent, now with a home in
+`beater-stats` and the §9.1.1 calibration):
+
+- candidate-vs-baseline deltas; variance reported by case and metric.
+- N-trial repetition for noisy evaluators (reliability/variance is itself a
+  measured agent dimension — see §5A).
+- judge calibration artifact: judge-vs-human agreement, confusion counts, Cohen's
+  kappa where applicable, plus the distributional-calibration map of §9.1.1
+  (`beater-calibration` already persists kappa/agreement).
 - recalibration triggers for model deprecation, provider drift, rubric changes,
-  and kappa degradation
+  and kappa degradation.
 
-The CI gate must be able to fail on confidence-bound regressions, not only raw
-mean score deltas.
+The CI gate must be able to fail on **confidence-bound** regressions (and refuse
+*inconclusive* underpowered ones), not only raw mean-score deltas.
+
+### 9.4 Grading Algorithms & Assumptions
+
+A score is only as trustworthy as the algorithm that produced it. This catalogue
+pins each scorer as a concrete algorithm with its **assumptions**, the conditions
+under which it is **invalid** (so the platform can refuse to emit a misleading
+score), and its **CI / aggregation** path into §9.3. The **Lane** column says
+whether it runs in the deterministic WASI sandbox (no network, §9.1 deterministic
+lane) or the judge broker (§9.1 judge lane). Scorers marked **[planned]** are in
+the §19.5 catalog-breadth work; the rest exist in `EVALUATOR_CATALOG` today.
+
+| Scorer | Computes | Key assumption | Invalid when | CI / aggregation | Lane |
+| --- | --- | --- | --- | --- | --- |
+| **Exact match** | 1 if output == expected (after normalization) else 0 | a single canonical correct string exists | free-form/multi-valid answers; whitespace/casing matters but isn't normalized | Wilson (binary), §9.3 #2 | WASI |
+| **Regex match** | 1 if pattern matches output | the pattern captures all-and-only correct outputs | pattern over/under-matches; catastrophic backtracking on adversarial input | Wilson (binary) | WASI |
+| **Fuzzy match (strsim)** [planned] | similarity ratio ≥ `min_ratio` (Levenshtein/Jaro-Winkler) | edit distance correlates with semantic correctness | semantics diverge from surface form (paraphrase, reordering) | threshold→binary Wilson, or ratio→bootstrap | WASI |
+| **JSON-schema** [planned] | 1 if output validates against a JSON Schema | the schema fully encodes "valid" structure | schema is laxer/stricter than true validity; valid JSON, wrong meaning | Wilson (binary) | WASI |
+| **JSON-object (current)** | 1 if output parses as a JSON object | object-shape ⇒ correct (weak) | checks shape only, *not* schema — a wrong-but-well-formed object passes | Wilson (binary) | WASI |
+| **Numeric tolerance** [planned] | 1 if `|out−exp| ≤ abs` or `≤ rel·|exp|` | a numeric ground truth with a known tolerance | unit mismatch; tolerance mis-set; non-numeric output | Wilson (binary) | WASI |
+| **Cost / latency / token budget** | 1 if measured ≤ budget | the measured field is populated and trustworthy | missing/estimated cost or tokens; clock skew on latency | Wilson (binary); raw values → bootstrap | WASI |
+| **Embedding similarity** [planned] | cosine(sim(out), sim(exp)) ≥ `min_cosine` | the embedding space separates correct from incorrect | out-of-domain text; threshold not calibrated; model drift | threshold→Wilson, or cosine→bootstrap; recalibrate on model change | **judge** (needs an embedding provider) |
+| **SQL-result match** [planned] | 1 if executing the candidate SQL yields the expected result set | a fixed seeded DB and order-insensitive set compare | schema/data drift; nondeterministic queries; ORDER BY semantics | Wilson (binary) | WASI (execution against a sandboxed/seeded store) |
+| **Execution-based tool correctness** | 1 if the tool call, *executed*, produces the correct effect/result | tool calls are checked by EXECUTION, not by AST/argument syntax | judging only the *syntactic* call shape (a syntactically valid call can be semantically wrong, and a differently-shaped call can be correct) | Wilson (binary); per-call then per-trajectory aggregation | WASI (replayed/sandboxed) |
+| **Trajectory / process-reward** | a process score over the span sequence (plan→step→tool→…) | progress is jointly modeled across steps, *not* independent per-step scores (AgentPRM-style promise+progress) | scoring steps independently double-counts shared context and misattributes credit | per-step scores aggregated with clustered SE (§9.3 #1, cluster = trajectory) | WASI for structural checks; **judge** for quality |
+| **Rubric LLM judge** | weighted per-criterion score from a locked rubric + CoT | the §9.1.1 debiasing protocol holds (calibration, position-swap, small panel) | calibration stale; rubric unlocked mid-episode; large uncalibrated panel | distributional calibration (§9.1.1) → bootstrap CI; FWER across criteria (§9.3 #4) | **judge** |
+
+Two cross-cutting rules:
+
+- **Tool-call correctness is execution-based, never AST/syntactic.** A scorer that
+  only diffs the serialized tool call against an expected call confuses *form* for
+  *effect*; Beater scores the call by replaying/executing it (deterministic lane,
+  seeded) and checking the result.
+- **Trajectory quality is jointly modeled, not a mean of independent per-step
+  scores.** Independent per-step scoring violates the clustering assumption of
+  §9.3 #1 (steps within a trajectory share context) and mis-assigns credit; the
+  process-reward scorer models promise/progress across the sequence and aggregates
+  with trajectory-clustered standard errors [arXiv:2511.08325; arXiv:2507.21504].
+
+Aggregation always flows back through §9.3: per-case scores → metric-appropriate
+CI → clustered when non-independent → significance test by type → multiplicity
+control across scorers → power check before any *pass*.
 
 ## 10. Replay and Failure Attribution
 
@@ -824,11 +1271,11 @@ The first serious open-source release needs all of this, not a smaller demo:
 - OTLP and native ingest
 - canonical trace schema
 - immutable raw envelopes
-- `TraceStore` abstraction
-- SQLite/Postgres local mode
-- ClickHouse scale backend
-- artifact storage
-- NATS JetStream durable bus
+- `TraceStore` abstraction *(built)*
+- SQLite local mode *(built)*; Postgres local mode *(impl exists, unwired)*
+- ClickHouse scale backend *(impl exists, unwired — §19.2 #0.1)*
+- artifact storage *(built: filesystem; object store planned)*
+- durable bus *(built: `SqliteDurableBus`; NATS JetStream planned)*
 - trace table and span tree UI
 - Rust SDK and tracing layer
 - dataset creation from traces
@@ -878,8 +1325,11 @@ Acceptance:
 - `beaterd` starts as one binary.
 - OTLP HTTP/gRPC and native ingest accept traces.
 - Raw envelopes and canonical projections are both stored.
-- `TraceStore` exists with SQL and ClickHouse implementations.
-- NATS JetStream buffers writes and DLQ paths are visible.
+- `TraceStore` exists with SQL and ClickHouse implementations. *(Status: SQLite
+  is the runtime default; Postgres/ClickHouse impls exist but are not yet
+  selectable at runtime — see §19.2 #0.1.)*
+- A durable bus buffers writes and DLQ paths are visible. *(Status: today this is
+  the `SqliteDurableBus`; NATS JetStream is planned — see §7.4, §19.2.)*
 - A seeded demo trace renders in the UI.
 - `beaterctl smoke` proves time-to-first-trace.
 
@@ -961,7 +1411,7 @@ strong primitives, missing product/scale/control-plane pillars.
 | --- | --: | --- |
 | Ingestion, SDKs & instrumentation | 58% | no session/thread grouping; flat scalar I/O (no message/tool-call/multimodal); no auto-instrumentation; no CrewAI/DSPy/Vercel-AI/OpenAI-Agents |
 | Evaluations, datasets & reproducibility | 38% | no read APIs; no eval/dataset UI; thin scorer catalog; no prompt registry; no CI plugins |
-| Security, multi-tenancy & hosted ops | 38% | no human identity/SSO; RBAC data model never enforced; audit covers one action; no deletion/retention/billing/backups |
+| Security, multi-tenancy & hosted ops | 38% | OAuth 2.1 + accounts/sessions now exist (`beater-oauth`/`-oauth-server`/`-accounts`, wired into `beaterd`) but enforced RBAC, SSO/SAML/SCIM are absent; RBAC data model never consulted by `authorize()`; audit covers one action; no deletion/retention/billing/backups |
 | Experiments, statistics, online evals & alerting | 34% | one hand-rolled normal-approx; online evals sampled but never scored; alerts computed but never delivered; no Slack |
 | Data model, storage, scale & query performance | 22% | SQLite-only runtime (ClickHouse/Pg unwired); full-scan queries, no LIMIT/keyset pushdown; zero benchmarks/SLOs; no runtime TTL |
 | Product surface (UI, replay, annotation, prompt) | 22% | one read-only trace-waterfall page is the entire product |
@@ -970,7 +1420,8 @@ Already genuinely strong (do not rebuild): OTLP HTTP+gRPC core; dual
 OpenInference + OTel `gen_ai` normalizer; 4 tracing SDKs with `@observe`;
 reproducibility/lineage pinning; WASI scorer sandbox; judge broker with
 cost/ledger/audit; tail-sampling; crypto primitives (Argon2 keys, ChaCha20
-envelope + online re-wrap, signed webhooks, BYOK); quota limiter; single-source
+envelope + online re-wrap, signed webhooks, BYOK); OAuth 2.1 authorization server
+(PKCE, accounts, sessions) wired into `beaterd`; quota limiter; single-source
 OpenAPI → 7 SDKs + MCP + CLI with a CI drift gate; Apache-2.0 + governance.
 
 Biggest missing pillars: prompt management; hosted control plane
@@ -1072,7 +1523,7 @@ diffed, run in a playground, and linked to an eval run.
 
 ### 19.7 Phase 5 — Hosted Control Plane & Compliance (Enterprise GA)
 
-Goal: everything required before hosted multi-tenant GA can be sold (see §13, §17.3).
+Goal: everything required before hosted multi-tenant GA can be sold (see §13, §17 "v3: Hosted GA").
 
 | # | Requirement | Now | Target / concrete task | Effort | Blocker |
 | --- | --- | --- | --- | --- | --- |
