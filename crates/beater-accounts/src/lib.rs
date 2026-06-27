@@ -26,7 +26,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -88,12 +88,15 @@ impl OrgRole {
     }
 }
 
-/// A registered user. `password_hash` is the Argon2 PHC string and never leaves
-/// the store layer in API responses — map to a public view at the HTTP edge.
+/// A registered user. `password_hash` is the Argon2 PHC string; it is
+/// `skip_serializing` so it can never leak into a JSON response/log/event even
+/// if a `User` is accidentally serialized. The SQLite store binds columns
+/// explicitly (not via serde), so skipping it is safe.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
     pub user_id: UserId,
     pub email: String,
+    #[serde(skip_serializing, default)]
     pub password_hash: String,
     pub active: bool,
     pub created_at: Timestamp,
@@ -105,6 +108,7 @@ pub struct User {
 pub struct Session {
     pub session_id: SessionId,
     pub user_id: UserId,
+    #[serde(skip_serializing, default)]
     pub secret_hash: String,
     pub created_at: Timestamp,
     pub expires_at: Timestamp,
@@ -153,6 +157,17 @@ fn verify_password(password_hash: &str, password: &str) -> bool {
     Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok()
+}
+
+/// A fixed, valid Argon2 hash used only to equalize `authenticate` timing on the
+/// unknown-email path. Computed once; never matches any real password.
+fn dummy_password_hash() -> &'static str {
+    static DUMMY: OnceLock<String> = OnceLock::new();
+    DUMMY
+        .get_or_init(|| {
+            hash_password("beater-accounts timing-equalization dummy").unwrap_or_default()
+        })
+        .as_str()
 }
 
 fn to_hex(bytes: &[u8]) -> String {
@@ -255,21 +270,29 @@ pub trait AccountStore: Send + Sync {
         Ok(user)
     }
 
-    /// Verify an email + password, returning the user on success. Uses a uniform
-    /// [`AccountError::InvalidCredentials`] for both unknown email and wrong
-    /// password to avoid user enumeration.
+    /// Verify an email + password, returning the user on success.
+    ///
+    /// Hardened against user enumeration: unknown email, wrong password, and
+    /// inactive account all collapse to a uniform [`AccountError::InvalidCredentials`],
+    /// and an Argon2 verify runs on every path — including the unknown-email path
+    /// (against a fixed dummy hash) — so login timing does not reveal whether an
+    /// email exists. The `active` flag is only consulted *after* a correct
+    /// password, so a deactivated account is indistinguishable from a wrong
+    /// password to an attacker who lacks the password.
     async fn authenticate(&self, email: &str, password: &str) -> Result<User> {
-        let user = self
-            .get_user_by_email(email)
-            .await?
-            .ok_or(AccountError::InvalidCredentials)?;
-        if !user.active {
-            return Err(AccountError::InactiveUser);
+        let maybe_user = self.get_user_by_email(email).await?;
+        let password_ok = match &maybe_user {
+            Some(user) => verify_password(&user.password_hash, password),
+            // Equalize timing: spend the same Argon2 cost as a real verify.
+            None => {
+                let _ = verify_password(dummy_password_hash(), password);
+                false
+            }
+        };
+        match maybe_user {
+            Some(user) if password_ok && user.active => Ok(user),
+            _ => Err(AccountError::InvalidCredentials),
         }
-        if !verify_password(&user.password_hash, password) {
-            return Err(AccountError::InvalidCredentials);
-        }
-        Ok(user)
     }
 
     /// Mint and persist a session for `user_id`.
@@ -687,6 +710,23 @@ mod tests {
         let store = store();
         assert!(matches!(
             store.authenticate("nobody@example.com", "pw").await,
+            Err(AccountError::InvalidCredentials)
+        ));
+    }
+
+    #[tokio::test]
+    async fn inactive_user_login_is_uniform_error() {
+        let store = store();
+        let now = Utc::now();
+        let user = ok(store.register("frank@example.com", "pw", now).await);
+        // Deactivate the account.
+        let mut deactivated = user.clone();
+        deactivated.active = false;
+        ok(store.put_user(deactivated).await);
+        // Even with the CORRECT password, an inactive account is indistinguishable
+        // from a wrong password: no `InactiveUser` enumeration oracle on login.
+        assert!(matches!(
+            store.authenticate("frank@example.com", "pw").await,
             Err(AccountError::InvalidCredentials)
         ));
     }
