@@ -221,6 +221,176 @@ per-artifact "how to verify it's deployed/in-sync" commands are in §22.
 
 The operational split is logical first, physical later.
 
+### Naming convention — the "beat-boxes"
+
+The **project** is **Beater**. Its **crates are collectively the "beat-boxes"**, and
+every crate carries a **rhythm/beat-themed name** — the platform keeps the beat of an
+agent's behavior, so the components that make up the platform are named for the parts
+of a beat. The beat name is the **primary** name used throughout this document; the
+underlying Cargo crate (`beater-*`) is given in parentheses on first use and is the
+**crosswalk** back to the code.
+
+This table is the **source of truth** for the mapping. Each beat name maps to exactly
+one role, and no two roles share a name. Crate directories still ship under their
+`beater-*` paths today; the **physical directory rename to the beat names is a
+pre-1.0 follow-up** (tracked as the "beat-boxes rename" task, §20.9) — this document
+establishes the naming now and the code adopts it next. Until then, reach for a
+component by its crate path; reason about it by its beat name. Format below:
+**Beatname** — role — (crate).
+
+**Conductor & foundation**
+
+- **Beater** — the conductor: the product and the default all-in-one binary that runs
+  every box in one process — (bin: `beaterd`).
+- **Downbeat** — foundational primitives: IDs, entity types, typed money, clocks,
+  tenant scope (the "one" every other beat counts from) — (crate: `beater-core`).
+- **Beatmap** — the canonical span/run/eval schema, mappings, roll-ups, conventions,
+  `sampling_weight`, DatasetCase `split`; the single source of truth the contract is
+  generated from — (crate: `beater-schema`).
+
+**Signal in (ingest) & cadence**
+
+- **Upbeat** — the pickup: incoming signal — OTLP receive/export and the
+  OTLP/OpenInference/GenAI → canonical normalizer, plus auth/quota/raw-append,
+  tail-sampling, and `sampling_weight` stamping — (crates: `beater-otlp` +
+  `beater-ingest`).
+- **Syncopation** — off-grid signal made to fit the grid: Temporal workflow-history →
+  canonical span normalization — (crate: `beater-temporal`).
+- **Drumbeat** — durable cadence: the queue/job bus that keeps work moving on tempo
+  (`SqliteDurableBus` today; NATS/Kafka planned) — (crate: `beater-bus`).
+
+**Trace storage — the Groove**
+
+- **Groove** — trace storage: the `TraceStore`/`MetadataStore`/`ArtifactStore`/
+  `QuotaLimiter` trait boundary and weighted roll-up queries (the groove every trace
+  lays down) — (crate: `beater-store`).
+- **Soundcheck** — the shared trait-conformance suite run against every Groove backend
+  (you sound-check every box before the show) — (crate: `beater-store-conformance`).
+- **Sample** — the in-memory Groove backend for tests/dev (a quick captured sample) —
+  (crate: `beater-store-memory`).
+- **Vinyl** — the durable SQL Groove backends: SQLite (runtime default) plus the
+  ClickHouse/Postgres trace stores (the records the groove is pressed onto) — (crate:
+  `beater-store-sql`).
+- **Crate** — the artifact/raw-envelope object store (`FsArtifactStore`); a record
+  crate where the raw pressings are filed — (crate: `beater-store-obj`).
+- **Cold Storage** — the Parquet cold-tier archive over Arrow/DataFusion (the back-room
+  crate of old records) — (crate: `beater-archive`).
+- **Crate Dig** — full-text search (Tantivy) over spans; digging the crates for the
+  record you want — (crate: `beater-search`).
+
+**Scoring backbone — the Backbeat**
+
+- **Backbeat** — the scoring backbone: the evaluator catalog, scoring contracts,
+  paired comparison and aggregation, the LLM/embedding judge broker, and the
+  statistics correctness layer (real p-values, CIs, power, FWER/FDR) — (crates:
+  `beater-eval` + `beater-judge` + `beater-stats` [planned]).
+- **Soundproof** — the WASI/Wasmtime sandbox that runs user evaluators isolated from
+  network/host (the soundproof booth) — (crate: `beater-sandbox`).
+- **Riff** — the custom-scorer registry over the Soundproof sandbox (player-supplied
+  riffs) — (crate: `beater-scorers` [planned]).
+- **Tuning** — agent/score proper-scoring calibration (Brier/ECE/reliability +
+  recalibration map) and judge-vs-human agreement; tuning the instrument so the
+  reading is true — (crate: `beater-calibration`).
+- **Encore** — datasets, versions, examples, trace promotion, and the Train/Dev/Test
+  `split` + contamination guard; the failures you bring back for another take —
+  (crate: `beater-datasets`).
+- **Setlist** — review queues, annotations, and human labels; the curated list a human
+  works through — (crate: `beater-human`).
+
+**Improvement & replay**
+
+- **Beatboxing** — the recursive-self-improvement loop and experiment harness:
+  candidate-vs-baseline comparisons, the propose→simulate→accept episode, and the
+  agent run harness (improvising on the beat to make it better) — (crates:
+  `beater-experiments` + the RSI tools, §21).
+- **Cue** — the CI/CD deploy gates and policy evaluation: a gate cues the deploy only
+  on a real, powered, multiplicity-corrected, held-out win — (crate: `beater-gates`).
+- **Rewind** — cassettes + deterministic/forked replay and earliest-failing-span
+  attribution (rewind the tape to the moment it went wrong) — (crate: `beater-replay`).
+- **Backspin** — online-eval scoring worker: continuously re-scoring sampled production
+  traces (the turntable's backspin re-reads the groove) — (crate: `beater-online`
+  [planned]).
+- **Mixdown** — prompt registry/versioning/playground: where prompt versions are mixed
+  and committed — (crate: `beater-prompts` [planned]).
+
+**Anomaly, health & metering**
+
+- **Offbeat** — anomaly/drift alerting over trace/score signals (it fires when the
+  agent falls off the beat) — (crate: `beater-alerts`).
+- **Heartbeat** — self-observability: the Prometheus metrics facade, health, and SLO
+  instrumentation that proves the platform itself is alive — (in `beaterd`:
+  `metrics.rs` / `metrics_http.rs`; there is no separate crate).
+- **Tempo** — the usage ledger, billing meters, and spend summaries (the rate at which
+  value/spend accrues) — (crate: `beater-usage`).
+- **Bandwidth** — plans/subscriptions/Stripe metered sync; how much throughput a plan
+  buys — (crate: `beater-billing` [planned]).
+- **Tip Jar** — the autonomy-credits metering layer (deferred productization, §21.6);
+  what you pay into for verified gains — (crate: `beater-credits` [deferred]).
+
+**Identity, secrets & trust**
+
+- **Backstage** — API keys, JWT/session, RBAC types, and audit scopes; the
+  who's-allowed-backstage door — (crate: `beater-auth`).
+- **Guestlist** — users, password auth, browser sessions, org membership; the named
+  people on the list — (crate: `beater-accounts`).
+- **Wristband** — OAuth 2.1 core (clients, PKCE codes, access/refresh tokens); the
+  scoped wristband you're issued at the door — (crate: `beater-oauth`).
+- **Door** — the OAuth 2.1 HTTP surface wired into Beater (where the wristband is
+  checked) — (crate: `beater-oauth-server`).
+- **All-Access** — role/permission resolution inside `authorize()` (enforced RBAC) —
+  (crate: `beater-rbac` [planned]).
+- **Passport** — OIDC/SAML/SCIM enterprise identity (your credentials from another
+  venue) — (crate: `beater-identity` [planned]).
+- **Stash** — opaque provider-secret refs, BYOK metadata, and revocation (where keys
+  are stashed, never shown) — (crate: `beater-secrets`).
+- **Vault** — crypto primitives: Argon2 keys, ChaCha20 envelope encryption, signed
+  webhooks (the vault the Stash relies on) — (crate: `beater-security`).
+- **Logbook** — privileged-access audit events and tamper-evident readback (the venue's
+  signed logbook) — (crate: `beater-audit`).
+
+**Browser-agent family — the Liveset**
+
+- **Liveset** — the browser-agent observability contract: the shared foundation that
+  turns browser-driving agents into first-class observed agents (the live performance
+  on stage) — (crate: `beater-browser`).
+- **Liveset: DJ Deck** — the Chrome DevTools Protocol driver backend — (crate:
+  `beater-browser-cdp`).
+- **Liveset: Turntable** — the Playwright driver backend — (crate:
+  `beater-browser-playwright`).
+- **Liveset: Mixer** — the WebDriver/fantoccini driver backend — (crate:
+  `beater-browser-webdriver`).
+- **Liveset: Bootleg** — per-step console + network + DOM capture (the bootleg
+  recording of the live set) — (crate: `beater-browser-capture`).
+- **Liveset: Roadie** — the browser-agent run harness that drives the set — (crate:
+  `beater-browser-harness`).
+
+**Surfaces, tooling & tracked-but-deferred**
+
+- **Beatbox** — the MCP tool-belt: the MCP server exposing every `/v1` operation as a
+  tool, the composite "recipe" tools, and the folded-in improvement loop (§21) (the
+  box you reach into for a tool) — (crate: `beater-mcp`).
+- **Mixing Board** — the axum routers, OpenAPI surface, SSE/read APIs, the mapping
+  importer, and bulk promote (every signal routed and faded to the right output) —
+  (crate: `beater-api`).
+- **Stomp Box** — the CLI: `init`, `ingest test`, `eval run`, `gate`, `export`, and
+  `beater api` over the spec (the foot pedal you stomp to trigger an action) — (bin:
+  `beaterctl`).
+- **Roadcase** — build/regen tasks: `regen-spec`, `regen-semconv`, loadgen (the case
+  that holds the road crew's tools) — (crate: `xtask`).
+- **Tech Rider** — the criterion benches + load-test fixtures (the rider that pins the
+  performance requirements) — (crate: `beater-bench` [planned]).
+- **Studio** — the deferred visual agent-design canvas (front-end ↔ back-end map,
+  live traces, drag-to-add); design-only, idea preserved (§21.5b) — (crate:
+  `beater-studio` [deferred]).
+- **Backline** — the deferred auto-provisioned tool-belt (managed vector memory, SQL,
+  web search, scrapers); the gear the venue provides on demand (§21.5c) — (crate:
+  `beater-toolbelt` [deferred]).
+
+**Pipeline (not a crate):**
+
+- **Metronome** — the single combined CI/CD pipeline that keeps every box on tempo and
+  makes drift impossible to merge silently (§22.5).
+
 The crate list below reflects the workspace as it exists on `origin/main`
 (verified 2026-06-27). Crates marked **[planned]** are described elsewhere in
 this document as future work and do not yet exist; everything else is a real
@@ -232,87 +402,89 @@ code never grew (`beater-normalize`, `beater-store-ch`, `beater-sdk`,
 beater/
   Cargo.toml
   crates/
-    beater-core/          # IDs, entity types, typed money, clocks, tenant scope
-    beater-schema/        # [CHANGED] canonical event/run/span/eval schemas, mappings,
+    beater-core/          # Downbeat — IDs, entity types, typed money, clocks, tenant scope
+    beater-schema/        # Beatmap [CHANGED] canonical event/run/span/eval schemas, mappings,
                           #   rollups, conventions PLUS `sampling_weight` on the keep path
                           #   and WEIGHTED roll-ups/aggregates (§9, §13); DatasetCase `split`
-    beater-otlp/          # tonic/prost OTLP HTTP/gRPC receive/export AND the
-                          #   OTLP/OpenInference/GenAI -> canonical normalizer
-                          #   (there is no separate beater-normalize crate)
-    beater-temporal/      # Temporal workflow-history -> canonical span normalization
-    beater-ingest/        # [CHANGED] auth, quota, raw append, normalization, tail-sampling
+    beater-otlp/          # Upbeat (with beater-ingest) — tonic/prost OTLP HTTP/gRPC
+                          #   receive/export AND the OTLP/OpenInference/GenAI -> canonical
+                          #   normalizer (there is no separate beater-normalize crate)
+    beater-temporal/      # Syncopation — Temporal workflow-history -> canonical span normalization
+    beater-ingest/        # Upbeat [CHANGED] auth, quota, raw append, normalization, tail-sampling
                           #   PLUS recording `sampling_weight = 1/keep_probability` on every
                           #   kept span so downstream aggregates can be unbiased (§9)
-    beater-store/         # [CHANGED] TraceStore, MetadataStore, ArtifactStore, QuotaLimiter
+    beater-store/         # Groove [CHANGED] TraceStore, MetadataStore, ArtifactStore, QuotaLimiter
                           #   traits and StoreError; roll-up/aggregate queries become WEIGHTED
                           #   by `sampling_weight` (§9, §13) so tail-sampled totals are unbiased
-    beater-store-conformance/ # shared trait-conformance test suite run against every backend
-    beater-store-memory/  # in-memory TraceStore/MetadataStore/QuotaLimiter for tests/dev
-    beater-store-sql/     # SQLite stores (runtime default) PLUS PgTraceStore and
+    beater-store-conformance/ # Soundcheck — shared trait-conformance test suite run against every backend
+    beater-store-memory/  # Sample — in-memory TraceStore/MetadataStore/QuotaLimiter for tests/dev
+    beater-store-sql/     # Vinyl — SQLite stores (runtime default) PLUS PgTraceStore and
                           #   ClickHouseTraceStore (implemented, NOT yet runtime-wired);
                           #   ClickHouse lives here, not in a beater-store-ch crate
-    beater-store-obj/     # FsArtifactStore (filesystem) for artifacts/raw envelopes
-    beater-bus/           # SqliteDurableBus (the durable bus today); NATS/Kafka are [planned]
-    beater-eval/          # evaluator catalog, scoring contracts, paired comparison, aggregation
+    beater-store-obj/     # Crate — FsArtifactStore (filesystem) for artifacts/raw envelopes
+    beater-bus/           # Drumbeat — SqliteDurableBus (the durable bus today); NATS/Kafka are [planned]
+    beater-eval/          # Backbeat (with beater-judge/-stats) — evaluator catalog, scoring
+                          #   contracts, paired comparison, aggregation
                           #   [CHANGED] hardcoded-z `compare_paired_scores` is DELETED;
-                          #   it now delegates to beater-stats (§10.3, §20.5)
-    beater-calibration/   # [CHANGED] judge-vs-human agreement + Cohen's-kappa reports
+                          #   it now delegates to Backbeat/beater-stats (§10.3, §20.5)
+    beater-calibration/   # Tuning [CHANGED] judge-vs-human agreement + Cohen's-kappa reports
                           #   PLUS agent/score proper-scoring calibration: Brier, ECE,
                           #   reliability curve, persisted recalibration map (§10.5; kappa
                           #   becomes a secondary signal). Distinct from the §10.1.1 judge
                           #   Wasserstein calibration, which lives in the judge broker.
-    beater-usage/         # usage ledger, billing meters, spend summaries
-    beater-audit/         # privileged access audit events and readback
-    beater-sandbox/       # Wasmtime/WASI Component Model evaluator runtime
-    beater-secrets/       # opaque provider-secret refs, BYOK metadata, revocation
-    beater-security/      # crypto primitives: Argon2 keys, ChaCha20 envelope, signed webhooks
-    beater-judge/         # LLM/embedding judge broker, BYOK, calibration
-    beater-replay/        # [CHANGED] cassettes + deterministic replay PLUS real forked
+    beater-usage/         # Tempo — usage ledger, billing meters, spend summaries
+    beater-audit/         # Logbook — privileged access audit events and readback
+    beater-sandbox/       # Soundproof — Wasmtime/WASI Component Model evaluator runtime
+    beater-secrets/       # Stash — opaque provider-secret refs, BYOK metadata, revocation
+    beater-security/      # Vault — crypto primitives: Argon2 keys, ChaCha20 envelope, signed webhooks
+    beater-judge/         # Backbeat (with beater-eval/-stats) — LLM/embedding judge broker, BYOK, calibration
+    beater-replay/        # Rewind [CHANGED] cassettes + deterministic replay PLUS real forked
                           #   replay and earliest-failing-span attribution (§11); the
                           #   current `attribute_failure` first-error heuristic is replaced
-    beater-datasets/      # [CHANGED] datasets, versions, examples, trace promotion PLUS a
+    beater-datasets/      # Encore [CHANGED] datasets, versions, examples, trace promotion PLUS a
                           #   seeded-hash Train/Dev/Test `split` on DatasetCase + min-sample
                           #   gate + contamination guard (§5.3, §6.4); bulk promote-from-query
-    beater-experiments/   # candidate-vs-baseline comparisons and statistics
-    beater-gates/         # [CHANGED] CI/CD gates and policy evaluation; the deploy-gate
-                          #   number now comes from beater-stats (real p-value + power +
+    beater-experiments/   # Beatboxing (with the §21 RSI tools) — candidate-vs-baseline
+                          #   comparisons and statistics
+    beater-gates/         # Cue [CHANGED] CI/CD gates and policy evaluation; the deploy-gate
+                          #   number now comes from Backbeat/beater-stats (real p-value + power +
                           #   FWER/FDR) and a gate accepts only on the frozen Test split (§10.3)
-    beater-human/         # review queues, annotations, human labels
-    beater-search/        # Tantivy full-text index over spans
-    beater-archive/       # Parquet cold-tier archive (Arrow/DataFusion read path)
-    beater-alerts/        # alert evaluation over trace/score signals
-    beater-auth/          # API keys, JWT/session, RBAC types, audit scopes
-    beater-accounts/      # users, password auth, browser sessions, org membership
-    beater-oauth/         # OAuth 2.1 core: clients, PKCE codes, access/refresh tokens
-    beater-oauth-server/  # OAuth 2.1 HTTP surface (wired into beaterd)
-    beater-mcp/           # [CHANGED] MCP server exposing every /v1 operation as a tool,
+    beater-human/         # Setlist — review queues, annotations, human labels
+    beater-search/        # Crate Dig — Tantivy full-text index over spans
+    beater-archive/       # Cold Storage — Parquet cold-tier archive (Arrow/DataFusion read path)
+    beater-alerts/        # Offbeat — alert evaluation over trace/score signals
+    beater-auth/          # Backstage — API keys, JWT/session, RBAC types, audit scopes
+    beater-accounts/      # Guestlist — users, password auth, browser sessions, org membership
+    beater-oauth/         # Wristband — OAuth 2.1 core: clients, PKCE codes, access/refresh tokens
+    beater-oauth-server/  # Door — OAuth 2.1 HTTP surface (wired into Beater/beaterd)
+    beater-mcp/           # Beatbox [CHANGED] MCP server exposing every /v1 operation as a tool,
                           #   PLUS composite "recipe" tools, "suggest scorers" advisory, and
                           #   the FOLDED-IN self-improvement loop (§21). stdio transport for
                           #   local + streamable-HTTP/OAuth 2.1 for hosted (§3.2, §20.7)
-    beater-browser/       # browser-agent observability contract (shared foundation)
-    beater-browser-cdp/         # Chrome DevTools Protocol backend
-    beater-browser-playwright/  # Playwright driver backend
-    beater-browser-webdriver/   # WebDriver/fantoccini backend
-    beater-browser-capture/     # console + network + DOM capture per browser step
-    beater-browser-harness/     # browser-agent run harness
-    beater-api/           # [CHANGED] axum routers, OpenAPI, SSE/read APIs PLUS the
+    beater-browser/       # Liveset — browser-agent observability contract (shared foundation)
+    beater-browser-cdp/         # Liveset: DJ Deck — Chrome DevTools Protocol backend
+    beater-browser-playwright/  # Liveset: Turntable — Playwright driver backend
+    beater-browser-webdriver/   # Liveset: Mixer — WebDriver/fantoccini backend
+    beater-browser-capture/     # Liveset: Bootleg — console + network + DOM capture per browser step
+    beater-browser-harness/     # Liveset: Roadie — browser-agent run harness
+    beater-api/           # Mixing Board [CHANGED] axum routers, OpenAPI, SSE/read APIs PLUS the
                           #   config-driven MAPPING importer boundary (§7) and the bulk
                           #   "promote cases from query" endpoint (§20.4, §21)
-    xtask/                # build/regen tasks (regen-spec, regen-semconv, loadgen)
-    beater-stats/         # [planned, NEW] over `statrs`: real p-values, Wilson + bootstrap
-                          #   CIs, paired-t/McNemar/Wilcoxon test selection, Holm-Bonferroni +
-                          #   Benjamini-Hochberg, power/MDE gating; mSPRT/confidence-sequences
-                          #   are the required online follow-on (§6, §10.3, §20.5)
-    beater-scorers/       # [planned] custom-scorer registry over the WASI sandbox (§20.5)
-    beater-online/        # [planned] online-eval scoring worker (§20.6)
-    beater-prompts/       # [planned] prompt registry/versioning/playground (§20.6)
-    beater-rbac/          # [planned] role/permission resolution inside authorize() (§20.7)
-    beater-identity/      # [planned] OIDC/SAML/SCIM (§20.7)
-    beater-billing/       # [planned] plans/subscriptions/Stripe metered sync (§20.7)
-    beater-bench/         # [planned] criterion benches + load fixtures (§20.2)
+    xtask/                # Roadcase — build/regen tasks (regen-spec, regen-semconv, loadgen)
+    beater-stats/         # Backbeat (with beater-eval/-judge) [planned, NEW] over `statrs`: real
+                          #   p-values, Wilson + bootstrap CIs, paired-t/McNemar/Wilcoxon test
+                          #   selection, Holm-Bonferroni + Benjamini-Hochberg, power/MDE gating;
+                          #   mSPRT/confidence-sequences are the required online follow-on (§6, §10.3, §20.5)
+    beater-scorers/       # Riff [planned] custom-scorer registry over the Soundproof WASI sandbox (§20.5)
+    beater-online/        # Backspin [planned] online-eval scoring worker (§20.6)
+    beater-prompts/       # Mixdown [planned] prompt registry/versioning/playground (§20.6)
+    beater-rbac/          # All-Access [planned] role/permission resolution inside authorize() (§20.7)
+    beater-identity/      # Passport [planned] OIDC/SAML/SCIM (§20.7)
+    beater-billing/       # Bandwidth [planned] plans/subscriptions/Stripe metered sync (§20.7)
+    beater-bench/         # Tech Rider [planned] criterion benches + load fixtures (§20.2)
   bins/
-    beaterd/              # default all-in-one binary (also holds metrics.rs / Prometheus facade)
-    beaterctl/            # CLI: init, ingest test, eval run, gate, export
+    beaterd/              # Beater — default all-in-one binary (also holds Heartbeat: metrics.rs / Prometheus facade)
+    beaterctl/            # Stomp Box — CLI: init, ingest test, eval run, gate, export
     beater-worker/        # [planned] later thin bin over worker modules
     beater-ingestd/       # [planned] later thin bin over ingest modules
   sdks/
