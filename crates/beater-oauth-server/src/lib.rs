@@ -26,12 +26,16 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
-use beater_accounts::AccountStore;
-use beater_core::{EnvironmentId, OrganizationId, ProjectId, TenantId, TenantScope, UserId};
+use beater_accounts::{default_session_ttl, AccountError, AccountStore, OrgMembership, OrgRole};
+use beater_auth::{ApiKeyStore, CreateApiKeyRequest};
+use beater_core::{
+    ApiKeyId, EnvironmentId, OrganizationId, ProjectId, TenantId, TenantScope, UserId,
+};
 use beater_oauth::{
     AuthorizationGrant, ClientAuthMethod, ClientRegistration, GrantType, IssuedTokens, OAuthError,
     OAuthStore,
 };
+use beater_security::ApiScope;
 use chrono::Utc;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
@@ -53,6 +57,10 @@ pub struct OAuthServerState {
     pub login_url: Option<String>,
     /// Scopes advertised in metadata.
     pub scopes_supported: Vec<String>,
+    /// API-key store, used by the session-authorized `/auth/api-keys` endpoints
+    /// so a logged-in user can mint/revoke keys for their own tenant. `None`
+    /// when the backend runs without strict auth (no key store).
+    pub api_keys: Option<Arc<dyn ApiKeyStore>>,
 }
 
 impl OAuthServerState {
@@ -76,7 +84,288 @@ pub fn router(state: OAuthServerState) -> Router {
         .route("/oauth/register", post(register))
         .route("/oauth/authorize", get(authorize))
         .route("/oauth/token", post(token))
+        // Account auth endpoints used by the dashboard to sign users in/out.
+        .route("/auth/register", post(auth_register))
+        .route("/auth/login", post(auth_login))
+        .route("/auth/logout", post(auth_logout))
+        .route("/auth/me", get(auth_me))
+        // Session-authorized API-key management for the logged-in user's tenant.
+        .route("/auth/api-keys", post(auth_create_api_key))
+        .route("/auth/api-keys/revoke", post(auth_revoke_api_key))
         .with_state(state)
+}
+
+// ---- session-authorized API keys ----
+
+#[derive(Debug, Deserialize)]
+struct CreateApiKeyBody {
+    /// Scope names (`trace_read`, `trace_write`, `dataset_write`, `eval_run`,
+    /// `pii_unmask`, `admin`).
+    scopes: Vec<String>,
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    environment_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateApiKeyResult {
+    api_key_id: String,
+    /// The plaintext key (`bt_...`), shown exactly once.
+    secret: String,
+    tenant_id: String,
+    project_id: String,
+    environment_id: String,
+    scopes: Vec<String>,
+}
+
+fn parse_api_scope(value: &str) -> Option<ApiScope> {
+    match value {
+        "trace_write" => Some(ApiScope::TraceWrite),
+        "trace_read" => Some(ApiScope::TraceRead),
+        "dataset_write" => Some(ApiScope::DatasetWrite),
+        "eval_run" => Some(ApiScope::EvalRun),
+        "pii_unmask" => Some(ApiScope::PiiUnmask),
+        "admin" => Some(ApiScope::Admin),
+        _ => None,
+    }
+}
+
+async fn auth_create_api_key(
+    State(state): State<OAuthServerState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateApiKeyBody>,
+) -> Response {
+    let Some(user_id) = session_user(&state, &headers).await else {
+        return oauth_error(StatusCode::UNAUTHORIZED, "not_authenticated", None);
+    };
+    let Some(api_keys) = state.api_keys.as_ref() else {
+        return oauth_error(StatusCode::NOT_IMPLEMENTED, "api_keys_unavailable", None);
+    };
+    if body.scopes.is_empty() {
+        return oauth_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            Some("at least one scope is required"),
+        );
+    }
+    let mut scopes = BTreeSet::new();
+    for raw in &body.scopes {
+        match parse_api_scope(raw) {
+            Some(scope) => {
+                scopes.insert(scope);
+            }
+            None => {
+                return oauth_error(StatusCode::BAD_REQUEST, "invalid_scope", Some(raw));
+            }
+        }
+    }
+    // The key is scoped to the user's personal tenant (== user id). Project /
+    // environment default to "default" when omitted.
+    let project = body.project_id.unwrap_or_else(|| "default".to_string());
+    let environment = body.environment_id.unwrap_or_else(|| "default".to_string());
+    let (Ok(tenant_id), Ok(project_id), Ok(environment_id)) = (
+        TenantId::new(user_id.as_str().to_string()),
+        ProjectId::new(project.clone()),
+        EnvironmentId::new(environment.clone()),
+    ) else {
+        return oauth_error(StatusCode::BAD_REQUEST, "invalid_request", None);
+    };
+    let scope_names: Vec<String> = scopes.iter().map(|s| s.as_str().to_string()).collect();
+    match api_keys
+        .create_key(CreateApiKeyRequest {
+            tenant_id: tenant_id.clone(),
+            project_id: project_id.clone(),
+            environment_id: environment_id.clone(),
+            scopes,
+        })
+        .await
+    {
+        Ok(created) => Json(CreateApiKeyResult {
+            api_key_id: created.record.api_key_id.as_str().to_string(),
+            secret: created.secret,
+            tenant_id: tenant_id.as_str().to_string(),
+            project_id: project_id.as_str().to_string(),
+            environment_id: environment_id.as_str().to_string(),
+            scopes: scope_names,
+        })
+        .into_response(),
+        Err(_) => oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RevokeApiKeyBody {
+    api_key_id: String,
+}
+
+async fn auth_revoke_api_key(
+    State(state): State<OAuthServerState>,
+    headers: HeaderMap,
+    Json(body): Json<RevokeApiKeyBody>,
+) -> Response {
+    let Some(user_id) = session_user(&state, &headers).await else {
+        return oauth_error(StatusCode::UNAUTHORIZED, "not_authenticated", None);
+    };
+    let Some(api_keys) = state.api_keys.as_ref() else {
+        return oauth_error(StatusCode::NOT_IMPLEMENTED, "api_keys_unavailable", None);
+    };
+    let Ok(api_key_id) = ApiKeyId::new(body.api_key_id) else {
+        return oauth_error(StatusCode::BAD_REQUEST, "invalid_request", None);
+    };
+    // Only let a user revoke keys in their OWN tenant.
+    match api_keys.get_key(api_key_id.clone()).await {
+        Ok(Some(record)) if record.tenant_id.as_str() == user_id.as_str() => {}
+        Ok(Some(_)) => return oauth_error(StatusCode::FORBIDDEN, "forbidden", None),
+        Ok(None) => return oauth_error(StatusCode::NOT_FOUND, "not_found", None),
+        Err(_) => return oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None),
+    }
+    match api_keys.revoke_key(api_key_id, Utc::now()).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(_) => oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None),
+    }
+}
+
+// ---- account auth (dashboard login/session) ----
+
+#[derive(Debug, Deserialize)]
+struct CredentialsRequest {
+    email: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AccountResponse {
+    user_id: String,
+    email: String,
+    /// The user's personal tenant (== their org id), usable as the
+    /// tenant/project scope when authorizing OAuth clients.
+    tenant_id: String,
+}
+
+fn account_response(user_id: &str, email: &str) -> AccountResponse {
+    AccountResponse {
+        user_id: user_id.to_string(),
+        email: email.to_string(),
+        tenant_id: user_id.to_string(),
+    }
+}
+
+async fn auth_register(
+    State(state): State<OAuthServerState>,
+    Json(req): Json<CredentialsRequest>,
+) -> Response {
+    if req.email.trim().is_empty() || req.password.len() < 8 {
+        return oauth_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            Some("email is required and password must be >= 8 chars"),
+        );
+    }
+    let now = Utc::now();
+    let user = match state
+        .accounts
+        .register(&req.email, &req.password, now)
+        .await
+    {
+        Ok(user) => user,
+        Err(AccountError::EmailTaken) => {
+            return oauth_error(StatusCode::CONFLICT, "email_taken", None)
+        }
+        Err(_) => return oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None),
+    };
+    // Provision a personal organization (org id == user id == tenant) and make
+    // the user its owner, so they can immediately authorize for their tenant.
+    let org_id = match OrganizationId::new(user.user_id.as_str().to_string()) {
+        Ok(org) => org,
+        Err(_) => return oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None),
+    };
+    if state
+        .accounts
+        .put_membership(OrgMembership {
+            organization_id: org_id,
+            user_id: user.user_id.clone(),
+            role: OrgRole::Owner,
+            created_at: now,
+        })
+        .await
+        .is_err()
+    {
+        return oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None);
+    }
+    issue_session_response(&state, &user.user_id, &user.email, now).await
+}
+
+async fn auth_login(
+    State(state): State<OAuthServerState>,
+    Json(req): Json<CredentialsRequest>,
+) -> Response {
+    let now = Utc::now();
+    match state.accounts.authenticate(&req.email, &req.password).await {
+        Ok(user) => issue_session_response(&state, &user.user_id, &user.email, now).await,
+        Err(AccountError::InvalidCredentials) | Err(AccountError::InactiveUser) => {
+            oauth_error(StatusCode::UNAUTHORIZED, "invalid_credentials", None)
+        }
+        Err(_) => oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None),
+    }
+}
+
+async fn auth_logout(State(state): State<OAuthServerState>, headers: HeaderMap) -> Response {
+    // Best-effort: if the cookie maps to a live session, delete it.
+    if let Some(token) = session_cookie(&headers) {
+        if let Ok((_user, session)) = state.accounts.validate_session(&token, Utc::now()).await {
+            let _ = state.accounts.delete_session(&session.session_id).await;
+        }
+    }
+    let mut resp = StatusCode::NO_CONTENT.into_response();
+    if let Ok(value) = clear_session_cookie(&state).parse() {
+        resp.headers_mut().insert(http::header::SET_COOKIE, value);
+    }
+    resp
+}
+
+async fn auth_me(State(state): State<OAuthServerState>, headers: HeaderMap) -> Response {
+    match session_user_full(&state, &headers).await {
+        Some((user_id, email)) => Json(account_response(&user_id, &email)).into_response(),
+        None => oauth_error(StatusCode::UNAUTHORIZED, "not_authenticated", None),
+    }
+}
+
+async fn issue_session_response(
+    state: &OAuthServerState,
+    user_id: &UserId,
+    email: &str,
+    now: chrono::DateTime<Utc>,
+) -> Response {
+    let minted = match state
+        .accounts
+        .start_session(user_id.clone(), default_session_ttl(), now)
+        .await
+    {
+        Ok(minted) => minted,
+        Err(_) => return oauth_error(StatusCode::INTERNAL_SERVER_ERROR, "server_error", None),
+    };
+    let mut resp = Json(account_response(user_id.as_str(), email)).into_response();
+    if let Ok(value) = set_session_cookie(state, &minted.token).parse() {
+        resp.headers_mut().insert(http::header::SET_COOKIE, value);
+    }
+    resp
+}
+
+/// Whether to mark the session cookie `Secure` (HTTPS issuers only).
+fn cookie_secure(state: &OAuthServerState) -> bool {
+    state.issuer.starts_with("https://")
+}
+
+fn set_session_cookie(state: &OAuthServerState, token: &str) -> String {
+    let secure = if cookie_secure(state) { "; Secure" } else { "" };
+    let max_age = default_session_ttl().num_seconds().max(0);
+    format!("{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax{secure}; Max-Age={max_age}")
+}
+
+fn clear_session_cookie(state: &OAuthServerState) -> String {
+    let secure = if cookie_secure(state) { "; Secure" } else { "" };
+    format!("{SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax{secure}; Max-Age=0")
 }
 
 // ---- metadata ----
@@ -492,6 +781,18 @@ async fn session_user(state: &OAuthServerState, headers: &HeaderMap) -> Option<U
     }
 }
 
+/// Resolve the logged-in user's id + email from the session cookie.
+async fn session_user_full(
+    state: &OAuthServerState,
+    headers: &HeaderMap,
+) -> Option<(String, String)> {
+    let token = session_cookie(headers)?;
+    match state.accounts.validate_session(&token, Utc::now()).await {
+        Ok((user, _session)) => Some((user.user_id.as_str().to_string(), user.email)),
+        Err(_) => None,
+    }
+}
+
 fn session_cookie(headers: &HeaderMap) -> Option<String> {
     let raw = headers.get(http::header::COOKIE)?.to_str().ok()?;
     for pair in raw.split(';') {
@@ -583,9 +884,10 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::Request;
-    use beater_accounts::{default_session_ttl, SqliteAccountStore};
+    use beater_accounts::SqliteAccountStore;
     use beater_oauth::SqliteOAuthStore;
     use http::header::LOCATION;
+    use http::header::SET_COOKIE;
     use tower::ServiceExt;
 
     fn ok<T, E: std::fmt::Debug>(result: std::result::Result<T, E>) -> T {
@@ -599,6 +901,7 @@ mod tests {
             issuer: "https://api.example.test".to_string(),
             login_url: Some("https://app.example.test/login".to_string()),
             scopes_supported: vec!["traces:read".to_string(), "mcp:invoke".to_string()],
+            api_keys: Some(Arc::new(ok(beater_auth::SqliteApiKeyStore::in_memory()))),
         }
     }
 
@@ -618,6 +921,185 @@ mod tests {
         let mut hasher = Sha256::new();
         hasher.update(input);
         hasher.finalize().into()
+    }
+
+    async fn post_json(
+        app: &Router,
+        uri: &str,
+        body: serde_json::Value,
+        cookie: Option<&str>,
+    ) -> Response {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json");
+        if let Some(c) = cookie {
+            builder = builder.header(http::header::COOKIE, c);
+        }
+        ok(app
+            .clone()
+            .oneshot(
+                builder
+                    .body(Body::from(body.to_string()))
+                    .unwrap_or_else(|e| panic!("{e}")),
+            )
+            .await)
+    }
+
+    fn cookie_token(resp: &Response) -> String {
+        let set = resp
+            .headers()
+            .get(SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        set.split(';')
+            .next()
+            .and_then(|kv| kv.strip_prefix(&format!("{SESSION_COOKIE}=")))
+            .unwrap_or("")
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn auth_register_login_me_logout_flow() {
+        let app = router(test_state());
+
+        // Register -> 200, sets session cookie, personal tenant == user id.
+        let resp = post_json(
+            &app,
+            "/auth/register",
+            json!({"email": "dev@example.test", "password": "supersecret"}),
+            None,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let token = cookie_token(&resp);
+        assert!(token.starts_with("bs_"), "expected session cookie");
+        let body = body_json(resp).await;
+        let user_id = body["user_id"].as_str().unwrap_or("").to_string();
+        assert_eq!(body["tenant_id"], user_id);
+
+        // /auth/me with the cookie returns the same user.
+        let cookie = format!("{SESSION_COOKIE}={token}");
+        let resp = ok(app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/me")
+                    .header(http::header::COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap_or_else(|e| panic!("{e}")),
+            )
+            .await);
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(body_json(resp).await["user_id"], user_id);
+
+        // Duplicate register -> 409.
+        let resp = post_json(
+            &app,
+            "/auth/register",
+            json!({"email": "DEV@example.test", "password": "supersecret"}),
+            None,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+        // Wrong password -> 401.
+        let resp = post_json(
+            &app,
+            "/auth/login",
+            json!({"email": "dev@example.test", "password": "wrong"}),
+            None,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Correct login -> 200 + fresh cookie.
+        let resp = post_json(
+            &app,
+            "/auth/login",
+            json!({"email": "dev@example.test", "password": "supersecret"}),
+            None,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(cookie_token(&resp).starts_with("bs_"));
+
+        // Logout -> 204 + clears cookie; the old session no longer validates.
+        let resp = post_json(&app, "/auth/logout", json!({}), Some(&cookie)).await;
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        let resp = ok(app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/me")
+                    .header(http::header::COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap_or_else(|e| panic!("{e}")),
+            )
+            .await);
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn session_user_mints_and_revokes_api_key_for_own_tenant() {
+        let app = router(test_state());
+        // Register to get a session cookie.
+        let resp = post_json(
+            &app,
+            "/auth/register",
+            json!({"email": "dev@example.test", "password": "supersecret"}),
+            None,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let token = cookie_token(&resp);
+        let body = body_json(resp).await;
+        let user_id = body["user_id"].as_str().unwrap_or("").to_string();
+        let cookie = format!("{SESSION_COOKIE}={token}");
+
+        // Mint a key for the user's own tenant.
+        let resp = post_json(
+            &app,
+            "/auth/api-keys",
+            json!({"scopes": ["trace_read", "trace_write"]}),
+            Some(&cookie),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let key = body_json(resp).await;
+        assert!(key["secret"].as_str().unwrap_or("").starts_with("bt_"));
+        assert_eq!(key["tenant_id"], user_id); // scoped to the user's tenant
+        let api_key_id = key["api_key_id"].as_str().unwrap_or("").to_string();
+
+        // Unauthenticated mint -> 401.
+        let resp = post_json(
+            &app,
+            "/auth/api-keys",
+            json!({"scopes": ["trace_read"]}),
+            None,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Invalid scope -> 400.
+        let resp = post_json(
+            &app,
+            "/auth/api-keys",
+            json!({"scopes": ["wat"]}),
+            Some(&cookie),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        // Revoke own key -> 204.
+        let resp = post_json(
+            &app,
+            "/auth/api-keys/revoke",
+            json!({"api_key_id": api_key_id}),
+            Some(&cookie),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
     }
 
     #[tokio::test]
