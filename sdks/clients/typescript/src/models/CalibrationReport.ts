@@ -34,6 +34,13 @@ import {
     CalibrationItemToJSON,
     CalibrationItemToJSONTyped,
 } from './CalibrationItem';
+import type { ReliabilityBin } from './ReliabilityBin';
+import {
+    ReliabilityBinFromJSON,
+    ReliabilityBinFromJSONTyped,
+    ReliabilityBinToJSON,
+    ReliabilityBinToJSONTyped,
+} from './ReliabilityBin';
 
 /**
  * 
@@ -41,6 +48,12 @@ import {
  * @interface CalibrationReport
  */
 export interface CalibrationReport {
+    /**
+     * 
+     * @type {number}
+     * @memberof CalibrationReport
+     */
+    brierScore: number;
     /**
      * 
      * @type {string}
@@ -97,6 +110,12 @@ export interface CalibrationReport {
     expectedAgreement: number;
     /**
      * 
+     * @type {number}
+     * @memberof CalibrationReport
+     */
+    expectedCalibrationError: number;
+    /**
+     * 
      * @type {Array<CalibrationItem>}
      * @memberof CalibrationReport
      */
@@ -121,6 +140,12 @@ export interface CalibrationReport {
     projectId: string;
     /**
      * 
+     * @type {Array<ReliabilityBin>}
+     * @memberof CalibrationReport
+     */
+    reliabilityBins: Array<ReliabilityBin>;
+    /**
+     * 
      * @type {number}
      * @memberof CalibrationReport
      */
@@ -137,6 +162,7 @@ export interface CalibrationReport {
  * Check if a given object implements the CalibrationReport interface.
  */
 export function instanceOfCalibrationReport(value: object): value is CalibrationReport {
+    if (!('brierScore' in value) || value['brierScore'] === undefined) return false;
     if (!('calibrationReportId' in value) || value['calibrationReportId'] === undefined) return false;
     if (!('cohenKappa' in value) || value['cohenKappa'] === undefined) return false;
     if (!('confusion' in value) || value['confusion'] === undefined) return false;
@@ -146,10 +172,12 @@ export function instanceOfCalibrationReport(value: object): value is Calibration
     if (!('evalReportId' in value) || value['evalReportId'] === undefined) return false;
     if (!('evaluatorVersionId' in value) || value['evaluatorVersionId'] === undefined) return false;
     if (!('expectedAgreement' in value) || value['expectedAgreement'] === undefined) return false;
+    if (!('expectedCalibrationError' in value) || value['expectedCalibrationError'] === undefined) return false;
     if (!('items' in value) || value['items'] === undefined) return false;
     if (!('observedAgreement' in value) || value['observedAgreement'] === undefined) return false;
     if (!('policy' in value) || value['policy'] === undefined) return false;
     if (!('projectId' in value) || value['projectId'] === undefined) return false;
+    if (!('reliabilityBins' in value) || value['reliabilityBins'] === undefined) return false;
     if (!('sampleCount' in value) || value['sampleCount'] === undefined) return false;
     if (!('tenantId' in value) || value['tenantId'] === undefined) return false;
     return true;
@@ -165,6 +193,7 @@ export function CalibrationReportFromJSONTyped(json: any, ignoreDiscriminator: b
     }
     return {
         
+        'brierScore': json['brier_score'],
         'calibrationReportId': json['calibration_report_id'],
         'cohenKappa': json['cohen_kappa'],
         'confusion': CalibrationConfusionFromJSON(json['confusion']),
@@ -174,10 +203,12 @@ export function CalibrationReportFromJSONTyped(json: any, ignoreDiscriminator: b
         'evalReportId': json['eval_report_id'],
         'evaluatorVersionId': json['evaluator_version_id'],
         'expectedAgreement': json['expected_agreement'],
+        'expectedCalibrationError': json['expected_calibration_error'],
         'items': ((json['items'] as Array<any>).map(CalibrationItemFromJSON)),
         'observedAgreement': json['observed_agreement'],
         'policy': CalibrationPolicyFromJSON(json['policy']),
         'projectId': json['project_id'],
+        'reliabilityBins': ((json['reliability_bins'] as Array<any>).map(ReliabilityBinFromJSON)),
         'sampleCount': json['sample_count'],
         'tenantId': json['tenant_id'],
     };
@@ -194,6 +225,7 @@ export function CalibrationReportToJSONTyped(value?: CalibrationReport | null, i
 
     return {
         
+        'brier_score': value['brierScore'],
         'calibration_report_id': value['calibrationReportId'],
         'cohen_kappa': value['cohenKappa'],
         'confusion': CalibrationConfusionToJSON(value['confusion']),
@@ -203,10 +235,12 @@ export function CalibrationReportToJSONTyped(value?: CalibrationReport | null, i
         'eval_report_id': value['evalReportId'],
         'evaluator_version_id': value['evaluatorVersionId'],
         'expected_agreement': value['expectedAgreement'],
+        'expected_calibration_error': value['expectedCalibrationError'],
         'items': ((value['items'] as Array<any>).map(CalibrationItemToJSON)),
         'observed_agreement': value['observedAgreement'],
         'policy': CalibrationPolicyToJSON(value['policy']),
         'project_id': value['projectId'],
+        'reliability_bins': ((value['reliabilityBins'] as Array<any>).map(ReliabilityBinToJSON)),
         'sample_count': value['sampleCount'],
         'tenant_id': value['tenantId'],
     };

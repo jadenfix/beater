@@ -83,6 +83,7 @@ export * from './ProviderSecretMetadata';
 export * from './PublishAck';
 export * from './QueuedTraceWork';
 export * from './RedactionClass';
+export * from './ReliabilityBin';
 export * from './ReviewAnnotation';
 export * from './ReviewQueue';
 export * from './ReviewTask';

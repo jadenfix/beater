@@ -1315,6 +1315,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sqlite_scoped_kind_consumption_preserves_other_tenants() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("bus.sqlite");
+        let bus = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let tenant_a = TenantId::new("tenant-a").unwrap_or_else(|err| panic!("{err}"));
+        let tenant_b = TenantId::new("tenant-b").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+        let a_message = scoped_fixture_message(&tenant_a, &project, "trace.write_batch", "a");
+        let b_message = scoped_fixture_message(&tenant_b, &project, "trace.write_batch", "b");
+
+        bus.publish(a_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(b_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let consumed = bus
+            .consume_scoped_kind_batch(&tenant_a, &project, "trace.write_batch", 10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(consumed, vec![a_message]);
+        bus.ack(consumed[0].clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(bus.depth_for_kind("trace.write_batch").await, Ok(1));
+        drop(bus);
+
+        let reopened = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let remaining = reopened
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(remaining, vec![b_message]);
+        reopened
+            .ack(remaining[0].clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+    }
+
+    #[tokio::test]
     async fn sqlite_bus_persists_retry_attempts_and_dlq_across_reopen() {
         let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
         let path = tempdir.path().join("bus.sqlite");
@@ -1424,5 +1465,430 @@ mod tests {
                 "#
             ))
             .unwrap_or_else(|err| panic!("{err}"));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Pluggability proof: the same round-trip test runs through any DurableBus
+    // implementation, proving the trait is the correct seam.
+    // ---------------------------------------------------------------------------
+
+    /// Minimal publish → consume → ack round-trip exercised via the trait object.
+    ///
+    /// A second backend that implements `DurableBus` passes with zero changes to
+    /// the callers; only this helper needs a new call-site.
+    async fn trait_round_trip(bus: std::sync::Arc<dyn DurableBus>) {
+        let msg = fixture_message("kind.alpha");
+
+        // publish is accepted and message appears in depth counts
+        let ack = bus
+            .publish(msg.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(ack, PublishAck::accepted());
+        assert_eq!(bus.depth().await, Ok(1));
+        assert_eq!(bus.depth_for_kind("kind.alpha").await, Ok(1));
+
+        // kind filter does not bleed into unrelated lanes
+        assert_eq!(bus.depth_for_kind("kind.beta").await, Ok(0));
+
+        // consume moves the message to inflight — depth still 1 (queue+inflight)
+        let batch = bus
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].message_id, msg.message_id);
+        assert_eq!(bus.depth().await, Ok(1));
+
+        // ack removes from inflight — depth drops to zero, DLQ empty
+        bus.ack(batch[0].clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(bus.depth().await, Ok(0));
+        assert!(bus
+            .dlq()
+            .await
+            .unwrap_or_else(|err| panic!("{err}"))
+            .is_empty());
+    }
+
+    /// Full `DurableBus` conformance suite — covers every guarantee documented in
+    /// `docs/bus-backends.md §2.1`.  Crash-recovery is NOT exercisable through a
+    /// trait object alone (it requires dropping and reopening the store); see the
+    /// `sqlite_bus_recovers_unacked_inflight_messages_on_reopen` test for that
+    /// guarantee.
+    ///
+    /// Any new backend implementation must pass this helper.
+    ///
+    /// `capacity` must equal the capacity the bus was constructed with so that the
+    /// backpressure section can fill the queue precisely to the limit.
+    async fn bus_conformance_suite(bus: std::sync::Arc<dyn DurableBus>, capacity: usize) {
+        // ── §1 Idempotent publish ─────────────────────────────────────────────
+        // Same (tenant_id, project_id, kind, idempotency_key) while active
+        // (queued OR inflight) must return PublishAck::duplicate() without
+        // inserting a second copy.
+        {
+            let tenant = TenantId::new("conformance-tenant").unwrap_or_else(|e| panic!("{e}"));
+            let project = ProjectId::new("conformance-project").unwrap_or_else(|e| panic!("{e}"));
+            let msg = scoped_fixture_message(&tenant, &project, "c.idem", "idem-key-1");
+
+            let ack1 = bus
+                .publish(msg.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                ack1,
+                PublishAck::accepted(),
+                "first publish must be accepted"
+            );
+
+            // Duplicate while queued.
+            let ack2 = bus
+                .publish(msg.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                ack2,
+                PublishAck::duplicate(),
+                "same idempotency key while queued must return duplicate"
+            );
+            assert_eq!(
+                bus.depth().await,
+                Ok(1),
+                "duplicate publish must not increase depth"
+            );
+
+            // Move to inflight; duplicate must still be rejected.
+            let batch = bus
+                .consume_kind_batch("c.idem", 1)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(batch.len(), 1);
+            let ack3 = bus
+                .publish(msg.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                ack3,
+                PublishAck::duplicate(),
+                "same idempotency key while inflight must return duplicate"
+            );
+
+            bus.ack(batch[0].clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(bus.depth().await, Ok(0));
+        }
+
+        // ── §2 Tenant-scoped consumption ──────────────────────────────────────
+        // consume_scoped_kind_batch for tenant_a must not return tenant_b's
+        // messages (partition isolation).
+        {
+            let tenant_a = TenantId::new("conformance-tenant-a").unwrap_or_else(|e| panic!("{e}"));
+            let tenant_b = TenantId::new("conformance-tenant-b").unwrap_or_else(|e| panic!("{e}"));
+            let project =
+                ProjectId::new("conformance-project-scope").unwrap_or_else(|e| panic!("{e}"));
+            let kind = "c.tenant.scoped";
+
+            let msg_a = scoped_fixture_message(&tenant_a, &project, kind, "scope-a");
+            let msg_b = scoped_fixture_message(&tenant_b, &project, kind, "scope-b");
+
+            bus.publish(msg_a.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            bus.publish(msg_b.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+
+            // Tenant A's scoped consume must return only its own message.
+            let consumed_a = bus
+                .consume_scoped_kind_batch(&tenant_a, &project, kind, 10)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                consumed_a.len(),
+                1,
+                "scoped consume must return only tenant_a's message"
+            );
+            assert_eq!(
+                consumed_a[0].tenant_id, tenant_a,
+                "returned message must belong to tenant_a, not tenant_b"
+            );
+            bus.ack(consumed_a[0].clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+
+            // Tenant B's message must remain unconsumed.
+            let remaining = bus
+                .consume_scoped_kind_batch(&tenant_b, &project, kind, 10)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                remaining.len(),
+                1,
+                "tenant_b's message must still be available after tenant_a consumed"
+            );
+            assert_eq!(
+                remaining[0].tenant_id, tenant_b,
+                "remaining message must belong to tenant_b"
+            );
+            bus.ack(remaining[0].clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+        }
+
+        // ── §3 Retry + DLQ routing ────────────────────────────────────────────
+        // NACK increments attempts; exhausted messages route to DLQ without
+        // blocking other kinds; replay_dead_letter re-enqueues with optional
+        // attempts reset.
+        {
+            let mut poison = fixture_message("c.poison");
+            poison.max_attempts = 2;
+            let healthy = fixture_message("c.healthy");
+
+            bus.publish(poison).await.unwrap_or_else(|e| panic!("{e}"));
+            bus.publish(healthy).await.unwrap_or_else(|e| panic!("{e}"));
+
+            // First NACK: attempts → 1, below max_attempts → re-queued.
+            let batch = bus
+                .consume_kind_batch("c.poison", 1)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(batch.len(), 1);
+            bus.retry_or_dlq(batch[0].clone(), "transient".to_string())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+
+            // Healthy message must not be blocked by the poison message.
+            let healthy_batch = bus
+                .consume_kind_batch("c.healthy", 1)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                healthy_batch.len(),
+                1,
+                "healthy message must not be blocked by poison message"
+            );
+            bus.ack(healthy_batch[0].clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+
+            // Second NACK: attempts → 2 == max_attempts → DLQ.
+            let retry_batch = bus
+                .consume_kind_batch("c.poison", 1)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                retry_batch.len(),
+                1,
+                "nacked message must be requeued for the retry attempt"
+            );
+            assert_eq!(
+                retry_batch[0].attempts, 1,
+                "retry message must carry the incremented attempt count"
+            );
+            bus.retry_or_dlq(retry_batch[0].clone(), "permanent".to_string())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+
+            let dlq = bus.dlq().await.unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(dlq.len(), 1, "exhausted message must be in DLQ");
+            assert_eq!(dlq[0].message.kind, "c.poison");
+            assert_eq!(
+                bus.depth().await,
+                Ok(0),
+                "DLQ messages must not count toward active depth"
+            );
+
+            // replay_dead_letter re-enqueues with reset_attempts=true.
+            let tenant = TenantId::new("tenant").unwrap_or_else(|e| panic!("{e}"));
+            let project = ProjectId::new("project").unwrap_or_else(|e| panic!("{e}"));
+            let msg_id = dlq[0].message.message_id.clone();
+            let replay_ack = bus
+                .replay_dead_letter(&tenant, &project, &msg_id, true)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                replay_ack,
+                PublishAck::accepted(),
+                "replay must accept the message"
+            );
+            assert!(
+                bus.dlq().await.unwrap_or_else(|e| panic!("{e}")).is_empty(),
+                "DLQ must be empty after successful replay"
+            );
+            let replayed = bus.consume_batch(1).await.unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(replayed.len(), 1);
+            assert_eq!(
+                replayed[0].attempts, 0,
+                "replay with reset_attempts=true must zero the counter"
+            );
+            bus.ack(replayed[0].clone())
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+        }
+
+        // ── §4 Depth accounting + backpressure ────────────────────────────────
+        // depth() == queued + inflight; publish when depth >= capacity returns
+        // BusError::Backpressure.
+        {
+            // Fill the queue exactly to capacity (each message has a unique kind
+            // so idempotency keys do not collide).
+            for i in 0..capacity {
+                let msg = fixture_message(&format!("c.bp.{i}"));
+                bus.publish(msg).await.unwrap_or_else(|e| panic!("{e}"));
+            }
+            assert_eq!(
+                bus.depth().await,
+                Ok(capacity),
+                "depth must equal capacity after filling the queue"
+            );
+
+            // One more must be rejected with Backpressure.
+            let overflow = fixture_message("c.bp.overflow");
+            assert!(
+                matches!(
+                    bus.publish(overflow).await,
+                    Err(BusError::Backpressure { .. })
+                ),
+                "publish at capacity must return BusError::Backpressure"
+            );
+
+            // Drain: consume all and ack; depth must return to zero.
+            let batch = bus
+                .consume_batch(capacity)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(batch.len(), capacity);
+            for msg in batch {
+                bus.ack(msg).await.unwrap_or_else(|e| panic!("{e}"));
+            }
+            assert_eq!(bus.depth().await, Ok(0));
+        }
+    }
+
+    /// The in-memory backend satisfies the `DurableBus` trait object.
+    #[tokio::test]
+    async fn backend_pluggability_in_memory_bus() {
+        let bus: std::sync::Arc<dyn DurableBus> = std::sync::Arc::new(InMemoryBus::new(8));
+        trait_round_trip(bus).await;
+    }
+
+    /// The SQLite-backed durable bus satisfies the same `DurableBus` trait object,
+    /// proving that a second backend (NATS, Kafka, …) can be wired without touching
+    /// any caller.
+    #[tokio::test]
+    async fn backend_pluggability_sqlite_durable_bus() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("bus.sqlite");
+        let bus: std::sync::Arc<dyn DurableBus> = std::sync::Arc::new(
+            SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}")),
+        );
+        trait_round_trip(bus).await;
+    }
+
+    /// InMemoryBus satisfies the full DurableBus conformance contract:
+    /// idempotent publish, tenant-scoped consumption, retry/DLQ routing,
+    /// depth accounting, and backpressure — all exercised via the trait object.
+    #[tokio::test]
+    async fn conformance_in_memory_bus() {
+        let bus: std::sync::Arc<dyn DurableBus> = std::sync::Arc::new(InMemoryBus::new(8));
+        bus_conformance_suite(bus, 8).await;
+    }
+
+    /// SqliteDurableBus satisfies the full DurableBus conformance contract via
+    /// the trait object.  Crash-recovery (at-least-once after restart) is covered
+    /// by the separate `sqlite_bus_recovers_unacked_inflight_messages_on_reopen`
+    /// test which requires backend-specific drop+reopen.
+    #[tokio::test]
+    async fn conformance_sqlite_bus() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("conformance.sqlite");
+        let bus: std::sync::Arc<dyn DurableBus> = std::sync::Arc::new(
+            SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}")),
+        );
+        bus_conformance_suite(bus, 8).await;
+    }
+
+    /// SqliteDurableBus: consume_scoped_kind_batch for tenant_a must not return
+    /// messages belonging to tenant_b.  Mirrors the in-memory
+    /// `scoped_kind_consumption_preserves_other_tenants` test with a persistent
+    /// backend to confirm the SQL WHERE clause is correct.
+    #[tokio::test]
+    async fn sqlite_bus_scoped_consumption_preserves_other_tenants() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("bus.sqlite");
+        let bus = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let tenant_a = TenantId::new("tenant-a").unwrap_or_else(|err| panic!("{err}"));
+        let tenant_b = TenantId::new("tenant-b").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+        let a_message =
+            scoped_fixture_message(&tenant_a, &project, "trace.write_batch", "sqlite-a");
+        let b_message =
+            scoped_fixture_message(&tenant_b, &project, "trace.write_batch", "sqlite-b");
+
+        bus.publish(a_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(b_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let consumed = bus
+            .consume_scoped_kind_batch(&tenant_a, &project, "trace.write_batch", 10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(
+            consumed,
+            vec![a_message],
+            "scoped consume for tenant_a must not return tenant_b's row"
+        );
+        bus.ack(consumed[0].clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(bus.depth_for_kind("trace.write_batch").await, Ok(1));
+
+        // Reopen to prove tenant_b's message survived un-consumed.
+        drop(bus);
+        let reopened = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let remaining = reopened
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(
+            remaining,
+            vec![b_message],
+            "tenant_b's message must persist untouched across reopen"
+        );
+    }
+
+    /// SqliteDurableBus enforces its capacity bound: once depth == capacity,
+    /// publish returns BusError::Backpressure.  Mirrors the
+    /// `bounded_bus_applies_backpressure` test for InMemoryBus.
+    #[tokio::test]
+    async fn sqlite_bounded_bus_applies_backpressure() {
+        let bus = SqliteDurableBus::in_memory(2).unwrap_or_else(|err| panic!("{err}"));
+        let first = fixture_message("first");
+        let second = fixture_message("second");
+        let third = fixture_message("third");
+
+        assert_eq!(
+            bus.publish(first).await,
+            Ok(PublishAck::accepted()),
+            "first message must be accepted"
+        );
+        assert_eq!(
+            bus.publish(second).await,
+            Ok(PublishAck::accepted()),
+            "second message must be accepted"
+        );
+        assert!(
+            matches!(
+                bus.publish(third).await,
+                Err(BusError::Backpressure { capacity: 2 })
+            ),
+            "third publish must return Backpressure when at capacity=2"
+        );
+        assert_eq!(bus.depth().await, Ok(2));
     }
 }

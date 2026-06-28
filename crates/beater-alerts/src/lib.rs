@@ -97,7 +97,7 @@ pub enum AlertSeverity {
     Critical,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct AlertPolicy {
     pub policy_id: String,
     pub endpoint_url: String,
@@ -106,6 +106,24 @@ pub struct AlertPolicy {
     pub fire_when_score_at_or_below: f64,
     pub dedupe_window_seconds: i64,
     pub maintenance_windows: Vec<MaintenanceWindow>,
+}
+
+impl std::fmt::Debug for AlertPolicy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AlertPolicy")
+            .field("policy_id", &self.policy_id)
+            .field("endpoint_url", &self.endpoint_url)
+            .field("signing_secret", &"[redacted]")
+            .field("severity", &self.severity)
+            .field(
+                "fire_when_score_at_or_below",
+                &self.fire_when_score_at_or_below,
+            )
+            .field("dedupe_window_seconds", &self.dedupe_window_seconds)
+            .field("maintenance_windows", &self.maintenance_windows)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -151,6 +169,15 @@ pub struct WebhookDelivery {
     pub headers: BTreeMap<String, String>,
     #[schema(value_type = serde_json::Value)]
     pub body: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SlackChannel;
+
+impl SlackChannel {
+    pub fn format_alert(&self, policy: &AlertPolicy, input: &AlertInput) -> serde_json::Value {
+        slack_alert_payload(policy, input)
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -250,6 +277,99 @@ fn alert_payload(policy: &AlertPolicy, input: &AlertInput) -> serde_json::Value 
         "links": input.links,
         "emitted_at": input.now,
     })
+}
+
+fn slack_alert_payload(policy: &AlertPolicy, input: &AlertInput) -> serde_json::Value {
+    let severity = severity_text(&policy.severity);
+    let mut blocks = vec![
+        serde_json::json!({
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": format!("{severity} alert"),
+                "emoji": true,
+            },
+        }),
+        serde_json::json!({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": format!("*{}*\n{}", input.title, score_context(input)),
+            },
+        }),
+        serde_json::json!({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": format!(
+                        "*Severity:* {severity}  *Tenant:* `{}`  *Project:* `{}`  *Trace:* `{}`",
+                        input.tenant_id.as_str(),
+                        input.project_id.as_str(),
+                        input.trace_id.as_str(),
+                    ),
+                },
+            ],
+        }),
+    ];
+
+    if !input.links.trace_url.trim().is_empty() {
+        blocks.push(serde_json::json!({
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "view_trace",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "View trace",
+                        "emoji": true,
+                    },
+                    "url": input.links.trace_url,
+                },
+            ],
+        }));
+    }
+
+    serde_json::json!({
+        "text": format!(
+            "{severity} alert: {} (score {})",
+            input.title,
+            format_score(input.score)
+        ),
+        "blocks": blocks,
+    })
+}
+
+fn severity_text(severity: &AlertSeverity) -> &'static str {
+    match severity {
+        AlertSeverity::Info => "Info",
+        AlertSeverity::Warning => "Warning",
+        AlertSeverity::Critical => "Critical",
+    }
+}
+
+fn score_context(input: &AlertInput) -> String {
+    let score = format_score(input.score);
+    match input.baseline_score {
+        Some(baseline) => {
+            let delta = input.score - baseline;
+            format!(
+                "*Score:* `{score}`  *Baseline:* `{}`  *Delta:* `{}`",
+                format_score(baseline),
+                format_delta(delta),
+            )
+        }
+        None => format!("*Score:* `{score}`"),
+    }
+}
+
+fn format_score(score: f64) -> String {
+    format!("{score:.3}")
+}
+
+fn format_delta(delta: f64) -> String {
+    format!("{delta:+.3}")
 }
 
 /// Logical delivery identity for the idempotency key. Combines the dedupe key
@@ -618,6 +738,24 @@ mod tests {
     }
 
     #[test]
+    fn alert_policy_debug_redacts_signing_secret() {
+        let policy = AlertPolicy {
+            policy_id: "low-score".to_string(),
+            endpoint_url: "https://example.test/webhook".to_string(),
+            signing_secret: "super-secret-signing-key".to_string(),
+            severity: AlertSeverity::Critical,
+            fire_when_score_at_or_below: 0.5,
+            dedupe_window_seconds: 60,
+            maintenance_windows: Vec::new(),
+        };
+
+        let debug = format!("{policy:?}");
+        assert!(debug.contains("AlertPolicy"));
+        assert!(debug.contains("signing_secret: \"[redacted]\""));
+        assert!(!debug.contains("super-secret-signing-key"));
+    }
+
+    #[test]
     fn webhook_delivery_carries_stable_idempotency_key_across_retries() {
         let now = Utc::now();
         let policy = AlertPolicy {
@@ -668,6 +806,90 @@ mod tests {
             Some(key),
             "distinct firings must produce distinct idempotency keys"
         );
+    }
+
+    #[test]
+    fn slack_channel_formats_block_kit_with_severity_score_and_trace_button() {
+        let policy = AlertPolicy {
+            policy_id: "low-score".to_string(),
+            endpoint_url: "https://example.test/webhook".to_string(),
+            signing_secret: "secret".to_string(),
+            severity: AlertSeverity::Critical,
+            fire_when_score_at_or_below: 0.5,
+            dedupe_window_seconds: 300,
+            maintenance_windows: Vec::new(),
+        };
+        let input = fixture_alert_input(Utc::now());
+
+        let payload = SlackChannel.format_alert(&policy, &input);
+        assert_eq!(
+            payload["text"].as_str(),
+            Some("Critical alert: Eval score dropped (score 0.100)")
+        );
+
+        let blocks = payload["blocks"]
+            .as_array()
+            .unwrap_or_else(|| panic!("blocks must be an array"));
+        assert_eq!(blocks.len(), 4);
+        assert_eq!(blocks[0]["type"].as_str(), Some("header"));
+        assert_eq!(blocks[0]["text"]["text"].as_str(), Some("Critical alert"));
+
+        let section_text = blocks[1]["text"]["text"]
+            .as_str()
+            .unwrap_or_else(|| panic!("section text must be present"));
+        assert!(section_text.contains("*Eval score dropped*"));
+        assert!(section_text.contains("*Score:* `0.100`"));
+        assert!(section_text.contains("*Baseline:* `0.900`"));
+        assert!(section_text.contains("*Delta:* `-0.800`"));
+
+        let context_text = blocks[2]["elements"][0]["text"]
+            .as_str()
+            .unwrap_or_else(|| panic!("context text must be present"));
+        assert!(context_text.contains("*Severity:* Critical"));
+        assert!(context_text.contains("*Tenant:* `tenant`"));
+        assert!(context_text.contains("*Project:* `project`"));
+        assert!(context_text.contains("*Trace:* `trace`"));
+
+        let button = &blocks[3]["elements"][0];
+        assert_eq!(blocks[3]["type"].as_str(), Some("actions"));
+        assert_eq!(button["type"].as_str(), Some("button"));
+        assert_eq!(button["action_id"].as_str(), Some("view_trace"));
+        assert_eq!(button["text"]["text"].as_str(), Some("View trace"));
+        assert_eq!(
+            button["url"].as_str(),
+            Some("https://beater.test/traces/trace")
+        );
+    }
+
+    #[test]
+    fn slack_channel_omits_trace_button_without_trace_url_and_allows_missing_baseline() {
+        let policy = AlertPolicy {
+            policy_id: "low-score".to_string(),
+            endpoint_url: "https://example.test/webhook".to_string(),
+            signing_secret: "secret".to_string(),
+            severity: AlertSeverity::Warning,
+            fire_when_score_at_or_below: 0.5,
+            dedupe_window_seconds: 300,
+            maintenance_windows: Vec::new(),
+        };
+        let mut input = fixture_alert_input(Utc::now());
+        input.baseline_score = None;
+        input.links.trace_url = "   ".to_string();
+
+        let payload = SlackChannel.format_alert(&policy, &input);
+        let blocks = payload["blocks"]
+            .as_array()
+            .unwrap_or_else(|| panic!("blocks must be an array"));
+        assert_eq!(blocks.len(), 3);
+        assert!(!blocks.iter().any(|block| block["type"] == "actions"));
+
+        let section_text = blocks[1]["text"]["text"]
+            .as_str()
+            .unwrap_or_else(|| panic!("section text must be present"));
+        assert!(section_text.contains("*Score:* `0.100`"));
+        assert!(!section_text.contains("Baseline"));
+        assert!(!section_text.contains("Delta"));
+        assert_eq!(blocks[0]["text"]["text"].as_str(), Some("Warning alert"));
     }
 
     fn fixture_alert_input(now: Timestamp) -> AlertInput {

@@ -4,6 +4,7 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
+**BrierScore** | **float64** |  | 
 **CalibrationReportId** | **string** |  | 
 **CohenKappa** | **float64** |  | 
 **Confusion** | [**CalibrationConfusion**](CalibrationConfusion.md) |  | 
@@ -13,10 +14,12 @@ Name | Type | Description | Notes
 **EvalReportId** | **string** |  | 
 **EvaluatorVersionId** | **string** |  | 
 **ExpectedAgreement** | **float64** |  | 
+**ExpectedCalibrationError** | **float64** |  | 
 **Items** | [**[]CalibrationItem**](CalibrationItem.md) |  | 
 **ObservedAgreement** | **float64** |  | 
 **Policy** | [**CalibrationPolicy**](CalibrationPolicy.md) |  | 
 **ProjectId** | **string** |  | 
+**ReliabilityBins** | [**[]ReliabilityBin**](ReliabilityBin.md) |  | 
 **SampleCount** | **int32** |  | 
 **TenantId** | **string** |  | 
 
@@ -24,7 +27,7 @@ Name | Type | Description | Notes
 
 ### NewCalibrationReport
 
-`func NewCalibrationReport(calibrationReportId string, cohenKappa float64, confusion CalibrationConfusion, createdAt time.Time, datasetId string, datasetVersionId string, evalReportId string, evaluatorVersionId string, expectedAgreement float64, items []CalibrationItem, observedAgreement float64, policy CalibrationPolicy, projectId string, sampleCount int32, tenantId string, ) *CalibrationReport`
+`func NewCalibrationReport(brierScore float64, calibrationReportId string, cohenKappa float64, confusion CalibrationConfusion, createdAt time.Time, datasetId string, datasetVersionId string, evalReportId string, evaluatorVersionId string, expectedAgreement float64, expectedCalibrationError float64, items []CalibrationItem, observedAgreement float64, policy CalibrationPolicy, projectId string, reliabilityBins []ReliabilityBin, sampleCount int32, tenantId string, ) *CalibrationReport`
 
 NewCalibrationReport instantiates a new CalibrationReport object
 This constructor will assign default values to properties that have it defined,
@@ -38,6 +41,26 @@ will change when the set of required properties is changed
 NewCalibrationReportWithDefaults instantiates a new CalibrationReport object
 This constructor will only assign default values to properties that have it defined,
 but it doesn't guarantee that properties required by API are set
+
+### GetBrierScore
+
+`func (o *CalibrationReport) GetBrierScore() float64`
+
+GetBrierScore returns the BrierScore field if non-nil, zero value otherwise.
+
+### GetBrierScoreOk
+
+`func (o *CalibrationReport) GetBrierScoreOk() (*float64, bool)`
+
+GetBrierScoreOk returns a tuple with the BrierScore field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetBrierScore
+
+`func (o *CalibrationReport) SetBrierScore(v float64)`
+
+SetBrierScore sets BrierScore field to given value.
+
 
 ### GetCalibrationReportId
 
@@ -219,6 +242,26 @@ and a boolean to check if the value has been set.
 SetExpectedAgreement sets ExpectedAgreement field to given value.
 
 
+### GetExpectedCalibrationError
+
+`func (o *CalibrationReport) GetExpectedCalibrationError() float64`
+
+GetExpectedCalibrationError returns the ExpectedCalibrationError field if non-nil, zero value otherwise.
+
+### GetExpectedCalibrationErrorOk
+
+`func (o *CalibrationReport) GetExpectedCalibrationErrorOk() (*float64, bool)`
+
+GetExpectedCalibrationErrorOk returns a tuple with the ExpectedCalibrationError field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetExpectedCalibrationError
+
+`func (o *CalibrationReport) SetExpectedCalibrationError(v float64)`
+
+SetExpectedCalibrationError sets ExpectedCalibrationError field to given value.
+
+
 ### GetItems
 
 `func (o *CalibrationReport) GetItems() []CalibrationItem`
@@ -297,6 +340,26 @@ and a boolean to check if the value has been set.
 `func (o *CalibrationReport) SetProjectId(v string)`
 
 SetProjectId sets ProjectId field to given value.
+
+
+### GetReliabilityBins
+
+`func (o *CalibrationReport) GetReliabilityBins() []ReliabilityBin`
+
+GetReliabilityBins returns the ReliabilityBins field if non-nil, zero value otherwise.
+
+### GetReliabilityBinsOk
+
+`func (o *CalibrationReport) GetReliabilityBinsOk() (*[]ReliabilityBin, bool)`
+
+GetReliabilityBinsOk returns a tuple with the ReliabilityBins field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetReliabilityBins
+
+`func (o *CalibrationReport) SetReliabilityBins(v []ReliabilityBin)`
+
+SetReliabilityBins sets ReliabilityBins field to given value.
 
 
 ### GetSampleCount

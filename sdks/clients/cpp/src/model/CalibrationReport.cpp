@@ -20,6 +20,8 @@ namespace model {
 
 CalibrationReport::CalibrationReport()
 {
+    m_Brier_score = 0.0;
+    m_Brier_scoreIsSet = false;
     m_Calibration_report_id = utility::conversions::to_string_t("");
     m_Calibration_report_idIsSet = false;
     m_Cohen_kappa = 0.0;
@@ -37,12 +39,15 @@ CalibrationReport::CalibrationReport()
     m_Evaluator_version_idIsSet = false;
     m_Expected_agreement = 0.0;
     m_Expected_agreementIsSet = false;
+    m_Expected_calibration_error = 0.0;
+    m_Expected_calibration_errorIsSet = false;
     m_ItemsIsSet = false;
     m_Observed_agreement = 0.0;
     m_Observed_agreementIsSet = false;
     m_PolicyIsSet = false;
     m_Project_id = utility::conversions::to_string_t("");
     m_Project_idIsSet = false;
+    m_Reliability_binsIsSet = false;
     m_Sample_count = 0;
     m_Sample_countIsSet = false;
     m_Tenant_id = utility::conversions::to_string_t("");
@@ -61,6 +66,11 @@ void CalibrationReport::validate()
 web::json::value CalibrationReport::toJson() const
 {
     web::json::value val = web::json::value::object();
+    if(m_Brier_scoreIsSet)
+    {   
+        
+        val[utility::conversions::to_string_t(U("brier_score"))] = ModelBase::toJson(m_Brier_score);
+    }
     if(m_Calibration_report_idIsSet)
     {   
         
@@ -106,6 +116,11 @@ web::json::value CalibrationReport::toJson() const
         
         val[utility::conversions::to_string_t(U("expected_agreement"))] = ModelBase::toJson(m_Expected_agreement);
     }
+    if(m_Expected_calibration_errorIsSet)
+    {   
+        
+        val[utility::conversions::to_string_t(U("expected_calibration_error"))] = ModelBase::toJson(m_Expected_calibration_error);
+    }
     if(m_ItemsIsSet)
     {   
         
@@ -126,6 +141,11 @@ web::json::value CalibrationReport::toJson() const
         
         val[utility::conversions::to_string_t(U("project_id"))] = ModelBase::toJson(m_Project_id);
     }
+    if(m_Reliability_binsIsSet)
+    {   
+        
+        val[utility::conversions::to_string_t(U("reliability_bins"))] = ModelBase::toJson(m_Reliability_bins);
+    }
     if(m_Sample_countIsSet)
     {   
         
@@ -143,6 +163,17 @@ web::json::value CalibrationReport::toJson() const
 bool CalibrationReport::fromJson(const web::json::value& val)
 {
     bool ok = true;
+    if(val.has_field(utility::conversions::to_string_t(U("brier_score"))))
+    {
+        const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("brier_score")));
+        if(!fieldValue.is_null())
+        {
+            double refVal_setBrierScore;
+            ok &= ModelBase::fromJson(fieldValue, refVal_setBrierScore);
+            setBrierScore(refVal_setBrierScore);
+            
+        }
+    }
     if(val.has_field(utility::conversions::to_string_t(U("calibration_report_id"))))
     {
         const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("calibration_report_id")));
@@ -242,6 +273,17 @@ bool CalibrationReport::fromJson(const web::json::value& val)
             
         }
     }
+    if(val.has_field(utility::conversions::to_string_t(U("expected_calibration_error"))))
+    {
+        const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("expected_calibration_error")));
+        if(!fieldValue.is_null())
+        {
+            double refVal_setExpectedCalibrationError;
+            ok &= ModelBase::fromJson(fieldValue, refVal_setExpectedCalibrationError);
+            setExpectedCalibrationError(refVal_setExpectedCalibrationError);
+            
+        }
+    }
     if(val.has_field(utility::conversions::to_string_t(U("items"))))
     {
         const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("items")));
@@ -286,6 +328,17 @@ bool CalibrationReport::fromJson(const web::json::value& val)
             
         }
     }
+    if(val.has_field(utility::conversions::to_string_t(U("reliability_bins"))))
+    {
+        const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("reliability_bins")));
+        if(!fieldValue.is_null())
+        {
+            std::vector<std::shared_ptr<ReliabilityBin>> refVal_setReliabilityBins;
+            ok &= ModelBase::fromJson(fieldValue, refVal_setReliabilityBins);
+            setReliabilityBins(refVal_setReliabilityBins);
+            
+        }
+    }
     if(val.has_field(utility::conversions::to_string_t(U("sample_count"))))
     {
         const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("sample_count")));
@@ -317,6 +370,10 @@ void CalibrationReport::toMultipart(std::shared_ptr<MultipartFormData> multipart
     if(namePrefix.size() > 0 && namePrefix.substr(namePrefix.size() - 1) != utility::conversions::to_string_t(U(".")))
     {
         namePrefix += utility::conversions::to_string_t(U("."));
+    }
+    if(m_Brier_scoreIsSet)
+    {
+        multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("brier_score")), m_Brier_score));
     }
     if(m_Calibration_report_idIsSet)
     {
@@ -354,6 +411,10 @@ void CalibrationReport::toMultipart(std::shared_ptr<MultipartFormData> multipart
     {
         multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("expected_agreement")), m_Expected_agreement));
     }
+    if(m_Expected_calibration_errorIsSet)
+    {
+        multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("expected_calibration_error")), m_Expected_calibration_error));
+    }
     if(m_ItemsIsSet)
     {
         multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("items")), m_Items));
@@ -369,6 +430,10 @@ void CalibrationReport::toMultipart(std::shared_ptr<MultipartFormData> multipart
     if(m_Project_idIsSet)
     {
         multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("project_id")), m_Project_id));
+    }
+    if(m_Reliability_binsIsSet)
+    {
+        multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("reliability_bins")), m_Reliability_bins));
     }
     if(m_Sample_countIsSet)
     {
@@ -389,6 +454,12 @@ bool CalibrationReport::fromMultiPart(std::shared_ptr<MultipartFormData> multipa
         namePrefix += utility::conversions::to_string_t(U("."));
     }
 
+    if(multipart->hasContent(utility::conversions::to_string_t(U("brier_score"))))
+    {
+        double refVal_setBrierScore;
+        ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("brier_score"))), refVal_setBrierScore );
+        setBrierScore(refVal_setBrierScore);
+    }
     if(multipart->hasContent(utility::conversions::to_string_t(U("calibration_report_id"))))
     {
         utility::string_t refVal_setCalibrationReportId;
@@ -443,6 +514,12 @@ bool CalibrationReport::fromMultiPart(std::shared_ptr<MultipartFormData> multipa
         ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("expected_agreement"))), refVal_setExpectedAgreement );
         setExpectedAgreement(refVal_setExpectedAgreement);
     }
+    if(multipart->hasContent(utility::conversions::to_string_t(U("expected_calibration_error"))))
+    {
+        double refVal_setExpectedCalibrationError;
+        ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("expected_calibration_error"))), refVal_setExpectedCalibrationError );
+        setExpectedCalibrationError(refVal_setExpectedCalibrationError);
+    }
     if(multipart->hasContent(utility::conversions::to_string_t(U("items"))))
     {
         std::vector<std::shared_ptr<CalibrationItem>> refVal_setItems;
@@ -467,6 +544,12 @@ bool CalibrationReport::fromMultiPart(std::shared_ptr<MultipartFormData> multipa
         ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("project_id"))), refVal_setProjectId );
         setProjectId(refVal_setProjectId);
     }
+    if(multipart->hasContent(utility::conversions::to_string_t(U("reliability_bins"))))
+    {
+        std::vector<std::shared_ptr<ReliabilityBin>> refVal_setReliabilityBins;
+        ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("reliability_bins"))), refVal_setReliabilityBins );
+        setReliabilityBins(refVal_setReliabilityBins);
+    }
     if(multipart->hasContent(utility::conversions::to_string_t(U("sample_count"))))
     {
         int32_t refVal_setSampleCount;
@@ -483,6 +566,26 @@ bool CalibrationReport::fromMultiPart(std::shared_ptr<MultipartFormData> multipa
 }
 
 
+double CalibrationReport::getBrierScore() const
+{
+    return m_Brier_score;
+}
+
+void CalibrationReport::setBrierScore(double value)
+{
+    m_Brier_score = value;
+    m_Brier_scoreIsSet = true;
+}
+
+bool CalibrationReport::brierScoreIsSet() const
+{
+    return m_Brier_scoreIsSet;
+}
+
+void CalibrationReport::unsetBrier_score()
+{
+    m_Brier_scoreIsSet = false;
+}
 utility::string_t CalibrationReport::getCalibrationReportId() const
 {
     return m_Calibration_report_id;
@@ -670,6 +773,26 @@ void CalibrationReport::unsetExpected_agreement()
 {
     m_Expected_agreementIsSet = false;
 }
+double CalibrationReport::getExpectedCalibrationError() const
+{
+    return m_Expected_calibration_error;
+}
+
+void CalibrationReport::setExpectedCalibrationError(double value)
+{
+    m_Expected_calibration_error = value;
+    m_Expected_calibration_errorIsSet = true;
+}
+
+bool CalibrationReport::expectedCalibrationErrorIsSet() const
+{
+    return m_Expected_calibration_errorIsSet;
+}
+
+void CalibrationReport::unsetExpected_calibration_error()
+{
+    m_Expected_calibration_errorIsSet = false;
+}
 std::vector<std::shared_ptr<CalibrationItem>> CalibrationReport::getItems() const
 {
     return m_Items;
@@ -752,6 +875,27 @@ bool CalibrationReport::projectIdIsSet() const
 void CalibrationReport::unsetProject_id()
 {
     m_Project_idIsSet = false;
+}
+std::vector<std::shared_ptr<ReliabilityBin>> CalibrationReport::getReliabilityBins() const
+{
+    return m_Reliability_bins;
+}
+
+
+void CalibrationReport::setReliabilityBins(const std::vector<std::shared_ptr<ReliabilityBin>>& value)
+{
+    m_Reliability_bins = value;
+    m_Reliability_binsIsSet = true;
+}
+
+bool CalibrationReport::reliabilityBinsIsSet() const
+{
+    return m_Reliability_binsIsSet;
+}
+
+void CalibrationReport::unsetReliability_bins()
+{
+    m_Reliability_binsIsSet = false;
 }
 int32_t CalibrationReport::getSampleCount() const
 {

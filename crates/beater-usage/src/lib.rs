@@ -208,6 +208,12 @@ impl SqliteUsageLedger {
 #[async_trait]
 impl UsageLedgerStore for SqliteUsageLedger {
     async fn record_usage(&self, insert: UsageRecordInsert) -> StoreResult<UsageRecord> {
+        if insert.quantity < 0 {
+            return Err(StoreError::Integrity(format!(
+                "usage quantity must be non-negative for meter {}",
+                insert.meter.as_str()
+            )));
+        }
         let record = UsageRecord {
             usage_record_id: UsageRecordId::new(Uuid::new_v4().to_string())
                 .map_err(StoreError::backend)?,
@@ -529,6 +535,39 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn sqlite_usage_rejects_negative_quantities() -> anyhow::Result<()> {
+        let store = SqliteUsageLedger::in_memory()?;
+        let insert = UsageRecordInsert {
+            tenant_id: TenantId::new("tenant")?,
+            project_id: ProjectId::new("project")?,
+            meter: UsageMeter::JudgeCostMicros,
+            quantity: -1,
+            unit: "usd_micros".to_string(),
+            source_kind: UsageRecordSourceKind::Manual,
+            source_id: "bad-adjustment".to_string(),
+            attributes: json!({}),
+        };
+
+        let error = store
+            .record_usage(insert)
+            .await
+            .err()
+            .ok_or_else(|| anyhow!("negative usage quantity should be rejected"))?;
+        assert!(matches!(
+            error,
+            StoreError::Integrity(message)
+                if message.contains("usage quantity must be non-negative")
+                    && message.contains("judge_cost_micros")
+        ));
+
+        let records = store
+            .list_usage(TenantId::new("tenant")?, ProjectId::new("project")?)
+            .await?;
+        assert!(records.is_empty());
+        Ok(())
+    }
+
     #[test]
     fn experiment_usage_keeps_zero_cost_cached_calls_for_audit() -> anyhow::Result<()> {
         let report = ExperimentRunReport {
@@ -566,8 +605,9 @@ mod tests {
                 delta: 1.0,
                 ci_low: 1.0,
                 ci_high: 1.0,
+                p_value: 1.0,
                 decision: beater_eval::GateDecision::Pass,
-                test: beater_eval::StatisticalTest::PairedNormalApproximation,
+                test: beater_eval::StatisticalTest::PairedT,
                 adjusted_alpha: 0.05,
             },
             decision: beater_eval::GateDecision::Pass,

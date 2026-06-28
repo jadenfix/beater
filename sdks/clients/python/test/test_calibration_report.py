@@ -35,6 +35,7 @@ class TestCalibrationReport(unittest.TestCase):
         model = CalibrationReport()
         if include_optional:
             return CalibrationReport(
+                brier_score = 1.337,
                 calibration_report_id = '',
                 cohen_kappa = 1.337,
                 confusion = beater_client.models.calibration_confusion.CalibrationConfusion(
@@ -48,6 +49,7 @@ class TestCalibrationReport(unittest.TestCase):
                 eval_report_id = '',
                 evaluator_version_id = '',
                 expected_agreement = 1.337,
+                expected_calibration_error = 1.337,
                 items = [
                     beater_client.models.calibration_item.CalibrationItem(
                         agreed = True, 
@@ -62,11 +64,22 @@ class TestCalibrationReport(unittest.TestCase):
                 policy = beater_client.models.calibration_policy.CalibrationPolicy(
                     pass_threshold = 1.337, ),
                 project_id = '',
+                reliability_bins = [
+                    beater_client.models.reliability_bin.ReliabilityBin(
+                        accuracy = 1.337, 
+                        bin_index = 0, 
+                        calibration_gap = 1.337, 
+                        lower_bound = 1.337, 
+                        mean_confidence = 1.337, 
+                        sample_count = 0, 
+                        upper_bound = 1.337, )
+                    ],
                 sample_count = 0,
                 tenant_id = ''
             )
         else:
             return CalibrationReport(
+                brier_score = 1.337,
                 calibration_report_id = '',
                 cohen_kappa = 1.337,
                 confusion = beater_client.models.calibration_confusion.CalibrationConfusion(
@@ -80,6 +93,7 @@ class TestCalibrationReport(unittest.TestCase):
                 eval_report_id = '',
                 evaluator_version_id = '',
                 expected_agreement = 1.337,
+                expected_calibration_error = 1.337,
                 items = [
                     beater_client.models.calibration_item.CalibrationItem(
                         agreed = True, 
@@ -94,6 +108,16 @@ class TestCalibrationReport(unittest.TestCase):
                 policy = beater_client.models.calibration_policy.CalibrationPolicy(
                     pass_threshold = 1.337, ),
                 project_id = '',
+                reliability_bins = [
+                    beater_client.models.reliability_bin.ReliabilityBin(
+                        accuracy = 1.337, 
+                        bin_index = 0, 
+                        calibration_gap = 1.337, 
+                        lower_bound = 1.337, 
+                        mean_confidence = 1.337, 
+                        sample_count = 0, 
+                        upper_bound = 1.337, )
+                    ],
                 sample_count = 0,
                 tenant_id = '',
         )

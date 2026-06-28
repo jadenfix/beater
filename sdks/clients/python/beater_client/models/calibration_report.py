@@ -24,6 +24,7 @@ from typing_extensions import Annotated
 from beater_client.models.calibration_confusion import CalibrationConfusion
 from beater_client.models.calibration_item import CalibrationItem
 from beater_client.models.calibration_policy import CalibrationPolicy
+from beater_client.models.reliability_bin import ReliabilityBin
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -31,6 +32,7 @@ class CalibrationReport(BaseModel):
     """
     CalibrationReport
     """ # noqa: E501
+    brier_score: Union[StrictFloat, StrictInt]
     calibration_report_id: StrictStr
     cohen_kappa: Union[StrictFloat, StrictInt]
     confusion: CalibrationConfusion
@@ -40,13 +42,15 @@ class CalibrationReport(BaseModel):
     eval_report_id: StrictStr
     evaluator_version_id: StrictStr
     expected_agreement: Union[StrictFloat, StrictInt]
+    expected_calibration_error: Union[StrictFloat, StrictInt]
     items: List[CalibrationItem]
     observed_agreement: Union[StrictFloat, StrictInt]
     policy: CalibrationPolicy
     project_id: StrictStr
+    reliability_bins: List[ReliabilityBin]
     sample_count: Annotated[int, Field(strict=True, ge=0)]
     tenant_id: StrictStr
-    __properties: ClassVar[List[str]] = ["calibration_report_id", "cohen_kappa", "confusion", "created_at", "dataset_id", "dataset_version_id", "eval_report_id", "evaluator_version_id", "expected_agreement", "items", "observed_agreement", "policy", "project_id", "sample_count", "tenant_id"]
+    __properties: ClassVar[List[str]] = ["brier_score", "calibration_report_id", "cohen_kappa", "confusion", "created_at", "dataset_id", "dataset_version_id", "eval_report_id", "evaluator_version_id", "expected_agreement", "expected_calibration_error", "items", "observed_agreement", "policy", "project_id", "reliability_bins", "sample_count", "tenant_id"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -100,6 +104,13 @@ class CalibrationReport(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of policy
         if self.policy:
             _dict['policy'] = self.policy.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of each item in reliability_bins (list)
+        _items = []
+        if self.reliability_bins:
+            for _item_reliability_bins in self.reliability_bins:
+                if _item_reliability_bins:
+                    _items.append(_item_reliability_bins.to_dict())
+            _dict['reliability_bins'] = _items
         return _dict
 
     @classmethod
@@ -112,6 +123,7 @@ class CalibrationReport(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
+            "brier_score": obj.get("brier_score"),
             "calibration_report_id": obj.get("calibration_report_id"),
             "cohen_kappa": obj.get("cohen_kappa"),
             "confusion": CalibrationConfusion.from_dict(obj["confusion"]) if obj.get("confusion") is not None else None,
@@ -121,10 +133,12 @@ class CalibrationReport(BaseModel):
             "eval_report_id": obj.get("eval_report_id"),
             "evaluator_version_id": obj.get("evaluator_version_id"),
             "expected_agreement": obj.get("expected_agreement"),
+            "expected_calibration_error": obj.get("expected_calibration_error"),
             "items": [CalibrationItem.from_dict(_item) for _item in obj["items"]] if obj.get("items") is not None else None,
             "observed_agreement": obj.get("observed_agreement"),
             "policy": CalibrationPolicy.from_dict(obj["policy"]) if obj.get("policy") is not None else None,
             "project_id": obj.get("project_id"),
+            "reliability_bins": [ReliabilityBin.from_dict(_item) for _item in obj["reliability_bins"]] if obj.get("reliability_bins") is not None else None,
             "sample_count": obj.get("sample_count"),
             "tenant_id": obj.get("tenant_id")
         })

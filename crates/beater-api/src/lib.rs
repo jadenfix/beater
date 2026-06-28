@@ -3480,8 +3480,8 @@ fn redact_payload_attribute(
     attributes: &mut std::collections::BTreeMap<String, serde_json::Value>,
     key: &str,
 ) {
-    if attributes.contains_key(key) {
-        attributes.insert(key.to_string(), serde_json::json!("[redacted]"));
+    if let Some(value) = attributes.get_mut(key) {
+        *value = serde_json::json!("[redacted]");
     }
 }
 
@@ -3706,6 +3706,9 @@ impl From<StoreError> for ApiError {
             StoreError::Conflict(_) => Self::with_status(StatusCode::CONFLICT, error.to_string()),
             StoreError::Backpressure(_) => {
                 Self::with_status(StatusCode::SERVICE_UNAVAILABLE, error.to_string())
+            }
+            StoreError::LimitExceeded(_) => {
+                Self::with_status(StatusCode::PAYLOAD_TOO_LARGE, error.to_string())
             }
             StoreError::Integrity(_) | StoreError::Backend(_) => Self::internal(error.to_string()),
         }
