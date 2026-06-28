@@ -8,7 +8,10 @@ use beater_alerts::{
     OnlineSamplingPolicy, SamplingDecision,
 };
 use beater_archive::{ArchiveManifest, ArchiveQuery, ArchivedSpanRow, ParquetTraceArchive};
-use beater_audit::{pii_unmask_event, AuditEvent, AuditOutcome, AuditStore, PiiUnmaskAuditInput};
+use beater_audit::{
+    pii_unmask_event, AuditAction, AuditEvent, AuditEventInsert, AuditOutcome, AuditStore,
+    PiiUnmaskAuditInput,
+};
 use beater_auth::{ApiKeyStore, CreateApiKeyRequest, RevokedApiKey};
 use beater_calibration::{
     calibrate_eval_report, CalibrationPolicy, CalibrationReport, CalibrationStore,
@@ -521,7 +524,7 @@ async fn create_api_key_route(
     let tenant_id = TenantId::new(tenant_id)?;
     let project_id = ProjectId::new(project_id)?;
     let environment_id = EnvironmentId::new(environment_id)?;
-    authorize(
+    let auth = authorize(
         &state,
         &headers,
         &tenant_id,
@@ -533,12 +536,36 @@ async fn create_api_key_route(
     ensure_environment_exists(&state, &tenant_id, &project_id, &environment_id).await?;
     let created = api_keys
         .create_key(CreateApiKeyRequest {
-            tenant_id,
-            project_id,
-            environment_id,
+            tenant_id: tenant_id.clone(),
+            project_id: project_id.clone(),
+            environment_id: environment_id.clone(),
             scopes: request.scopes,
         })
         .await?;
+    append_optional_audit_event(
+        &state,
+        AuditEventInsert {
+            tenant_id,
+            project_id,
+            environment_id: Some(environment_id),
+            actor_api_key_id: auth.context.api_key_id.clone(),
+            action: AuditAction::ApiKeyCreate,
+            resource_type: "api_key".to_string(),
+            resource_id: created.record.api_key_id.as_str().to_string(),
+            outcome: AuditOutcome::Allowed,
+            reason: None,
+            attributes: serde_json::json!({
+                "scopes": created
+                    .record
+                    .scopes
+                    .iter()
+                    .map(ApiScope::as_str)
+                    .collect::<Vec<_>>(),
+                "active": created.record.active,
+            }),
+        },
+    )
+    .await?;
     Ok(Json(ApiKeyCreatedResponse::from_created(created)))
 }
 
@@ -582,7 +609,7 @@ async fn revoke_api_key_route(
     let tenant_id = TenantId::new(tenant_id)?;
     let project_id = ProjectId::new(project_id)?;
     let environment_id = EnvironmentId::new(environment_id)?;
-    authorize(
+    let auth = authorize(
         &state,
         &headers,
         &tenant_id,
@@ -609,6 +636,25 @@ async fn revoke_api_key_route(
         .revoke_key(api_key_id.clone(), Utc::now())
         .await?
         .ok_or_else(|| ApiError::not_found(format!("api key {} not found", api_key_id.as_str())))?;
+    append_optional_audit_event(
+        &state,
+        AuditEventInsert {
+            tenant_id,
+            project_id,
+            environment_id: Some(environment_id),
+            actor_api_key_id: auth.context.api_key_id.clone(),
+            action: AuditAction::ApiKeyRevoke,
+            resource_type: "api_key".to_string(),
+            resource_id: api_key_id.as_str().to_string(),
+            outcome: AuditOutcome::Allowed,
+            reason: None,
+            attributes: serde_json::json!({
+                "active": revoked.active,
+                "rotated_at": revoked.rotated_at.to_rfc3339(),
+            }),
+        },
+    )
+    .await?;
     Ok(Json(revoked))
 }
 
@@ -642,16 +688,37 @@ async fn create_provider_secret_route(
     let provider_secrets = provider_secret_store(&state)?;
     let tenant_id = TenantId::new(tenant_id)?;
     let project_id = ProjectId::new(project_id)?;
-    authorize_project_route(&state, &headers, &tenant_id, &project_id, ApiScope::Admin).await?;
+    let auth =
+        authorize_project_route(&state, &headers, &tenant_id, &project_id, ApiScope::Admin).await?;
     let metadata = provider_secrets
         .put_secret(PutProviderSecretRequest {
-            tenant_id,
-            project_id,
+            tenant_id: tenant_id.clone(),
+            project_id: project_id.clone(),
             provider: request.provider,
             display_name: request.display_name,
             secret_value: request.secret_value,
         })
         .await?;
+    append_optional_audit_event(
+        &state,
+        AuditEventInsert {
+            tenant_id,
+            project_id,
+            environment_id: auth.environment_id.clone(),
+            actor_api_key_id: auth.context.api_key_id.clone(),
+            action: AuditAction::ProviderSecretCreate,
+            resource_type: "provider_secret".to_string(),
+            resource_id: metadata.provider_secret_id.as_str().to_string(),
+            outcome: AuditOutcome::Allowed,
+            reason: None,
+            attributes: serde_json::json!({
+                "provider": metadata.provider.as_str(),
+                "display_name": metadata.display_name.as_str(),
+                "active": metadata.active,
+            }),
+        },
+    )
+    .await?;
     Ok(Json(metadata))
 }
 
@@ -721,11 +788,12 @@ async fn revoke_provider_secret_route(
     let tenant_id = TenantId::new(tenant_id)?;
     let project_id = ProjectId::new(project_id)?;
     let provider_secret_id = ProviderSecretId::new(provider_secret_id)?;
-    authorize_project_route(&state, &headers, &tenant_id, &project_id, ApiScope::Admin).await?;
+    let auth =
+        authorize_project_route(&state, &headers, &tenant_id, &project_id, ApiScope::Admin).await?;
     let revoked = provider_secrets
         .revoke_secret(
-            tenant_id,
-            project_id,
+            tenant_id.clone(),
+            project_id.clone(),
             provider_secret_id.clone(),
             Utc::now(),
         )
@@ -736,6 +804,25 @@ async fn revoke_provider_secret_route(
                 provider_secret_id.as_str()
             ))
         })?;
+    append_optional_audit_event(
+        &state,
+        AuditEventInsert {
+            tenant_id,
+            project_id,
+            environment_id: auth.environment_id.clone(),
+            actor_api_key_id: auth.context.api_key_id.clone(),
+            action: AuditAction::ProviderSecretRevoke,
+            resource_type: "provider_secret".to_string(),
+            resource_id: provider_secret_id.as_str().to_string(),
+            outcome: AuditOutcome::Allowed,
+            reason: None,
+            attributes: serde_json::json!({
+                "active": revoked.active,
+                "rotated_at": revoked.rotated_at.to_rfc3339(),
+            }),
+        },
+    )
+    .await?;
     Ok(Json(revoked))
 }
 
@@ -2692,6 +2779,16 @@ fn usage_ledger(state: &ApiState) -> Result<Arc<dyn UsageLedgerStore>, ApiError>
 
 fn audit_store(state: &ApiState) -> Result<Arc<dyn AuditStore>, ApiError> {
     require(&state.audit, "audit store")
+}
+
+async fn append_optional_audit_event(
+    state: &ApiState,
+    insert: AuditEventInsert,
+) -> Result<(), ApiError> {
+    if let Some(audit) = state.audit.clone() {
+        audit.append_event(insert).await?;
+    }
+    Ok(())
 }
 
 async fn record_usage_if_configured(
