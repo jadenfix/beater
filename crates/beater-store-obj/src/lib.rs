@@ -229,6 +229,68 @@ mod tests {
         );
     }
 
+    /// `get_bytes` and `delete_bytes` both route through `path_for_uri` →
+    /// `resolve_within_root`, so a caller who forges or replays an `ArtifactRef`
+    /// with a malicious `uri` field (e.g. deserialised from untrusted JSON or a
+    /// tampered HTTP response) must be rejected by both operations with
+    /// `StoreError::Integrity`, not a silent escape to the filesystem.
+    #[tokio::test]
+    async fn get_and_delete_bytes_reject_forged_malicious_uris() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let store = FsArtifactStore::new(tempdir.path()).unwrap_or_else(|err| panic!("{err}"));
+
+        let make_ref = |uri: &str| ArtifactRef {
+            artifact_id: ArtifactId::new("abc").unwrap_or_else(|err| panic!("{err}")),
+            uri: uri.to_string(),
+            // SHA-256 of empty input — irrelevant since the guard fires before
+            // any read is attempted.
+            sha256: Sha256Hash::new(
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            )
+            .unwrap_or_else(|err| panic!("{err}")),
+            size_bytes: 0,
+            mime_type: "application/octet-stream".to_string(),
+            redaction_class: RedactionClass::Internal,
+        };
+
+        let cases: &[&str] = &[
+            // Classic double-dot traversal.
+            "artifact://../../etc/passwd",
+            // Traversal embedded after a valid-looking prefix segment.
+            "artifact://tenant/../../../etc/passwd",
+            // Absolute path — PathBuf::join discards the root when the joined
+            // component is absolute; the guard must catch this before the join.
+            "artifact:///etc/passwd",
+            // Dot segment.
+            "artifact://./secret",
+            // Empty relative path.
+            "artifact://",
+        ];
+
+        for uri in cases {
+            match store.get_bytes(&make_ref(uri)).await {
+                Err(StoreError::Integrity(_)) => {}
+                other => panic!(
+                    "get_bytes: expected StoreError::Integrity for {uri:?}, got {other:?}"
+                ),
+            }
+            match store.delete_bytes(&make_ref(uri)).await {
+                Err(StoreError::Integrity(_)) => {}
+                other => panic!(
+                    "delete_bytes: expected StoreError::Integrity for {uri:?}, got {other:?}"
+                ),
+            }
+        }
+
+        // A well-formed URI must pass the guard (even though the file doesn't
+        // exist — the guard passes and the OS returns a backend error).
+        let valid = make_ref("artifact://tenant/project/abc123");
+        assert!(
+            matches!(store.get_bytes(&valid).await, Err(StoreError::Backend(_))),
+            "expected a backend (not-found) error for a valid URI, not an integrity error"
+        );
+    }
+
     #[tokio::test]
     async fn fs_artifact_store_deletes_and_is_idempotent() {
         let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
