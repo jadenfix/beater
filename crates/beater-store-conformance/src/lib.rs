@@ -227,6 +227,172 @@ where
         scoped_other_project.spans[0].project_id.as_str(),
         "other-project"
     );
+
+    let pagination_tenant =
+        TenantId::new("pagination-tenant").unwrap_or_else(|err| panic!("{err}"));
+    let other_pagination_tenant =
+        TenantId::new("other-pagination-tenant").unwrap_or_else(|err| panic!("{err}"));
+    let pagination_project =
+        ProjectId::new("pagination-project").unwrap_or_else(|err| panic!("{err}"));
+    let pagination_other_project =
+        ProjectId::new("pagination-other-project").unwrap_or_else(|err| panic!("{err}"));
+    let pagination_traces = [
+        TraceId::new("pagination-trace-1").unwrap_or_else(|err| panic!("{err}")),
+        TraceId::new("pagination-trace-2").unwrap_or_else(|err| panic!("{err}")),
+        TraceId::new("pagination-trace-3").unwrap_or_else(|err| panic!("{err}")),
+    ];
+    for (index, trace) in pagination_traces.iter().enumerate() {
+        let write = store
+            .write_batch(fixture_project_batch(
+                &pagination_tenant,
+                &pagination_project,
+                trace,
+                &format!("pagination-span-{}", index + 1),
+                10 + index as u64,
+            ))
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(write.accepted_spans, 1);
+    }
+    let write_other_project = store
+        .write_batch(fixture_project_batch(
+            &pagination_tenant,
+            &pagination_other_project,
+            &TraceId::new("pagination-other-project-trace").unwrap_or_else(|err| panic!("{err}")),
+            "pagination-other-project-span",
+            20,
+        ))
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(write_other_project.accepted_spans, 1);
+    let write_other_tenant = store
+        .write_batch(fixture_project_batch(
+            &other_pagination_tenant,
+            &pagination_project,
+            &TraceId::new("pagination-other-tenant-trace").unwrap_or_else(|err| panic!("{err}")),
+            "pagination-other-tenant-span",
+            30,
+        ))
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(write_other_tenant.accepted_spans, 1);
+
+    let first_span_page = store
+        .query_spans(
+            pagination_tenant.clone(),
+            SpanFilter {
+                project_id: Some(pagination_project.clone()),
+                ..SpanFilter::default()
+            },
+            PageRequest {
+                limit: 2,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(first_span_page.items.len(), 2);
+    assert_eq!(
+        span_ids(&first_span_page.items),
+        vec!["pagination-span-3", "pagination-span-2"]
+    );
+    let span_cursor = first_span_page
+        .next_cursor
+        .unwrap_or_else(|| panic!("span page should expose a next cursor"));
+
+    let second_span_page = store
+        .query_spans(
+            pagination_tenant.clone(),
+            SpanFilter {
+                project_id: Some(pagination_project.clone()),
+                ..SpanFilter::default()
+            },
+            PageRequest {
+                limit: 2,
+                cursor: Some(span_cursor),
+            },
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(second_span_page.items.len(), 1);
+    assert_eq!(span_ids(&second_span_page.items), vec!["pagination-span-1"]);
+    assert_eq!(second_span_page.next_cursor, None);
+    assert!(first_span_page
+        .items
+        .iter()
+        .chain(second_span_page.items.iter())
+        .all(|span| span.tenant_id == pagination_tenant && span.project_id == pagination_project));
+
+    let zero_limit_span_page = store
+        .query_spans(
+            pagination_tenant.clone(),
+            SpanFilter {
+                project_id: Some(pagination_project.clone()),
+                ..SpanFilter::default()
+            },
+            PageRequest {
+                limit: 0,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(zero_limit_span_page.items.len(), 1);
+    assert_eq!(
+        span_ids(&zero_limit_span_page.items),
+        vec!["pagination-span-3"]
+    );
+    assert_eq!(zero_limit_span_page.next_cursor, Some("1".to_string()));
+
+    let first_run_page = store
+        .query_runs(
+            pagination_tenant.clone(),
+            RunFilter {
+                project_id: Some(pagination_project.clone()),
+                ..RunFilter::default()
+            },
+            PageRequest {
+                limit: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(first_run_page.items.len(), 1);
+    assert_eq!(
+        first_run_page.items[0].trace_id.as_str(),
+        "pagination-trace-3"
+    );
+    assert_eq!(first_run_page.items[0].project_id, pagination_project);
+    assert_eq!(first_run_page.items[0].tenant_id, pagination_tenant);
+    let run_cursor = first_run_page
+        .next_cursor
+        .unwrap_or_else(|| panic!("run page should expose a next cursor"));
+
+    let second_run_page = store
+        .query_runs(
+            pagination_tenant.clone(),
+            RunFilter {
+                project_id: Some(pagination_project.clone()),
+                ..RunFilter::default()
+            },
+            PageRequest {
+                limit: 2,
+                cursor: Some(run_cursor),
+            },
+        )
+        .await
+        .unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(second_run_page.items.len(), 2);
+    assert_eq!(
+        run_trace_ids(&second_run_page.items),
+        vec!["pagination-trace-2", "pagination-trace-1"]
+    );
+    assert_eq!(second_run_page.next_cursor, None);
+    assert!(second_run_page
+        .items
+        .iter()
+        .all(|run| run.tenant_id == pagination_tenant && run.project_id == pagination_project));
 }
 
 pub async fn assert_metadata_store_conformance<S>(store: S)
@@ -528,4 +694,12 @@ fn artifact_ref(name: &str) -> ArtifactRef {
         mime_type: "application/json".to_string(),
         redaction_class: RedactionClass::Internal,
     }
+}
+
+fn span_ids(spans: &[beater_schema::SpanSummary]) -> Vec<&str> {
+    spans.iter().map(|span| span.span_id.as_str()).collect()
+}
+
+fn run_trace_ids(runs: &[beater_schema::RunSummary]) -> Vec<&str> {
+    runs.iter().map(|run| run.trace_id.as_str()).collect()
 }
