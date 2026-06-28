@@ -1320,7 +1320,11 @@ mod tests {
         // §20.10 #7.8 / R18.8: conversation-level and agent-trajectory named
         // scorers are catalogued as judge-lane metadata entries (reusing the
         // judge-broker mechanism), each resolvable by id via the lookup helper.
-        let conversation_scorers = ["conversation_coherence", "session_completeness", "user_frustration"];
+        let conversation_scorers = [
+            "conversation_coherence",
+            "session_completeness",
+            "user_frustration",
+        ];
         let trajectory_scorers = [
             "tool_selection_quality",
             "tool_error_rate",
