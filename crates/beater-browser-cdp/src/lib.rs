@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use beater_browser::{
     BrowserAction, BrowserDriver, BrowserEngine, BrowserError, Grounding, Observation, StepOutcome,
-    StepStatus,
+    StepStatus, UrlPolicy,
 };
 use chromiumoxide::browser::{Browser, BrowserConfig, HeadlessMode};
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
@@ -112,6 +112,9 @@ pub struct CdpDriver {
     browser: Browser,
     page: Page,
     handler_task: JoinHandle<()>,
+    /// SSRF guard enforced at the start of every navigation. Defaults to
+    /// [`UrlPolicy::block_private`] (secure by default).
+    policy: UrlPolicy,
 }
 
 impl CdpDriver {
@@ -135,7 +138,17 @@ impl CdpDriver {
             browser,
             page,
             handler_task,
+            policy: UrlPolicy::block_private(),
         })
+    }
+
+    /// Replace the SSRF [`UrlPolicy`] enforced before every navigation.
+    ///
+    /// The default is [`UrlPolicy::block_private`]; pass
+    /// [`UrlPolicy::allow_all`] only for trusted callers or local fixtures.
+    pub fn with_policy(mut self, policy: UrlPolicy) -> Self {
+        self.policy = policy;
+        self
     }
 
     /// Read the page URL, defaulting to empty when the browser reports none.
@@ -251,6 +264,9 @@ impl BrowserDriver for CdpDriver {
     }
 
     async fn goto(&mut self, url: &str) -> Result<Observation, BrowserError> {
+        // SSRF guard: reject private/loopback/metadata targets BEFORE any
+        // network access happens. `act(Goto)` routes through here too.
+        self.policy.enforce(url)?;
         self.page
             .goto(url)
             .await
@@ -450,9 +466,13 @@ mod tests {
             }
         });
 
+        // The fixture is served from 127.0.0.1, which the default
+        // `block_private` policy would (correctly) reject — opt into `allow_all`
+        // for the loopback fixture server.
         let mut driver = CdpDriver::launch(BrowserEngine::Chromium)
             .await
-            .unwrap_or_else(|err| panic!("launch: {err}"));
+            .unwrap_or_else(|err| panic!("launch: {err}"))
+            .with_policy(beater_browser::UrlPolicy::allow_all());
         beater_browser::assert_browser_driver_conformance(&mut driver, &base_url).await;
         drop(server);
     }

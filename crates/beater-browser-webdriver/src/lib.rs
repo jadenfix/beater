@@ -21,7 +21,7 @@
 use async_trait::async_trait;
 use beater_browser::{
     BrowserAction, BrowserDriver, BrowserEngine, BrowserError, Grounding, Observation, StepOutcome,
-    StepStatus,
+    StepStatus, UrlPolicy,
 };
 use fantoccini::error::CmdError;
 use fantoccini::{Client, ClientBuilder, Locator};
@@ -40,6 +40,9 @@ pub fn locator_for(selector: &str) -> Locator<'_> {
 pub struct WebDriverDriver {
     client: Client,
     engine: BrowserEngine,
+    /// SSRF guard enforced at the start of every navigation. Defaults to
+    /// [`UrlPolicy::block_private`] (secure by default).
+    policy: UrlPolicy,
 }
 
 impl WebDriverDriver {
@@ -63,13 +66,30 @@ impl WebDriverDriver {
             .connect(webdriver_url)
             .await
             .map_err(|err| BrowserError::Backend(format!("connect to {webdriver_url}: {err}")))?;
-        Ok(Self { client, engine })
+        Ok(Self {
+            client,
+            engine,
+            policy: UrlPolicy::block_private(),
+        })
     }
 
     /// Wrap an already-connected [`fantoccini::Client`] (e.g. one built with
     /// custom capabilities) and report `engine`.
     pub fn from_client(client: Client, engine: BrowserEngine) -> Self {
-        Self { client, engine }
+        Self {
+            client,
+            engine,
+            policy: UrlPolicy::block_private(),
+        }
+    }
+
+    /// Replace the SSRF [`UrlPolicy`] enforced before every navigation.
+    ///
+    /// The default is [`UrlPolicy::block_private`]; pass
+    /// [`UrlPolicy::allow_all`] only for trusted callers or local fixtures.
+    pub fn with_policy(mut self, policy: UrlPolicy) -> Self {
+        self.policy = policy;
+        self
     }
 
     /// Build an [`Observation`] of the current page (url, title, full DOM HTML).
@@ -154,6 +174,9 @@ impl BrowserDriver for WebDriverDriver {
     }
 
     async fn goto(&mut self, url: &str) -> Result<Observation, BrowserError> {
+        // SSRF guard: reject private/loopback/metadata targets before the
+        // WebDriver session issues the navigate command.
+        self.policy.enforce(url)?;
         self.client
             .goto(url)
             .await
@@ -164,6 +187,9 @@ impl BrowserDriver for WebDriverDriver {
     async fn act(&mut self, action: &BrowserAction) -> Result<StepOutcome, BrowserError> {
         let (grounding, op_error) = match action {
             BrowserAction::Goto { url } => {
+                // Enforce the SSRF guard on the `act(Goto)` path too — it must
+                // not be bypassable via the action surface.
+                self.policy.enforce(url)?;
                 self.client
                     .goto(url)
                     .await
@@ -392,9 +418,13 @@ mod tests {
             }
         });
 
+        // The fixture is served from 127.0.0.1, which the default
+        // `block_private` policy would (correctly) reject — opt into `allow_all`
+        // for the loopback fixture server.
         let mut driver = WebDriverDriver::connect_with(&webdriver_url, engine)
             .await
-            .unwrap_or_else(|err| panic!("connect to {webdriver_url}: {err}"));
+            .unwrap_or_else(|err| panic!("connect to {webdriver_url}: {err}"))
+            .with_policy(UrlPolicy::allow_all());
 
         beater_browser::assert_browser_driver_conformance(&mut driver, &base_url).await;
 

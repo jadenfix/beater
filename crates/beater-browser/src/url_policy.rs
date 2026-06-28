@@ -2,9 +2,13 @@
 //!
 //! `UrlPolicy` is a lightweight, pure-function guard that classifies a
 //! navigation target as **allowed** or **blocked** before it is handed to a
-//! browser driver. Every check operates on the URL's scheme and host literal
-//! (after parsing); there are no DNS lookups, so DNS-rebind attacks are out of
-//! scope and documented as future work.
+//! browser driver. Parsing goes through the WHATWG URL parser (the `url`
+//! crate), so alternate IPv4 encodings — decimal (`2130706433`), hex
+//! (`0x7f000001`), octal (`0177.0.0.1`) and short-form (`127.1`) — plus IPv6
+//! literals are normalized to a real `IpAddr` before the private-range check,
+//! and trailing-dot hostnames (`localhost.`) are handled. There are no DNS
+//! lookups, so DNS-rebind attacks are out of scope and documented as future
+//! work.
 //!
 //! ## Modes
 //!
@@ -18,10 +22,12 @@
 //! The policy type lives in the core `beater-browser` crate so every driver
 //! backend (`beater-browser-cdp`, `beater-browser-playwright`,
 //! `beater-browser-webdriver`) can import it without pulling in store or API
-//! dependencies. **Wiring into the live navigation path** is intentionally left
-//! as a follow-up per-driver task: each driver's `goto` implementation should
-//! call `policy.check(url)?` before issuing the real CDP/WebDriver/Playwright
-//! navigate command.
+//! dependencies. Every real driver enforces the guard on the live navigation
+//! path: each `goto` implementation calls `self.policy.enforce(url)?` before
+//! issuing the real CDP/WebDriver/Playwright navigate command, and the real
+//! drivers default to [`UrlPolicy::block_private`] (secure by default — pass
+//! [`UrlPolicy::allow_all`] via their `with_policy` builders for trusted
+//! callers or local fixtures).
 //!
 //! `MockDriver` accepts an optional `UrlPolicy` via
 //! [`crate::MockDriver::with_policy`] so tests can exercise policy enforcement
@@ -36,7 +42,9 @@
 //! - CIDR-based allowlist: allow callers to opt specific private ranges back in
 //!   (e.g. an on-prem app running on 192.168.x.x).
 
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
+
+use url::Url;
 
 use crate::BrowserError;
 
@@ -92,87 +100,67 @@ impl UrlPolicy {
         if self.mode == PolicyMode::AllowAll {
             return PolicyVerdict::Allow;
         }
-        // --- scheme check ---
-        let Some((scheme, rest)) = url.split_once("://") else {
-            return PolicyVerdict::Block(format!(
-                "rejected: URL has no scheme (unparseable): {url}"
-            ));
+
+        // Parse with the WHATWG URL parser (the `url` crate). For the special
+        // schemes we permit (`http`/`https`) this normalizes the host for us:
+        // decimal (`2130706433`), hex (`0x7f000001`), octal (`0177.0.0.1`), and
+        // short-form (`127.1`) IPv4 literals all decode to a real `Ipv4Addr`,
+        // and bracketed IPv6 literals to an `Ipv6Addr`. This closes the
+        // encoding-bypass holes the previous hand-rolled `split_once("://")`
+        // parser missed. A URL that cannot be parsed is blocked (fail-closed).
+        let parsed = match Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                return PolicyVerdict::Block(format!(
+                    "rejected: unparseable URL ({err}): {url}"
+                ));
+            }
         };
-        let scheme = scheme.to_ascii_lowercase();
+
+        // --- scheme check (the parser lowercases the scheme) ---
+        let scheme = parsed.scheme();
         if scheme != "http" && scheme != "https" {
             return PolicyVerdict::Block(format!(
-                "rejected: scheme '{scheme}' is not http or https"
+                "rejected: scheme '{scheme}' is not http or https: {url}"
             ));
         }
 
-        // --- extract host (strip userinfo, port, path, query, fragment) ---
-        // rest = [userinfo@]host[:port][/path][?query][#frag]
-        let without_userinfo = match rest.split_once('@') {
-            Some((_, after)) => after,
-            None => rest,
+        // --- host check ---
+        let Some(host) = parsed.host() else {
+            return PolicyVerdict::Block(format!("rejected: URL has no host: {url}"));
         };
-        // host may be IPv6 literal in brackets: [::1]:8080/path
-        // Zone IDs are encoded as `%25<zone>` inside the brackets (RFC 6874).
-        // Strip the zone-id before parsing so `fe80::1%25eth0` → `fe80::1`.
-        let host_raw = if without_userinfo.starts_with('[') {
-            // IPv6 bracketed literal
-            match without_userinfo.split_once(']') {
-                Some((bracketed, _)) => {
-                    // bracketed = "[::1" or "[fe80::1%25eth0" → strip leading '['
-                    let inner = &bracketed[1..];
-                    // Strip URL-encoded zone-id (%25...) or raw zone-id (%...)
-                    match inner.split_once("%25") {
-                        Some((addr, _)) => addr,
-                        None => match inner.split_once('%') {
-                            Some((addr, _)) => addr,
-                            None => inner,
-                        },
-                    }
+
+        match host {
+            url::Host::Ipv4(v4) => {
+                if let Some(reason) = check_ip_blocked(&IpAddr::V4(v4)) {
+                    return PolicyVerdict::Block(format!("rejected: {reason}: {url}"));
                 }
-                None => {
+            }
+            url::Host::Ipv6(v6) => {
+                if let Some(reason) = check_ip_blocked(&IpAddr::V6(v6)) {
+                    return PolicyVerdict::Block(format!("rejected: {reason}: {url}"));
+                }
+            }
+            url::Host::Domain(domain) => {
+                // `url` lowercases and IDNA-encodes the domain. Strip a single
+                // trailing dot (`localhost.` / `example.com.`): the root label
+                // is equivalent to the dotless form and must not bypass the
+                // loopback check.
+                let domain = domain.strip_suffix('.').unwrap_or(domain);
+                if domain == "localhost" || domain.ends_with(".localhost") {
                     return PolicyVerdict::Block(format!(
-                        "rejected: malformed IPv6 literal in URL: {url}"
+                        "rejected: 'localhost' hostname resolves to loopback: {url}"
                     ));
                 }
-            }
-        } else {
-            // IPv4 or hostname: strip port and path
-            let host_and_rest = match without_userinfo.split_once('/') {
-                Some((h, _)) => h,
-                None => without_userinfo,
-            };
-            match host_and_rest.split_once(':') {
-                Some((h, _)) => h,
-                None => host_and_rest,
-            }
-        };
-
-        // Also strip query/fragment if they snuck through
-        let host = host_raw
-            .split_once('?')
-            .map(|(h, _)| h)
-            .unwrap_or(host_raw)
-            .split_once('#')
-            .map(|(h, _)| h)
-            .unwrap_or(host_raw)
-            .trim();
-
-        if host.is_empty() {
-            return PolicyVerdict::Block(format!("rejected: empty host in URL: {url}"));
-        }
-
-        // --- hostname checks ---
-        let host_lower = host.to_ascii_lowercase();
-        if host_lower == "localhost" || host_lower.ends_with(".localhost") {
-            return PolicyVerdict::Block(format!(
-                "rejected: 'localhost' hostname resolves to loopback: {url}"
-            ));
-        }
-
-        // --- IP address checks ---
-        if let Ok(ip) = host.parse::<IpAddr>() {
-            if let Some(reason) = check_ip_blocked(&ip) {
-                return PolicyVerdict::Block(format!("rejected: {reason}: {url}"));
+                // Defense in depth: if the parser left an opaque domain that is
+                // really a bare integer or non-dotted IPv4 form, normalize it to
+                // an `IpAddr` and re-check. (For http/https the parser already
+                // does this, so this only fires for hosts it left untouched.)
+                if let Some(ip) = normalize_host_to_ip(domain) {
+                    if let Some(reason) = check_ip_blocked(&ip) {
+                        return PolicyVerdict::Block(format!("rejected: {reason}: {url}"));
+                    }
+                }
             }
         }
 
@@ -188,6 +176,36 @@ impl UrlPolicy {
             PolicyVerdict::Block(reason) => Err(BrowserError::SsrfBlocked(reason)),
         }
     }
+}
+
+/// Best-effort normalization of a host literal that the URL parser left as an
+/// opaque domain into an [`IpAddr`]. Handles a textual IP, a bare decimal
+/// integer (`2130706433`), a hex integer (`0x7f000001`), and a leading-zero
+/// (octal) 32-bit value. Returns `None` for genuine hostnames.
+///
+/// This is a backstop: for `http`/`https` URLs the `url` crate already decodes
+/// these forms into [`url::Host::Ipv4`], so this only matters if a future
+/// caller reaches `check` with a host the parser left intact.
+fn normalize_host_to_ip(host: &str) -> Option<IpAddr> {
+    // Already a valid textual IP (v4, or a bare v6 without brackets).
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return Some(ip);
+    }
+    if host.is_empty() {
+        return None;
+    }
+    // Bare 32-bit integer forms collapse to an IPv4 address.
+    let as_u32 = if let Some(hex) = host.strip_prefix("0x").or_else(|| host.strip_prefix("0X")) {
+        u32::from_str_radix(hex, 16).ok()
+    } else if host.len() > 1 && host.starts_with('0') && host.bytes().all(|b| b.is_ascii_digit()) {
+        // Leading-zero ⇒ octal (e.g. `017700000001`).
+        u32::from_str_radix(host, 8).ok()
+    } else if host.bytes().all(|b| b.is_ascii_digit()) {
+        host.parse::<u32>().ok()
+    } else {
+        None
+    };
+    as_u32.map(|n| IpAddr::V4(Ipv4Addr::from(n)))
 }
 
 /// Returns `Some(reason)` if the given IP address is in a blocked range, or
@@ -556,5 +574,125 @@ mod tests {
         blocks(&p, "http://LOCALHOST");
         blocks(&p, "http://Localhost:8080");
         blocks(&p, "http://LOCALHOST/admin");
+    }
+
+    // ── encoded-IPv4 bypass vectors (blocked) ───────────────────────────────
+    //
+    // The old hand-rolled `split_once("://")` parser only recognized
+    // dotted-quad literals, so these alternate encodings of 127.0.0.1 /
+    // 10.0.0.1 / 169.254.169.254 sailed straight past the loopback/private
+    // checks. The `url` crate normalizes them to a real `Ipv4Addr` first.
+
+    #[test]
+    fn block_private_blocks_decimal_ipv4_loopback() {
+        let p = UrlPolicy::block_private();
+        // 2130706433 == 0x7F000001 == 127.0.0.1
+        blocks(&p, "http://2130706433");
+        blocks(&p, "http://2130706433:8080/path");
+    }
+
+    #[test]
+    fn block_private_blocks_hex_ipv4_loopback() {
+        let p = UrlPolicy::block_private();
+        // 0x7f000001 == 127.0.0.1
+        blocks(&p, "http://0x7f000001");
+        blocks(&p, "http://0x7F000001/admin");
+    }
+
+    #[test]
+    fn block_private_blocks_octal_ipv4_loopback() {
+        let p = UrlPolicy::block_private();
+        // 0177.0.0.1 == 127.0.0.1 (octal first octet)
+        blocks(&p, "http://0177.0.0.1");
+    }
+
+    #[test]
+    fn block_private_blocks_short_form_ipv4_loopback() {
+        let p = UrlPolicy::block_private();
+        // 127.1 == 127.0.0.1 (short-form, last part fills the low 24 bits)
+        blocks(&p, "http://127.1");
+        // 127.0.1 == 127.0.0.1
+        blocks(&p, "http://127.0.1");
+    }
+
+    #[test]
+    fn block_private_blocks_encoded_private_and_metadata() {
+        let p = UrlPolicy::block_private();
+        // 167772161 == 10.0.0.1 (RFC 1918)
+        blocks(&p, "http://167772161");
+        // 0xa000001 == 10.0.0.1
+        blocks(&p, "http://0xa000001");
+        // 2852039166 == 169.254.169.254 (cloud metadata)
+        blocks(&p, "http://2852039166");
+        // 0xA9FEA9FE == 169.254.169.254
+        blocks(&p, "http://0xA9FEA9FE/latest/meta-data/");
+    }
+
+    #[test]
+    fn block_private_allows_decimal_public_ipv4() {
+        let p = UrlPolicy::block_private();
+        // 134744072 == 8.8.8.8 (public) — normalization must not over-block.
+        allows(&p, "http://134744072");
+    }
+
+    // ── trailing-dot hostnames (blocked) ────────────────────────────────────
+
+    #[test]
+    fn block_private_blocks_trailing_dot_localhost() {
+        let p = UrlPolicy::block_private();
+        // `localhost.` (root-label form) resolves to loopback just like
+        // `localhost`, so it must be blocked too.
+        blocks(&p, "http://localhost.");
+        blocks(&p, "http://localhost.:8080/admin");
+        blocks(&p, "http://api.localhost.");
+    }
+
+    // ── IPv6 private ranges via the url-crate host parser (blocked) ──────────
+
+    #[test]
+    fn block_private_blocks_ipv6_loopback_normalized() {
+        let p = UrlPolicy::block_private();
+        // ::1 loopback in various textual forms.
+        blocks(&p, "http://[::1]");
+        blocks(&p, "http://[0:0:0:0:0:0:0:1]");
+    }
+
+    #[test]
+    fn block_private_blocks_ipv6_ula_fc00_7() {
+        let p = UrlPolicy::block_private();
+        // fc00::/7 unique-local addresses.
+        blocks(&p, "http://[fc00::1]");
+        blocks(&p, "http://[fd00::1]");
+        blocks(&p, "http://[fdff:ffff::1]");
+    }
+
+    #[test]
+    fn block_private_blocks_ipv6_link_local_fe80() {
+        let p = UrlPolicy::block_private();
+        blocks(&p, "http://[fe80::1]");
+        blocks(&p, "http://[fe80::dead:beef]");
+        blocks(&p, "http://[febf::1]");
+    }
+
+    // ── normalize_host_to_ip unit coverage ──────────────────────────────────
+
+    #[test]
+    fn normalize_host_to_ip_decodes_integer_forms() {
+        // Decimal, hex, and octal all collapse to 127.0.0.1.
+        assert_eq!(
+            normalize_host_to_ip("2130706433"),
+            Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+        );
+        assert_eq!(
+            normalize_host_to_ip("0x7f000001"),
+            Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+        );
+        assert_eq!(
+            normalize_host_to_ip("017700000001"),
+            Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))
+        );
+        // Genuine hostnames are not IPs.
+        assert_eq!(normalize_host_to_ip("example.com"), None);
+        assert_eq!(normalize_host_to_ip(""), None);
     }
 }

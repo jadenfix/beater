@@ -20,7 +20,7 @@ pub mod protocol;
 use async_trait::async_trait;
 use beater_browser::{
     BrowserAction, BrowserDriver, BrowserEngine, BrowserError, Grounding, Observation, StepOutcome,
-    StepStatus,
+    StepStatus, UrlPolicy,
 };
 use protocol::{Command, CommandPayload, Response, ResponsePayload, PROTOCOL_VERSION};
 use std::path::{Path, PathBuf};
@@ -101,6 +101,9 @@ pub struct PlaywrightDriver {
     stdout: BufReader<ChildStdout>,
     next_id: u64,
     closed: bool,
+    /// SSRF guard enforced at the start of every navigation. Defaults to
+    /// [`UrlPolicy::block_private`] (secure by default).
+    policy: UrlPolicy,
 }
 
 impl PlaywrightDriver {
@@ -139,6 +142,7 @@ impl PlaywrightDriver {
             stdout: BufReader::new(stdout),
             next_id: 1,
             closed: false,
+            policy: UrlPolicy::block_private(),
         };
 
         // Read the startup banner first.
@@ -181,6 +185,15 @@ impl PlaywrightDriver {
         }
 
         Ok(driver)
+    }
+
+    /// Replace the SSRF [`UrlPolicy`] enforced before every navigation.
+    ///
+    /// The default is [`UrlPolicy::block_private`]; pass
+    /// [`UrlPolicy::allow_all`] only for trusted callers or local fixtures.
+    pub fn with_policy(mut self, policy: UrlPolicy) -> Self {
+        self.policy = policy;
+        self
     }
 
     /// Allocate the next correlation id.
@@ -276,6 +289,9 @@ impl BrowserDriver for PlaywrightDriver {
     }
 
     async fn goto(&mut self, url: &str) -> Result<Observation, BrowserError> {
+        // SSRF guard: reject private/loopback/metadata targets before the
+        // command crosses into the Node runner. `act(Goto)` routes here too.
+        self.policy.enforce(url)?;
         let response = self
             .request(CommandPayload::Goto {
                 url: url.to_string(),
