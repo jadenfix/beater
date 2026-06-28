@@ -22,6 +22,11 @@ pub enum EvalError {
     },
     #[error("invalid regex: {0}")]
     InvalidRegex(String),
+    #[error("invalid numeric tolerance for evaluator {evaluator_id}: {reason}")]
+    InvalidNumericTolerance {
+        evaluator_id: String,
+        reason: String,
+    },
     #[error(
         "underpowered comparison: sample_size={sample_size}, min_sample_size={min_sample_size}"
     )]
@@ -66,6 +71,10 @@ pub enum EvaluatorKind {
     ExactMatch,
     RegexMatch {
         pattern: String,
+    },
+    NumericTolerance {
+        abs: f64,
+        rel: f64,
     },
     JsonObject,
     CostBudget {
@@ -127,6 +136,16 @@ pub const EVALUATOR_CATALOG: &[EvaluatorCatalogEntry] = &[
         display_name: "Regex match",
         description: "Scores a string output against a configured regular expression.",
         requires_reference: false,
+        consumes_trace: false,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "numeric_tolerance",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Numeric tolerance",
+        description:
+            "Scores numeric output against a numeric reference within absolute/relative tolerance.",
+        requires_reference: true,
         consumes_trace: false,
         wasm_safe: true,
     },
@@ -217,6 +236,7 @@ impl EvaluatorKind {
         match self {
             Self::ExactMatch => "exact_match",
             Self::RegexMatch { .. } => "regex_match",
+            Self::NumericTolerance { .. } => "numeric_tolerance",
             Self::JsonObject => "json_object",
             Self::CostBudget { .. } => "cost_budget",
             Self::LatencyBudgetMs { .. } => "latency_budget_ms",
@@ -273,6 +293,9 @@ pub fn evaluate_deterministic(
             let regex =
                 Regex::new(pattern).map_err(|err| EvalError::InvalidRegex(err.to_string()))?;
             Ok(binary_score(regex.is_match(output), "regex_match"))
+        }
+        EvaluatorKind::NumericTolerance { abs, rel } => {
+            numeric_tolerance_score(spec, case, *abs, *rel)
         }
         EvaluatorKind::JsonObject => Ok(binary_score(case.output.is_object(), "json_object")),
         EvaluatorKind::CostBudget { max_micros } => {
@@ -402,6 +425,46 @@ pub fn evaluate_deterministic(
             Ok(binary_score(pass, "browser_recovery"))
         }
     }
+}
+
+fn numeric_tolerance_score(
+    spec: &EvaluatorSpec,
+    case: &EvaluationCase,
+    abs: f64,
+    rel: f64,
+) -> Result<ScoreResult, EvalError> {
+    if !abs.is_finite() || !rel.is_finite() || abs < 0.0 || rel < 0.0 {
+        return Err(EvalError::InvalidNumericTolerance {
+            evaluator_id: spec.id.clone(),
+            reason: "abs and rel must be finite non-negative numbers".to_string(),
+        });
+    }
+
+    let output = case.output.as_f64();
+    let reference = case.reference.as_ref().and_then(Value::as_f64);
+    let (difference, allowed, pass) = match (output, reference) {
+        (Some(output), Some(reference)) => {
+            let difference = (output - reference).abs();
+            let allowed = abs.max(rel * reference.abs());
+            (Some(difference), Some(allowed), difference <= allowed)
+        }
+        _ => (None, None, false),
+    };
+
+    Ok(ScoreResult {
+        score: if pass { 1.0 } else { 0.0 },
+        label: Some(if pass { "pass" } else { "fail" }.to_string()),
+        evidence: serde_json::json!({
+            "metric": "numeric_tolerance",
+            "output": output,
+            "reference": reference,
+            "difference": difference,
+            "allowed": allowed,
+            "abs": abs,
+            "rel": rel,
+            "pass": pass,
+        }),
+    })
 }
 
 /// Extract the `browser_steps` array (serialized `StepTriple`s) from a case
@@ -719,7 +782,7 @@ mod tests {
     #[test]
     fn evaluator_catalog_classifies_execution_lanes() {
         let catalog = evaluator_catalog();
-        assert_eq!(catalog.len(), 10);
+        assert_eq!(catalog.len(), 11);
 
         let exact = evaluator_catalog_entry("exact_match")
             .unwrap_or_else(|| panic!("exact_match catalog entry should exist"));
@@ -731,6 +794,11 @@ mod tests {
         assert_eq!(cost.catalog_id(), "cost_budget");
         assert_eq!(cost.expected_lane(), EvaluatorLane::DeterministicWasi);
         assert!(cost.catalog_entry().consumes_trace);
+
+        let numeric = EvaluatorKind::NumericTolerance { abs: 0.1, rel: 0.0 };
+        assert_eq!(numeric.catalog_id(), "numeric_tolerance");
+        assert!(numeric.catalog_entry().requires_reference);
+        assert!(!numeric.catalog_entry().consumes_trace);
 
         let judge = EvaluatorKind::LlmJudge {
             rubric: "correctness".to_string(),
@@ -753,6 +821,67 @@ mod tests {
                 actual: EvaluatorLane::JudgeBroker,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn numeric_tolerance_scores_against_numeric_reference() {
+        let spec = deterministic_spec(EvaluatorKind::NumericTolerance {
+            abs: 0.05,
+            rel: 0.01,
+        });
+        let passing = EvaluationCase {
+            input: serde_json::json!("estimate"),
+            output: serde_json::json!(100.9),
+            reference: Some(serde_json::json!(100.0)),
+            trace: None,
+        };
+        let failing = EvaluationCase {
+            output: serde_json::json!(102.0),
+            ..passing.clone()
+        };
+        let non_numeric = EvaluationCase {
+            output: serde_json::json!("100.0"),
+            ..passing.clone()
+        };
+
+        let pass = evaluate_deterministic(&spec, &passing).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(pass.score, 1.0);
+        let difference = pass.evidence["difference"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("difference should be numeric"));
+        let allowed = pass.evidence["allowed"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("allowed should be numeric"));
+        assert!((difference - 0.9).abs() < 1e-12);
+        assert_eq!(allowed, 1.0);
+
+        let fail = evaluate_deterministic(&spec, &failing).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(fail.score, 0.0);
+        assert_eq!(fail.evidence["pass"], serde_json::json!(false));
+
+        let rejected =
+            evaluate_deterministic(&spec, &non_numeric).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(rejected.score, 0.0);
+        assert_eq!(rejected.evidence["difference"], serde_json::json!(null));
+    }
+
+    #[test]
+    fn numeric_tolerance_rejects_invalid_thresholds() {
+        let spec = deterministic_spec(EvaluatorKind::NumericTolerance {
+            abs: -0.1,
+            rel: 0.0,
+        });
+        let case = EvaluationCase {
+            input: serde_json::json!(null),
+            output: serde_json::json!(1.0),
+            reference: Some(serde_json::json!(1.0)),
+            trace: None,
+        };
+
+        assert!(matches!(
+            evaluate_deterministic(&spec, &case),
+            Err(EvalError::InvalidNumericTolerance { .. })
         ));
     }
 

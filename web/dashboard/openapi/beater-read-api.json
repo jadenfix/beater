@@ -7658,6 +7658,30 @@
           {
             "type": "object",
             "required": [
+              "abs",
+              "rel",
+              "type"
+            ],
+            "properties": {
+              "abs": {
+                "type": "number",
+                "format": "double"
+              },
+              "rel": {
+                "type": "number",
+                "format": "double"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "numeric_tolerance"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "type"
             ],
             "properties": {

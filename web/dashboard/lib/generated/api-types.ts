@@ -1085,6 +1085,13 @@ export interface components {
             /** @enum {string} */
             type: "regex_match";
         } | {
+            /** Format: double */
+            abs: number;
+            /** Format: double */
+            rel: number;
+            /** @enum {string} */
+            type: "numeric_tolerance";
+        } | {
             /** @enum {string} */
             type: "json_object";
         } | {

@@ -5917,6 +5917,7 @@ components:
       - $ref: '#/components/schemas/EvaluatorKind_oneOf_7'
       - $ref: '#/components/schemas/EvaluatorKind_oneOf_8'
       - $ref: '#/components/schemas/EvaluatorKind_oneOf_9'
+      - $ref: '#/components/schemas/EvaluatorKind_oneOf_10'
     EvaluatorLane:
       enum:
       - deterministic_wasi
@@ -7937,13 +7938,29 @@ components:
       - type
     EvaluatorKind_oneOf_2:
       properties:
+        abs:
+          format: double
+          type: number
+        rel:
+          format: double
+          type: number
+        type:
+          enum:
+          - numeric_tolerance
+          type: string
+      required:
+      - abs
+      - rel
+      - type
+    EvaluatorKind_oneOf_3:
+      properties:
         type:
           enum:
           - json_object
           type: string
       required:
       - type
-    EvaluatorKind_oneOf_3:
+    EvaluatorKind_oneOf_4:
       properties:
         max_micros:
           format: int64
@@ -7955,7 +7972,7 @@ components:
       required:
       - max_micros
       - type
-    EvaluatorKind_oneOf_4:
+    EvaluatorKind_oneOf_5:
       properties:
         max_ms:
           format: int64
@@ -7968,7 +7985,7 @@ components:
       required:
       - max_ms
       - type
-    EvaluatorKind_oneOf_5:
+    EvaluatorKind_oneOf_6:
       properties:
         model:
           type: string
@@ -7982,7 +7999,7 @@ components:
       - model
       - rubric
       - type
-    EvaluatorKind_oneOf_6:
+    EvaluatorKind_oneOf_7:
       description: |-
         Browser world-state success: asserts the final step's observed page
         (url and/or DOM) matches the configured target — NOT the agent's
@@ -8000,7 +8017,7 @@ components:
           type: string
       required:
       - type
-    EvaluatorKind_oneOf_7:
+    EvaluatorKind_oneOf_8:
       description: |-
         Browser step efficiency: passes when the run used at most `max_steps`
         browser steps (catches looping/backtracking). Reads `trace.browser_steps`.
@@ -8016,7 +8033,7 @@ components:
       required:
       - max_steps
       - type
-    EvaluatorKind_oneOf_8:
+    EvaluatorKind_oneOf_9:
       description: |-
         Browser grounding: fraction of element-targeted steps that resolved to
         their intended element; score is the ratio, passes at `min_ratio`.
@@ -8031,7 +8048,7 @@ components:
       required:
       - min_ratio
       - type
-    EvaluatorKind_oneOf_9:
+    EvaluatorKind_oneOf_10:
       description: |-
         Browser recovery: passes when the run either hit no errors or recovered
         to a successful final step (catches death spirals after a failed action).
