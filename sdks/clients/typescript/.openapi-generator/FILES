@@ -107,6 +107,7 @@ src/models/ProviderSecretMetadata.ts
 src/models/PublishAck.ts
 src/models/QueuedTraceWork.ts
 src/models/RedactionClass.ts
+src/models/ReliabilityBin.ts
 src/models/ReviewAnnotation.ts
 src/models/ReviewQueue.ts
 src/models/ReviewTask.ts

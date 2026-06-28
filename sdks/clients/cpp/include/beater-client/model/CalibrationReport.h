@@ -22,6 +22,7 @@
 #include "beater-client/ModelBase.h"
 
 #include "beater-client/model/CalibrationConfusion.h"
+#include "beater-client/model/ReliabilityBin.h"
 #include <cpprest/details/basic_types.h>
 #include "beater-client/model/CalibrationItem.h"
 #include <vector>
@@ -35,6 +36,7 @@ namespace model {
 class CalibrationConfusion;
 class CalibrationItem;
 class CalibrationPolicy;
+class ReliabilityBin;
 
 
 class  CalibrationReport
@@ -59,6 +61,11 @@ public:
     /////////////////////////////////////////////
     /// CalibrationReport members
 
+
+    double getBrierScore() const;
+    bool brierScoreIsSet() const;
+    void unsetBrier_score();
+    void setBrierScore(double value);
 
     utility::string_t getCalibrationReportId() const;
     bool calibrationReportIdIsSet() const;
@@ -105,6 +112,11 @@ public:
     void unsetExpected_agreement();
     void setExpectedAgreement(double value);
 
+    double getExpectedCalibrationError() const;
+    bool expectedCalibrationErrorIsSet() const;
+    void unsetExpected_calibration_error();
+    void setExpectedCalibrationError(double value);
+
     std::vector<std::shared_ptr<CalibrationItem>> getItems() const;
     bool itemsIsSet() const;
     void unsetItems();
@@ -125,6 +137,11 @@ public:
     void unsetProject_id();
     void setProjectId(const utility::string_t& value);
 
+    std::vector<std::shared_ptr<ReliabilityBin>> getReliabilityBins() const;
+    bool reliabilityBinsIsSet() const;
+    void unsetReliability_bins();
+    void setReliabilityBins(const std::vector<std::shared_ptr<ReliabilityBin>>& value);
+
     int32_t getSampleCount() const;
     bool sampleCountIsSet() const;
     void unsetSample_count();
@@ -137,6 +154,9 @@ public:
 
 
 protected:
+    double m_Brier_score;
+    bool m_Brier_scoreIsSet;
+
     utility::string_t m_Calibration_report_id;
     bool m_Calibration_report_idIsSet;
 
@@ -164,6 +184,9 @@ protected:
     double m_Expected_agreement;
     bool m_Expected_agreementIsSet;
 
+    double m_Expected_calibration_error;
+    bool m_Expected_calibration_errorIsSet;
+
     std::vector<std::shared_ptr<CalibrationItem>> m_Items;
     bool m_ItemsIsSet;
 
@@ -175,6 +198,9 @@ protected:
 
     utility::string_t m_Project_id;
     bool m_Project_idIsSet;
+
+    std::vector<std::shared_ptr<ReliabilityBin>> m_Reliability_bins;
+    bool m_Reliability_binsIsSet;
 
     int32_t m_Sample_count;
     bool m_Sample_countIsSet;

@@ -194,6 +194,7 @@ Category | Method | HTTP request | Description
  - [publish_ack_t](docs/publish_ack.md)
  - [queued_trace_work_t](docs/queued_trace_work.md)
  - [redaction_class_t](docs/redaction_class.md)
+ - [reliability_bin_t](docs/reliability_bin.md)
  - [review_annotation_t](docs/review_annotation.md)
  - [review_queue_t](docs/review_queue.md)
  - [review_task_t](docs/review_task.md)

@@ -24,6 +24,7 @@ calibration_report_t* instantiate_calibration_report(int include_optional) {
   calibration_report_t* calibration_report = NULL;
   if (include_optional) {
     calibration_report = calibration_report_create(
+      1.337,
       "0",
       1.337,
        // false, not to have infinite recursion
@@ -34,16 +35,19 @@ calibration_report_t* instantiate_calibration_report(int include_optional) {
       "0",
       "0",
       1.337,
+      1.337,
       list_createList(),
       1.337,
        // false, not to have infinite recursion
       instantiate_calibration_policy(0),
       "0",
+      list_createList(),
       0,
       "0"
     );
   } else {
     calibration_report = calibration_report_create(
+      1.337,
       "0",
       1.337,
       NULL,
@@ -53,10 +57,12 @@ calibration_report_t* instantiate_calibration_report(int include_optional) {
       "0",
       "0",
       1.337,
+      1.337,
       list_createList(),
       1.337,
       NULL,
       "0",
+      list_createList(),
       0,
       "0"
     );

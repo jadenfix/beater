@@ -97,6 +97,7 @@ from beater_client.models.provider_secret_metadata import ProviderSecretMetadata
 from beater_client.models.publish_ack import PublishAck
 from beater_client.models.queued_trace_work import QueuedTraceWork
 from beater_client.models.redaction_class import RedactionClass
+from beater_client.models.reliability_bin import ReliabilityBin
 from beater_client.models.review_annotation import ReviewAnnotation
 from beater_client.models.review_queue import ReviewQueue
 from beater_client.models.review_task import ReviewTask

@@ -116,6 +116,7 @@ include/beater-client/model/ProviderSecretMetadata.h
 include/beater-client/model/PublishAck.h
 include/beater-client/model/QueuedTraceWork.h
 include/beater-client/model/RedactionClass.h
+include/beater-client/model/ReliabilityBin.h
 include/beater-client/model/ReviewAnnotation.h
 include/beater-client/model/ReviewQueue.h
 include/beater-client/model/ReviewTask.h
@@ -266,6 +267,7 @@ src/model/ProviderSecretMetadata.cpp
 src/model/PublishAck.cpp
 src/model/QueuedTraceWork.cpp
 src/model/RedactionClass.cpp
+src/model/ReliabilityBin.cpp
 src/model/ReviewAnnotation.cpp
 src/model/ReviewQueue.cpp
 src/model/ReviewTask.cpp

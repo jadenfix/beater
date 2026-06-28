@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CalibrationReport {
+    #[serde(rename = "brier_score")]
+    pub brier_score: f64,
     #[serde(rename = "calibration_report_id")]
     pub calibration_report_id: String,
     #[serde(rename = "cohen_kappa")]
@@ -31,6 +33,8 @@ pub struct CalibrationReport {
     pub evaluator_version_id: String,
     #[serde(rename = "expected_agreement")]
     pub expected_agreement: f64,
+    #[serde(rename = "expected_calibration_error")]
+    pub expected_calibration_error: f64,
     #[serde(rename = "items")]
     pub items: Vec<models::CalibrationItem>,
     #[serde(rename = "observed_agreement")]
@@ -39,6 +43,8 @@ pub struct CalibrationReport {
     pub policy: Box<models::CalibrationPolicy>,
     #[serde(rename = "project_id")]
     pub project_id: String,
+    #[serde(rename = "reliability_bins")]
+    pub reliability_bins: Vec<models::ReliabilityBin>,
     #[serde(rename = "sample_count")]
     pub sample_count: i32,
     #[serde(rename = "tenant_id")]
@@ -46,8 +52,9 @@ pub struct CalibrationReport {
 }
 
 impl CalibrationReport {
-    pub fn new(calibration_report_id: String, cohen_kappa: f64, confusion: models::CalibrationConfusion, created_at: String, dataset_id: String, dataset_version_id: String, eval_report_id: String, evaluator_version_id: String, expected_agreement: f64, items: Vec<models::CalibrationItem>, observed_agreement: f64, policy: models::CalibrationPolicy, project_id: String, sample_count: i32, tenant_id: String) -> CalibrationReport {
+    pub fn new(brier_score: f64, calibration_report_id: String, cohen_kappa: f64, confusion: models::CalibrationConfusion, created_at: String, dataset_id: String, dataset_version_id: String, eval_report_id: String, evaluator_version_id: String, expected_agreement: f64, expected_calibration_error: f64, items: Vec<models::CalibrationItem>, observed_agreement: f64, policy: models::CalibrationPolicy, project_id: String, reliability_bins: Vec<models::ReliabilityBin>, sample_count: i32, tenant_id: String) -> CalibrationReport {
         CalibrationReport {
+            brier_score,
             calibration_report_id,
             cohen_kappa,
             confusion: Box::new(confusion),
@@ -57,10 +64,12 @@ impl CalibrationReport {
             eval_report_id,
             evaluator_version_id,
             expected_agreement,
+            expected_calibration_error,
             items,
             observed_agreement,
             policy: Box::new(policy),
             project_id,
+            reliability_bins,
             sample_count,
             tenant_id,
         }

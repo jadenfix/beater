@@ -22,6 +22,7 @@ import java.util.HashMap;
 import ai.beater.client.model.CalibrationConfusion;
 import ai.beater.client.model.CalibrationItem;
 import ai.beater.client.model.CalibrationPolicy;
+import ai.beater.client.model.ReliabilityBin;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -39,6 +40,7 @@ import ai.beater.client.ApiClient;
  * CalibrationReport
  */
 @JsonPropertyOrder({
+  CalibrationReport.JSON_PROPERTY_BRIER_SCORE,
   CalibrationReport.JSON_PROPERTY_CALIBRATION_REPORT_ID,
   CalibrationReport.JSON_PROPERTY_COHEN_KAPPA,
   CalibrationReport.JSON_PROPERTY_CONFUSION,
@@ -48,15 +50,21 @@ import ai.beater.client.ApiClient;
   CalibrationReport.JSON_PROPERTY_EVAL_REPORT_ID,
   CalibrationReport.JSON_PROPERTY_EVALUATOR_VERSION_ID,
   CalibrationReport.JSON_PROPERTY_EXPECTED_AGREEMENT,
+  CalibrationReport.JSON_PROPERTY_EXPECTED_CALIBRATION_ERROR,
   CalibrationReport.JSON_PROPERTY_ITEMS,
   CalibrationReport.JSON_PROPERTY_OBSERVED_AGREEMENT,
   CalibrationReport.JSON_PROPERTY_POLICY,
   CalibrationReport.JSON_PROPERTY_PROJECT_ID,
+  CalibrationReport.JSON_PROPERTY_RELIABILITY_BINS,
   CalibrationReport.JSON_PROPERTY_SAMPLE_COUNT,
   CalibrationReport.JSON_PROPERTY_TENANT_ID
 })
 @javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.11.0")
 public class CalibrationReport {
+  public static final String JSON_PROPERTY_BRIER_SCORE = "brier_score";
+  @javax.annotation.Nonnull
+  private Double brierScore;
+
   public static final String JSON_PROPERTY_CALIBRATION_REPORT_ID = "calibration_report_id";
   @javax.annotation.Nonnull
   private String calibrationReportId;
@@ -93,6 +101,10 @@ public class CalibrationReport {
   @javax.annotation.Nonnull
   private Double expectedAgreement;
 
+  public static final String JSON_PROPERTY_EXPECTED_CALIBRATION_ERROR = "expected_calibration_error";
+  @javax.annotation.Nonnull
+  private Double expectedCalibrationError;
+
   public static final String JSON_PROPERTY_ITEMS = "items";
   @javax.annotation.Nonnull
   private List<CalibrationItem> items = new ArrayList<>();
@@ -109,6 +121,10 @@ public class CalibrationReport {
   @javax.annotation.Nonnull
   private String projectId;
 
+  public static final String JSON_PROPERTY_RELIABILITY_BINS = "reliability_bins";
+  @javax.annotation.Nonnull
+  private List<ReliabilityBin> reliabilityBins = new ArrayList<>();
+
   public static final String JSON_PROPERTY_SAMPLE_COUNT = "sample_count";
   @javax.annotation.Nonnull
   private Integer sampleCount;
@@ -119,6 +135,30 @@ public class CalibrationReport {
 
   public CalibrationReport() { 
   }
+
+  public CalibrationReport brierScore(@javax.annotation.Nonnull Double brierScore) {
+    this.brierScore = brierScore;
+    return this;
+  }
+
+  /**
+   * Get brierScore
+   * @return brierScore
+   */
+  @javax.annotation.Nonnull
+  @JsonProperty(JSON_PROPERTY_BRIER_SCORE)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public Double getBrierScore() {
+    return brierScore;
+  }
+
+
+  @JsonProperty(JSON_PROPERTY_BRIER_SCORE)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public void setBrierScore(@javax.annotation.Nonnull Double brierScore) {
+    this.brierScore = brierScore;
+  }
+
 
   public CalibrationReport calibrationReportId(@javax.annotation.Nonnull String calibrationReportId) {
     this.calibrationReportId = calibrationReportId;
@@ -336,6 +376,30 @@ public class CalibrationReport {
   }
 
 
+  public CalibrationReport expectedCalibrationError(@javax.annotation.Nonnull Double expectedCalibrationError) {
+    this.expectedCalibrationError = expectedCalibrationError;
+    return this;
+  }
+
+  /**
+   * Get expectedCalibrationError
+   * @return expectedCalibrationError
+   */
+  @javax.annotation.Nonnull
+  @JsonProperty(JSON_PROPERTY_EXPECTED_CALIBRATION_ERROR)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public Double getExpectedCalibrationError() {
+    return expectedCalibrationError;
+  }
+
+
+  @JsonProperty(JSON_PROPERTY_EXPECTED_CALIBRATION_ERROR)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public void setExpectedCalibrationError(@javax.annotation.Nonnull Double expectedCalibrationError) {
+    this.expectedCalibrationError = expectedCalibrationError;
+  }
+
+
   public CalibrationReport items(@javax.annotation.Nonnull List<CalibrationItem> items) {
     this.items = items;
     return this;
@@ -440,6 +504,38 @@ public class CalibrationReport {
   }
 
 
+  public CalibrationReport reliabilityBins(@javax.annotation.Nonnull List<ReliabilityBin> reliabilityBins) {
+    this.reliabilityBins = reliabilityBins;
+    return this;
+  }
+
+  public CalibrationReport addReliabilityBinsItem(ReliabilityBin reliabilityBinsItem) {
+    if (this.reliabilityBins == null) {
+      this.reliabilityBins = new ArrayList<>();
+    }
+    this.reliabilityBins.add(reliabilityBinsItem);
+    return this;
+  }
+
+  /**
+   * Get reliabilityBins
+   * @return reliabilityBins
+   */
+  @javax.annotation.Nonnull
+  @JsonProperty(JSON_PROPERTY_RELIABILITY_BINS)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public List<ReliabilityBin> getReliabilityBins() {
+    return reliabilityBins;
+  }
+
+
+  @JsonProperty(JSON_PROPERTY_RELIABILITY_BINS)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public void setReliabilityBins(@javax.annotation.Nonnull List<ReliabilityBin> reliabilityBins) {
+    this.reliabilityBins = reliabilityBins;
+  }
+
+
   public CalibrationReport sampleCount(@javax.annotation.Nonnull Integer sampleCount) {
     this.sampleCount = sampleCount;
     return this;
@@ -501,7 +597,8 @@ public class CalibrationReport {
       return false;
     }
     CalibrationReport calibrationReport = (CalibrationReport) o;
-    return Objects.equals(this.calibrationReportId, calibrationReport.calibrationReportId) &&
+    return Objects.equals(this.brierScore, calibrationReport.brierScore) &&
+        Objects.equals(this.calibrationReportId, calibrationReport.calibrationReportId) &&
         Objects.equals(this.cohenKappa, calibrationReport.cohenKappa) &&
         Objects.equals(this.confusion, calibrationReport.confusion) &&
         Objects.equals(this.createdAt, calibrationReport.createdAt) &&
@@ -510,23 +607,26 @@ public class CalibrationReport {
         Objects.equals(this.evalReportId, calibrationReport.evalReportId) &&
         Objects.equals(this.evaluatorVersionId, calibrationReport.evaluatorVersionId) &&
         Objects.equals(this.expectedAgreement, calibrationReport.expectedAgreement) &&
+        Objects.equals(this.expectedCalibrationError, calibrationReport.expectedCalibrationError) &&
         Objects.equals(this.items, calibrationReport.items) &&
         Objects.equals(this.observedAgreement, calibrationReport.observedAgreement) &&
         Objects.equals(this.policy, calibrationReport.policy) &&
         Objects.equals(this.projectId, calibrationReport.projectId) &&
+        Objects.equals(this.reliabilityBins, calibrationReport.reliabilityBins) &&
         Objects.equals(this.sampleCount, calibrationReport.sampleCount) &&
         Objects.equals(this.tenantId, calibrationReport.tenantId);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(calibrationReportId, cohenKappa, confusion, createdAt, datasetId, datasetVersionId, evalReportId, evaluatorVersionId, expectedAgreement, items, observedAgreement, policy, projectId, sampleCount, tenantId);
+    return Objects.hash(brierScore, calibrationReportId, cohenKappa, confusion, createdAt, datasetId, datasetVersionId, evalReportId, evaluatorVersionId, expectedAgreement, expectedCalibrationError, items, observedAgreement, policy, projectId, reliabilityBins, sampleCount, tenantId);
   }
 
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("class CalibrationReport {\n");
+    sb.append("    brierScore: ").append(toIndentedString(brierScore)).append("\n");
     sb.append("    calibrationReportId: ").append(toIndentedString(calibrationReportId)).append("\n");
     sb.append("    cohenKappa: ").append(toIndentedString(cohenKappa)).append("\n");
     sb.append("    confusion: ").append(toIndentedString(confusion)).append("\n");
@@ -536,10 +636,12 @@ public class CalibrationReport {
     sb.append("    evalReportId: ").append(toIndentedString(evalReportId)).append("\n");
     sb.append("    evaluatorVersionId: ").append(toIndentedString(evaluatorVersionId)).append("\n");
     sb.append("    expectedAgreement: ").append(toIndentedString(expectedAgreement)).append("\n");
+    sb.append("    expectedCalibrationError: ").append(toIndentedString(expectedCalibrationError)).append("\n");
     sb.append("    items: ").append(toIndentedString(items)).append("\n");
     sb.append("    observedAgreement: ").append(toIndentedString(observedAgreement)).append("\n");
     sb.append("    policy: ").append(toIndentedString(policy)).append("\n");
     sb.append("    projectId: ").append(toIndentedString(projectId)).append("\n");
+    sb.append("    reliabilityBins: ").append(toIndentedString(reliabilityBins)).append("\n");
     sb.append("    sampleCount: ").append(toIndentedString(sampleCount)).append("\n");
     sb.append("    tenantId: ").append(toIndentedString(tenantId)).append("\n");
     sb.append("}");
@@ -589,6 +691,11 @@ public class CalibrationReport {
 
     StringJoiner joiner = new StringJoiner("&");
 
+    // add `brier_score` to the URL query string
+    if (getBrierScore() != null) {
+      joiner.add(String.format("%sbrier_score%s=%s", prefix, suffix, URLEncoder.encode(ApiClient.valueToString(getBrierScore()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
+    }
+
     // add `calibration_report_id` to the URL query string
     if (getCalibrationReportId() != null) {
       joiner.add(String.format("%scalibration_report_id%s=%s", prefix, suffix, URLEncoder.encode(ApiClient.valueToString(getCalibrationReportId()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
@@ -634,6 +741,11 @@ public class CalibrationReport {
       joiner.add(String.format("%sexpected_agreement%s=%s", prefix, suffix, URLEncoder.encode(ApiClient.valueToString(getExpectedAgreement()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
     }
 
+    // add `expected_calibration_error` to the URL query string
+    if (getExpectedCalibrationError() != null) {
+      joiner.add(String.format("%sexpected_calibration_error%s=%s", prefix, suffix, URLEncoder.encode(ApiClient.valueToString(getExpectedCalibrationError()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
+    }
+
     // add `items` to the URL query string
     if (getItems() != null) {
       for (int i = 0; i < getItems().size(); i++) {
@@ -657,6 +769,16 @@ public class CalibrationReport {
     // add `project_id` to the URL query string
     if (getProjectId() != null) {
       joiner.add(String.format("%sproject_id%s=%s", prefix, suffix, URLEncoder.encode(ApiClient.valueToString(getProjectId()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
+    }
+
+    // add `reliability_bins` to the URL query string
+    if (getReliabilityBins() != null) {
+      for (int i = 0; i < getReliabilityBins().size(); i++) {
+        if (getReliabilityBins().get(i) != null) {
+          joiner.add(getReliabilityBins().get(i).toUrlQueryString(String.format("%sreliability_bins%s%s", prefix, suffix,
+          "".equals(suffix) ? "" : String.format("%s%d%s", containerPrefix, i, containerSuffix))));
+        }
+      }
     }
 
     // add `sample_count` to the URL query string

@@ -22,6 +22,7 @@ var _ MappedNullable = &CalibrationReport{}
 
 // CalibrationReport struct for CalibrationReport
 type CalibrationReport struct {
+	BrierScore float64 `json:"brier_score"`
 	CalibrationReportId string `json:"calibration_report_id"`
 	CohenKappa float64 `json:"cohen_kappa"`
 	Confusion CalibrationConfusion `json:"confusion"`
@@ -31,10 +32,12 @@ type CalibrationReport struct {
 	EvalReportId string `json:"eval_report_id"`
 	EvaluatorVersionId string `json:"evaluator_version_id"`
 	ExpectedAgreement float64 `json:"expected_agreement"`
+	ExpectedCalibrationError float64 `json:"expected_calibration_error"`
 	Items []CalibrationItem `json:"items"`
 	ObservedAgreement float64 `json:"observed_agreement"`
 	Policy CalibrationPolicy `json:"policy"`
 	ProjectId string `json:"project_id"`
+	ReliabilityBins []ReliabilityBin `json:"reliability_bins"`
 	SampleCount int32 `json:"sample_count"`
 	TenantId string `json:"tenant_id"`
 }
@@ -45,8 +48,9 @@ type _CalibrationReport CalibrationReport
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewCalibrationReport(calibrationReportId string, cohenKappa float64, confusion CalibrationConfusion, createdAt time.Time, datasetId string, datasetVersionId string, evalReportId string, evaluatorVersionId string, expectedAgreement float64, items []CalibrationItem, observedAgreement float64, policy CalibrationPolicy, projectId string, sampleCount int32, tenantId string) *CalibrationReport {
+func NewCalibrationReport(brierScore float64, calibrationReportId string, cohenKappa float64, confusion CalibrationConfusion, createdAt time.Time, datasetId string, datasetVersionId string, evalReportId string, evaluatorVersionId string, expectedAgreement float64, expectedCalibrationError float64, items []CalibrationItem, observedAgreement float64, policy CalibrationPolicy, projectId string, reliabilityBins []ReliabilityBin, sampleCount int32, tenantId string) *CalibrationReport {
 	this := CalibrationReport{}
+	this.BrierScore = brierScore
 	this.CalibrationReportId = calibrationReportId
 	this.CohenKappa = cohenKappa
 	this.Confusion = confusion
@@ -56,10 +60,12 @@ func NewCalibrationReport(calibrationReportId string, cohenKappa float64, confus
 	this.EvalReportId = evalReportId
 	this.EvaluatorVersionId = evaluatorVersionId
 	this.ExpectedAgreement = expectedAgreement
+	this.ExpectedCalibrationError = expectedCalibrationError
 	this.Items = items
 	this.ObservedAgreement = observedAgreement
 	this.Policy = policy
 	this.ProjectId = projectId
+	this.ReliabilityBins = reliabilityBins
 	this.SampleCount = sampleCount
 	this.TenantId = tenantId
 	return &this
@@ -71,6 +77,30 @@ func NewCalibrationReport(calibrationReportId string, cohenKappa float64, confus
 func NewCalibrationReportWithDefaults() *CalibrationReport {
 	this := CalibrationReport{}
 	return &this
+}
+
+// GetBrierScore returns the BrierScore field value
+func (o *CalibrationReport) GetBrierScore() float64 {
+	if o == nil {
+		var ret float64
+		return ret
+	}
+
+	return o.BrierScore
+}
+
+// GetBrierScoreOk returns a tuple with the BrierScore field value
+// and a boolean to check if the value has been set.
+func (o *CalibrationReport) GetBrierScoreOk() (*float64, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.BrierScore, true
+}
+
+// SetBrierScore sets field value
+func (o *CalibrationReport) SetBrierScore(v float64) {
+	o.BrierScore = v
 }
 
 // GetCalibrationReportId returns the CalibrationReportId field value
@@ -289,6 +319,30 @@ func (o *CalibrationReport) SetExpectedAgreement(v float64) {
 	o.ExpectedAgreement = v
 }
 
+// GetExpectedCalibrationError returns the ExpectedCalibrationError field value
+func (o *CalibrationReport) GetExpectedCalibrationError() float64 {
+	if o == nil {
+		var ret float64
+		return ret
+	}
+
+	return o.ExpectedCalibrationError
+}
+
+// GetExpectedCalibrationErrorOk returns a tuple with the ExpectedCalibrationError field value
+// and a boolean to check if the value has been set.
+func (o *CalibrationReport) GetExpectedCalibrationErrorOk() (*float64, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.ExpectedCalibrationError, true
+}
+
+// SetExpectedCalibrationError sets field value
+func (o *CalibrationReport) SetExpectedCalibrationError(v float64) {
+	o.ExpectedCalibrationError = v
+}
+
 // GetItems returns the Items field value
 func (o *CalibrationReport) GetItems() []CalibrationItem {
 	if o == nil {
@@ -385,6 +439,30 @@ func (o *CalibrationReport) SetProjectId(v string) {
 	o.ProjectId = v
 }
 
+// GetReliabilityBins returns the ReliabilityBins field value
+func (o *CalibrationReport) GetReliabilityBins() []ReliabilityBin {
+	if o == nil {
+		var ret []ReliabilityBin
+		return ret
+	}
+
+	return o.ReliabilityBins
+}
+
+// GetReliabilityBinsOk returns a tuple with the ReliabilityBins field value
+// and a boolean to check if the value has been set.
+func (o *CalibrationReport) GetReliabilityBinsOk() ([]ReliabilityBin, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.ReliabilityBins, true
+}
+
+// SetReliabilityBins sets field value
+func (o *CalibrationReport) SetReliabilityBins(v []ReliabilityBin) {
+	o.ReliabilityBins = v
+}
+
 // GetSampleCount returns the SampleCount field value
 func (o *CalibrationReport) GetSampleCount() int32 {
 	if o == nil {
@@ -443,6 +521,7 @@ func (o CalibrationReport) MarshalJSON() ([]byte, error) {
 
 func (o CalibrationReport) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
+	toSerialize["brier_score"] = o.BrierScore
 	toSerialize["calibration_report_id"] = o.CalibrationReportId
 	toSerialize["cohen_kappa"] = o.CohenKappa
 	toSerialize["confusion"] = o.Confusion
@@ -452,10 +531,12 @@ func (o CalibrationReport) ToMap() (map[string]interface{}, error) {
 	toSerialize["eval_report_id"] = o.EvalReportId
 	toSerialize["evaluator_version_id"] = o.EvaluatorVersionId
 	toSerialize["expected_agreement"] = o.ExpectedAgreement
+	toSerialize["expected_calibration_error"] = o.ExpectedCalibrationError
 	toSerialize["items"] = o.Items
 	toSerialize["observed_agreement"] = o.ObservedAgreement
 	toSerialize["policy"] = o.Policy
 	toSerialize["project_id"] = o.ProjectId
+	toSerialize["reliability_bins"] = o.ReliabilityBins
 	toSerialize["sample_count"] = o.SampleCount
 	toSerialize["tenant_id"] = o.TenantId
 	return toSerialize, nil
@@ -466,6 +547,7 @@ func (o *CalibrationReport) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := []string{
+		"brier_score",
 		"calibration_report_id",
 		"cohen_kappa",
 		"confusion",
@@ -475,10 +557,12 @@ func (o *CalibrationReport) UnmarshalJSON(data []byte) (err error) {
 		"eval_report_id",
 		"evaluator_version_id",
 		"expected_agreement",
+		"expected_calibration_error",
 		"items",
 		"observed_agreement",
 		"policy",
 		"project_id",
+		"reliability_bins",
 		"sample_count",
 		"tenant_id",
 	}
