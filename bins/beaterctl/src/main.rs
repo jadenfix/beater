@@ -2534,8 +2534,6 @@ fn gate_fixture_experiment(
             ci_low: spec.delta,
             ci_high: spec.delta,
             p_value: 1.0,
-            mde: None,
-            required_n: None,
             decision: spec.decision.clone(),
             test: StatisticalTest::PairedT,
             adjusted_alpha: 0.05,
