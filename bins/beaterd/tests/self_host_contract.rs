@@ -223,7 +223,7 @@ fn self_host_files_define_gate_two_compose_surface() {
     assert!(frontend_workflow.contains("CARGO_NET_RETRY: \"10\""));
     assert!(frontend_workflow.contains("CARGO_HTTP_MULTIPLEXING: \"false\""));
     assert!(frontend_workflow.contains("timeout-minutes: 20"));
-    assert!(frontend_workflow.contains("actions/setup-node@v4"));
+    assert!(frontend_workflow.contains("actions/setup-node@v6"));
     assert!(frontend_workflow.contains("node-version: 24"));
     assert!(frontend_workflow.contains("cache: npm"));
     assert!(frontend_workflow.contains("cache-dependency-path: web/dashboard/package-lock.json"));
@@ -247,8 +247,8 @@ fn self_host_files_define_gate_two_compose_surface() {
     assert!(browser_proof_workflow.contains("timeout-minutes: 25"));
     assert!(browser_proof_workflow.contains("container:"));
     assert!(browser_proof_workflow.contains("image: mcr.microsoft.com/playwright:v1.57.0-noble"));
-    assert!(browser_proof_workflow.contains("actions/setup-node@v4"));
-    assert!(browser_proof_workflow.contains("actions/setup-python@v5"));
+    assert!(browser_proof_workflow.contains("actions/setup-node@v6"));
+    assert!(browser_proof_workflow.contains("actions/setup-python@v6"));
     assert!(browser_proof_workflow.contains("node-version: 24"));
     assert!(browser_proof_workflow.contains("python-version: \"3.12\""));
     assert!(browser_proof_workflow.contains("build-essential"));
