@@ -18,10 +18,12 @@ typedef struct calibration_report_t calibration_report_t;
 #include "calibration_confusion.h"
 #include "calibration_item.h"
 #include "calibration_policy.h"
+#include "reliability_bin.h"
 
 
 
 typedef struct calibration_report_t {
+    double brier_score; //numeric
     char *calibration_report_id; // string
     double cohen_kappa; //numeric
     struct calibration_confusion_t *confusion; //model
@@ -31,10 +33,12 @@ typedef struct calibration_report_t {
     char *eval_report_id; // string
     char *evaluator_version_id; // string
     double expected_agreement; //numeric
+    double expected_calibration_error; //numeric
     list_t *items; //nonprimitive container
     double observed_agreement; //numeric
     struct calibration_policy_t *policy; //model
     char *project_id; // string
+    list_t *reliability_bins; //nonprimitive container
     int sample_count; //numeric
     char *tenant_id; // string
 
@@ -42,6 +46,7 @@ typedef struct calibration_report_t {
 } calibration_report_t;
 
 __attribute__((deprecated)) calibration_report_t *calibration_report_create(
+    double brier_score,
     char *calibration_report_id,
     double cohen_kappa,
     calibration_confusion_t *confusion,
@@ -51,10 +56,12 @@ __attribute__((deprecated)) calibration_report_t *calibration_report_create(
     char *eval_report_id,
     char *evaluator_version_id,
     double expected_agreement,
+    double expected_calibration_error,
     list_t *items,
     double observed_agreement,
     calibration_policy_t *policy,
     char *project_id,
+    list_t *reliability_bins,
     int sample_count,
     char *tenant_id
 );

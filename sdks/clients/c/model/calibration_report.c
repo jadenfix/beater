@@ -6,6 +6,7 @@
 
 
 static calibration_report_t *calibration_report_create_internal(
+    double brier_score,
     char *calibration_report_id,
     double cohen_kappa,
     calibration_confusion_t *confusion,
@@ -15,10 +16,12 @@ static calibration_report_t *calibration_report_create_internal(
     char *eval_report_id,
     char *evaluator_version_id,
     double expected_agreement,
+    double expected_calibration_error,
     list_t *items,
     double observed_agreement,
     calibration_policy_t *policy,
     char *project_id,
+    list_t *reliability_bins,
     int sample_count,
     char *tenant_id
     ) {
@@ -26,6 +29,7 @@ static calibration_report_t *calibration_report_create_internal(
     if (!calibration_report_local_var) {
         return NULL;
     }
+    calibration_report_local_var->brier_score = brier_score;
     calibration_report_local_var->calibration_report_id = calibration_report_id;
     calibration_report_local_var->cohen_kappa = cohen_kappa;
     calibration_report_local_var->confusion = confusion;
@@ -35,10 +39,12 @@ static calibration_report_t *calibration_report_create_internal(
     calibration_report_local_var->eval_report_id = eval_report_id;
     calibration_report_local_var->evaluator_version_id = evaluator_version_id;
     calibration_report_local_var->expected_agreement = expected_agreement;
+    calibration_report_local_var->expected_calibration_error = expected_calibration_error;
     calibration_report_local_var->items = items;
     calibration_report_local_var->observed_agreement = observed_agreement;
     calibration_report_local_var->policy = policy;
     calibration_report_local_var->project_id = project_id;
+    calibration_report_local_var->reliability_bins = reliability_bins;
     calibration_report_local_var->sample_count = sample_count;
     calibration_report_local_var->tenant_id = tenant_id;
 
@@ -47,6 +53,7 @@ static calibration_report_t *calibration_report_create_internal(
 }
 
 __attribute__((deprecated)) calibration_report_t *calibration_report_create(
+    double brier_score,
     char *calibration_report_id,
     double cohen_kappa,
     calibration_confusion_t *confusion,
@@ -56,14 +63,17 @@ __attribute__((deprecated)) calibration_report_t *calibration_report_create(
     char *eval_report_id,
     char *evaluator_version_id,
     double expected_agreement,
+    double expected_calibration_error,
     list_t *items,
     double observed_agreement,
     calibration_policy_t *policy,
     char *project_id,
+    list_t *reliability_bins,
     int sample_count,
     char *tenant_id
     ) {
     return calibration_report_create_internal (
+        brier_score,
         calibration_report_id,
         cohen_kappa,
         confusion,
@@ -73,10 +83,12 @@ __attribute__((deprecated)) calibration_report_t *calibration_report_create(
         eval_report_id,
         evaluator_version_id,
         expected_agreement,
+        expected_calibration_error,
         items,
         observed_agreement,
         policy,
         project_id,
+        reliability_bins,
         sample_count,
         tenant_id
         );
@@ -134,6 +146,13 @@ void calibration_report_free(calibration_report_t *calibration_report) {
         free(calibration_report->project_id);
         calibration_report->project_id = NULL;
     }
+    if (calibration_report->reliability_bins) {
+        list_ForEach(listEntry, calibration_report->reliability_bins) {
+            reliability_bin_free(listEntry->data);
+        }
+        list_freeList(calibration_report->reliability_bins);
+        calibration_report->reliability_bins = NULL;
+    }
     if (calibration_report->tenant_id) {
         free(calibration_report->tenant_id);
         calibration_report->tenant_id = NULL;
@@ -143,6 +162,15 @@ void calibration_report_free(calibration_report_t *calibration_report) {
 
 cJSON *calibration_report_convertToJSON(calibration_report_t *calibration_report) {
     cJSON *item = cJSON_CreateObject();
+
+    // calibration_report->brier_score
+    if (!calibration_report->brier_score) {
+        goto fail;
+    }
+    if(cJSON_AddNumberToObject(item, "brier_score", calibration_report->brier_score) == NULL) {
+    goto fail; //Numeric
+    }
+
 
     // calibration_report->calibration_report_id
     if (!calibration_report->calibration_report_id) {
@@ -230,6 +258,15 @@ cJSON *calibration_report_convertToJSON(calibration_report_t *calibration_report
     }
 
 
+    // calibration_report->expected_calibration_error
+    if (!calibration_report->expected_calibration_error) {
+        goto fail;
+    }
+    if(cJSON_AddNumberToObject(item, "expected_calibration_error", calibration_report->expected_calibration_error) == NULL) {
+    goto fail; //Numeric
+    }
+
+
     // calibration_report->items
     if (!calibration_report->items) {
         goto fail;
@@ -283,6 +320,27 @@ cJSON *calibration_report_convertToJSON(calibration_report_t *calibration_report
     }
 
 
+    // calibration_report->reliability_bins
+    if (!calibration_report->reliability_bins) {
+        goto fail;
+    }
+    cJSON *reliability_bins = cJSON_AddArrayToObject(item, "reliability_bins");
+    if(reliability_bins == NULL) {
+    goto fail; //nonprimitive container
+    }
+
+    listEntry_t *reliability_binsListEntry;
+    if (calibration_report->reliability_bins) {
+    list_ForEach(reliability_binsListEntry, calibration_report->reliability_bins) {
+    cJSON *itemLocal = reliability_bin_convertToJSON(reliability_binsListEntry->data);
+    if(itemLocal == NULL) {
+    goto fail;
+    }
+    cJSON_AddItemToArray(reliability_bins, itemLocal);
+    }
+    }
+
+
     // calibration_report->sample_count
     if (!calibration_report->sample_count) {
         goto fail;
@@ -320,6 +378,24 @@ calibration_report_t *calibration_report_parseFromJSON(cJSON *calibration_report
 
     // define the local variable for calibration_report->policy
     calibration_policy_t *policy_local_nonprim = NULL;
+
+    // define the local list for calibration_report->reliability_bins
+    list_t *reliability_binsList = NULL;
+
+    // calibration_report->brier_score
+    cJSON *brier_score = cJSON_GetObjectItemCaseSensitive(calibration_reportJSON, "brier_score");
+    if (cJSON_IsNull(brier_score)) {
+        brier_score = NULL;
+    }
+    if (!brier_score) {
+        goto end;
+    }
+
+    
+    if(!cJSON_IsNumber(brier_score))
+    {
+    goto end; //Numeric
+    }
 
     // calibration_report->calibration_report_id
     cJSON *calibration_report_id = cJSON_GetObjectItemCaseSensitive(calibration_reportJSON, "calibration_report_id");
@@ -453,6 +529,21 @@ calibration_report_t *calibration_report_parseFromJSON(cJSON *calibration_report
     goto end; //Numeric
     }
 
+    // calibration_report->expected_calibration_error
+    cJSON *expected_calibration_error = cJSON_GetObjectItemCaseSensitive(calibration_reportJSON, "expected_calibration_error");
+    if (cJSON_IsNull(expected_calibration_error)) {
+        expected_calibration_error = NULL;
+    }
+    if (!expected_calibration_error) {
+        goto end;
+    }
+
+    
+    if(!cJSON_IsNumber(expected_calibration_error))
+    {
+    goto end; //Numeric
+    }
+
     // calibration_report->items
     cJSON *items = cJSON_GetObjectItemCaseSensitive(calibration_reportJSON, "items");
     if (cJSON_IsNull(items)) {
@@ -522,6 +613,33 @@ calibration_report_t *calibration_report_parseFromJSON(cJSON *calibration_report
     goto end; //String
     }
 
+    // calibration_report->reliability_bins
+    cJSON *reliability_bins = cJSON_GetObjectItemCaseSensitive(calibration_reportJSON, "reliability_bins");
+    if (cJSON_IsNull(reliability_bins)) {
+        reliability_bins = NULL;
+    }
+    if (!reliability_bins) {
+        goto end;
+    }
+
+    
+    cJSON *reliability_bins_local_nonprimitive = NULL;
+    if(!cJSON_IsArray(reliability_bins)){
+        goto end; //nonprimitive container
+    }
+
+    reliability_binsList = list_createList();
+
+    cJSON_ArrayForEach(reliability_bins_local_nonprimitive,reliability_bins )
+    {
+        if(!cJSON_IsObject(reliability_bins_local_nonprimitive)){
+            goto end;
+        }
+        reliability_bin_t *reliability_binsItem = reliability_bin_parseFromJSON(reliability_bins_local_nonprimitive);
+
+        list_addElement(reliability_binsList, reliability_binsItem);
+    }
+
     // calibration_report->sample_count
     cJSON *sample_count = cJSON_GetObjectItemCaseSensitive(calibration_reportJSON, "sample_count");
     if (cJSON_IsNull(sample_count)) {
@@ -554,6 +672,7 @@ calibration_report_t *calibration_report_parseFromJSON(cJSON *calibration_report
 
 
     calibration_report_local_var = calibration_report_create_internal (
+        brier_score->valuedouble,
         strdup(calibration_report_id->valuestring),
         cohen_kappa->valuedouble,
         confusion_local_nonprim,
@@ -563,10 +682,12 @@ calibration_report_t *calibration_report_parseFromJSON(cJSON *calibration_report
         strdup(eval_report_id->valuestring),
         strdup(evaluator_version_id->valuestring),
         expected_agreement->valuedouble,
+        expected_calibration_error->valuedouble,
         itemsList,
         observed_agreement->valuedouble,
         policy_local_nonprim,
         strdup(project_id->valuestring),
+        reliability_binsList,
         sample_count->valuedouble,
         strdup(tenant_id->valuestring)
         );
@@ -589,6 +710,15 @@ end:
     if (policy_local_nonprim) {
         calibration_policy_free(policy_local_nonprim);
         policy_local_nonprim = NULL;
+    }
+    if (reliability_binsList) {
+        listEntry_t *listEntry = NULL;
+        list_ForEach(listEntry, reliability_binsList) {
+            reliability_bin_free(listEntry->data);
+            listEntry->data = NULL;
+        }
+        list_freeList(reliability_binsList);
+        reliability_binsList = NULL;
     }
     return NULL;
 

@@ -121,6 +121,7 @@ docs/ProviderSecretsAPI.md
 docs/PublishAck.md
 docs/QueuedTraceWork.md
 docs/RedactionClass.md
+docs/ReliabilityBin.md
 docs/ReviewAnnotation.md
 docs/ReviewQueue.md
 docs/ReviewTask.md
@@ -251,6 +252,7 @@ model_provider_secret_metadata.go
 model_publish_ack.go
 model_queued_trace_work.go
 model_redaction_class.go
+model_reliability_bin.go
 model_review_annotation.go
 model_review_queue.go
 model_review_task.go

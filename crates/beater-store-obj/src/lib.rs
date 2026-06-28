@@ -10,6 +10,7 @@ use uuid::Uuid;
 #[derive(Clone, Debug)]
 pub struct FsArtifactStore {
     root: Arc<PathBuf>,
+    max_bytes: Option<u64>,
 }
 
 impl FsArtifactStore {
@@ -18,7 +19,37 @@ impl FsArtifactStore {
         fs::create_dir_all(&root).map_err(StoreError::backend)?;
         Ok(Self {
             root: Arc::new(root),
+            max_bytes: None,
         })
+    }
+
+    /// Set a hard byte ceiling for future artifact writes.
+    ///
+    /// `FsArtifactStore::new` remains uncapped for compatibility. Callers that
+    /// need resource governance can opt in with this builder without changing
+    /// the [`ArtifactStore`] trait.
+    pub fn with_max_bytes(mut self, max_bytes: u64) -> Self {
+        self.max_bytes = Some(max_bytes);
+        self
+    }
+
+    fn validate_size(
+        &self,
+        size_bytes: usize,
+        redaction_class: &RedactionClass,
+    ) -> StoreResult<u64> {
+        let size_bytes = u64::try_from(size_bytes).map_err(|_| {
+            StoreError::LimitExceeded("artifact too large to represent as u64".to_string())
+        })?;
+        if let Some(max_bytes) = self.max_bytes {
+            if size_bytes > max_bytes {
+                return Err(StoreError::LimitExceeded(format!(
+                    "artifact too large: {size_bytes} > {max_bytes} bytes \
+                     (redaction_class={redaction_class:?})"
+                )));
+            }
+        }
+        Ok(size_bytes)
     }
 
     fn path_for_uri(&self, uri: &str) -> StoreResult<PathBuf> {
@@ -70,6 +101,7 @@ impl ArtifactStore for FsArtifactStore {
         redaction_class: RedactionClass,
         bytes: &[u8],
     ) -> StoreResult<ArtifactRef> {
+        let size_bytes = self.validate_size(bytes.len(), &redaction_class)?;
         let artifact_id = ArtifactId::new(Uuid::new_v4().to_string())
             .map_err(|err| StoreError::Integrity(err.to_string()))?;
         let sha256 = Sha256Hash::new(sha256_hex(bytes))
@@ -92,7 +124,7 @@ impl ArtifactStore for FsArtifactStore {
             artifact_id,
             uri: format!("artifact://{relative}"),
             sha256,
-            size_bytes: bytes.len() as u64,
+            size_bytes,
             mime_type: mime_type.to_string(),
             redaction_class,
         })
@@ -229,6 +261,127 @@ mod tests {
         );
     }
 
+    /// `get_bytes` and `delete_bytes` both route through `path_for_uri` →
+    /// `resolve_within_root`, so a caller who forges or replays an `ArtifactRef`
+    /// with a malicious `uri` field (e.g. deserialised from untrusted JSON or a
+    /// tampered HTTP response) must be rejected by both operations with
+    /// `StoreError::Integrity`, not a silent escape to the filesystem.
+    #[tokio::test]
+    async fn get_and_delete_bytes_reject_forged_malicious_uris() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let store = FsArtifactStore::new(tempdir.path()).unwrap_or_else(|err| panic!("{err}"));
+
+        let make_ref = |uri: &str| ArtifactRef {
+            artifact_id: ArtifactId::new("abc").unwrap_or_else(|err| panic!("{err}")),
+            uri: uri.to_string(),
+            // SHA-256 of empty input — irrelevant since the guard fires before
+            // any read is attempted.
+            sha256: Sha256Hash::new(
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            )
+            .unwrap_or_else(|err| panic!("{err}")),
+            size_bytes: 0,
+            mime_type: "application/octet-stream".to_string(),
+            redaction_class: RedactionClass::Internal,
+        };
+
+        let cases: &[&str] = &[
+            // Classic double-dot traversal.
+            "artifact://../../etc/passwd",
+            // Traversal embedded after a valid-looking prefix segment.
+            "artifact://tenant/../../../etc/passwd",
+            // Absolute path — PathBuf::join discards the root when the joined
+            // component is absolute; the guard must catch this before the join.
+            "artifact:///etc/passwd",
+            // Dot segment.
+            "artifact://./secret",
+            // Empty relative path.
+            "artifact://",
+        ];
+
+        for uri in cases {
+            match store.get_bytes(&make_ref(uri)).await {
+                Err(StoreError::Integrity(_)) => {}
+                other => panic!(
+                    "get_bytes: expected StoreError::Integrity for {uri:?}, got {other:?}"
+                ),
+            }
+            match store.delete_bytes(&make_ref(uri)).await {
+                Err(StoreError::Integrity(_)) => {}
+                other => panic!(
+                    "delete_bytes: expected StoreError::Integrity for {uri:?}, got {other:?}"
+                ),
+            }
+        }
+
+        // A well-formed URI must pass the guard (even though the file doesn't
+        // exist — the guard passes and the OS returns a backend error).
+        let valid = make_ref("artifact://tenant/project/abc123");
+        assert!(
+            matches!(store.get_bytes(&valid).await, Err(StoreError::Backend(_))),
+            "expected a backend (not-found) error for a valid URI, not an integrity error"
+        );
+    }
+
+    #[tokio::test]
+    async fn put_bytes_accepts_artifact_at_configured_size_cap() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let store = FsArtifactStore::new(tempdir.path())
+            .unwrap_or_else(|err| panic!("{err}"))
+            .with_max_bytes(4);
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+
+        let artifact = store
+            .put_bytes(
+                &tenant,
+                &project,
+                "text/plain",
+                RedactionClass::Internal,
+                b"1234",
+            )
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(artifact.size_bytes, 4);
+        let bytes = store
+            .get_bytes(&artifact)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(bytes, b"1234");
+    }
+
+    #[tokio::test]
+    async fn put_bytes_rejects_artifact_over_configured_size_cap_before_writing() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let store = FsArtifactStore::new(tempdir.path())
+            .unwrap_or_else(|err| panic!("{err}"))
+            .with_max_bytes(4);
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+
+        let result = store
+            .put_bytes(
+                &tenant,
+                &project,
+                "text/plain",
+                RedactionClass::Sensitive,
+                b"12345",
+            )
+            .await;
+
+        match result {
+            Err(StoreError::LimitExceeded(message)) => {
+                assert!(message.contains("artifact too large: 5 > 4 bytes"));
+                assert!(message.contains("redaction_class=Sensitive"));
+            }
+            other => {
+                panic!("expected StoreError::LimitExceeded for oversized artifact, got {other:?}")
+            }
+        }
+        assert_eq!(artifact_file_count(tempdir.path()), 0);
+    }
+
     #[tokio::test]
     async fn fs_artifact_store_deletes_and_is_idempotent() {
         let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
@@ -268,5 +421,23 @@ mod tests {
             .delete_bytes(&artifact)
             .await
             .unwrap_or_else(|err| panic!("deleting a missing artifact must succeed: {err}"));
+    }
+
+    fn artifact_file_count(root: &std::path::Path) -> usize {
+        std::fs::read_dir(root)
+            .unwrap_or_else(|err| panic!("{err}"))
+            .map(|entry| {
+                let entry = entry.unwrap_or_else(|err| panic!("{err}"));
+                let path = entry.path();
+                let file_type = entry.file_type().unwrap_or_else(|err| panic!("{err}"));
+                if file_type.is_dir() {
+                    artifact_file_count(&path)
+                } else if file_type.is_file() {
+                    1
+                } else {
+                    0
+                }
+            })
+            .sum()
     }
 }

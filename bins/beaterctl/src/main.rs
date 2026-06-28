@@ -117,6 +117,11 @@ enum Command {
         #[arg(long, default_value_t = 5000)]
         timeout_ms: u64,
     },
+    /// Validate live OTLP ingest and print a zero-code exporter env block.
+    Ingest {
+        #[command(subcommand)]
+        command: IngestCommand,
+    },
     /// Call any Beater API endpoint by its OpenAPI operationId.
     ///
     /// The operation's HTTP method and path template are resolved from the
@@ -285,6 +290,24 @@ enum Command {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum IngestCommand {
+    Test {
+        #[arg(long)]
+        http_url: Option<String>,
+        #[arg(long)]
+        otlp_grpc_url: Option<String>,
+        #[arg(long, default_value = "demo")]
+        tenant_id: String,
+        #[arg(long, default_value = "demo")]
+        project_id: String,
+        #[arg(long, default_value = "local")]
+        environment_id: String,
+        #[arg(long, default_value_t = 5000)]
+        timeout_ms: u64,
+    },
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ApiScopeArg {
     #[value(name = "trace-write")]
@@ -357,6 +380,30 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 run_local_smoke(data_dir).await?
             };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        Command::Ingest {
+            command:
+                IngestCommand::Test {
+                    http_url,
+                    otlp_grpc_url,
+                    tenant_id,
+                    project_id,
+                    environment_id,
+                    timeout_ms,
+                },
+        } => {
+            let http_url = http_url.unwrap_or_else(|| base_url.clone());
+            let output = run_ingest_test(
+                http_url,
+                otlp_grpc_url,
+                tenant_id,
+                project_id,
+                environment_id,
+                timeout_ms,
+                api_key.as_deref(),
+            )
+            .await?;
             println!("{}", serde_json::to_string_pretty(&output)?);
         }
         Command::Api {
@@ -1211,6 +1258,21 @@ async fn main() -> anyhow::Result<()> {
                 )?)
                 .await
                 .context("store latest failing gate fixture experiment")?;
+            let explicit_inconclusive = experiments
+                .write_run(gate_fixture_experiment(
+                    &tenant,
+                    &project,
+                    GateFixtureExperimentSpec {
+                        experiment_run_id: "gate-explicit-inconclusive",
+                        dataset: &dataset,
+                        evaluator: &evaluator,
+                        decision: GateDecision::Inconclusive,
+                        delta: 0.0,
+                        created_at: "2026-06-19T10:30:00Z",
+                    },
+                )?)
+                .await
+                .context("store explicit inconclusive gate fixture experiment")?;
             let report = run_gate(
                 &gates,
                 &experiments,
@@ -1227,6 +1289,7 @@ async fn main() -> anyhow::Result<()> {
                     "gate": gate,
                     "older_experiment_run_id": older_pass.experiment_run_id,
                     "latest_experiment_run_id": latest_fail.experiment_run_id,
+                    "inconclusive_experiment_run_id": explicit_inconclusive.experiment_run_id,
                     "gate_run": report
                 }))?
             );
@@ -2008,6 +2071,91 @@ async fn run_remote_smoke(
     }))
 }
 
+async fn run_ingest_test(
+    http_url: String,
+    otlp_grpc_url: Option<String>,
+    tenant_id: String,
+    project_id: String,
+    environment_id: String,
+    timeout_ms: u64,
+    api_key: Option<&str>,
+) -> anyhow::Result<serde_json::Value> {
+    let zero_code_env = zero_code_otlp_env(
+        &http_url,
+        otlp_grpc_url.as_deref(),
+        &tenant_id,
+        &project_id,
+        &environment_id,
+        api_key.is_some(),
+    );
+    let mut smoke = run_remote_smoke(
+        http_url,
+        otlp_grpc_url,
+        tenant_id,
+        project_id,
+        environment_id,
+        timeout_ms,
+        api_key,
+    )
+    .await?;
+    let object = smoke
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("remote ingest smoke did not return an object"))?;
+    object.insert("command".to_string(), json!("ingest test"));
+    object.insert("zero_code_env".to_string(), zero_code_env);
+    Ok(smoke)
+}
+
+fn zero_code_otlp_env(
+    http_url: &str,
+    otlp_grpc_url: Option<&str>,
+    tenant_id: &str,
+    project_id: &str,
+    environment_id: &str,
+    auth_configured: bool,
+) -> serde_json::Value {
+    let mut headers = Vec::new();
+    if otlp_grpc_url.is_some() {
+        headers.push(format!("x-beater-tenant-id={tenant_id}"));
+        headers.push(format!("x-beater-project-id={project_id}"));
+        headers.push(format!("x-beater-environment-id={environment_id}"));
+    }
+    if auth_configured {
+        headers.push("x-beater-api-key=${BEATER_API_KEY}".to_string());
+    }
+
+    let mut env = serde_json::Map::new();
+    env.insert("BEATER_TENANT_ID".to_string(), json!(tenant_id));
+    env.insert("BEATER_PROJECT_ID".to_string(), json!(project_id));
+    env.insert("BEATER_ENVIRONMENT_ID".to_string(), json!(environment_id));
+    env.insert(
+        "OTEL_EXPORTER_OTLP_HEADERS".to_string(),
+        json!(headers.join(",")),
+    );
+
+    if let Some(grpc_url) = otlp_grpc_url {
+        env.insert("OTEL_EXPORTER_OTLP_ENDPOINT".to_string(), json!(grpc_url));
+        env.insert("OTEL_EXPORTER_OTLP_PROTOCOL".to_string(), json!("grpc"));
+    } else {
+        env.insert(
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT".to_string(),
+            json!(format!(
+                "{}/v1/otlp/{}/{}/{}/v1/traces",
+                trim_url(http_url),
+                urlencode(tenant_id),
+                urlencode(project_id),
+                urlencode(environment_id)
+            )),
+        );
+        env.insert(
+            "OTEL_EXPORTER_OTLP_PROTOCOL".to_string(),
+            json!("http/protobuf"),
+        );
+    }
+
+    serde_json::Value::Object(env)
+}
+
 /// Attach `Authorization: Bearer <key>` when an API key is configured.
 ///
 /// Backward compatible: when `api_key` is `None` the request is unchanged.
@@ -2385,8 +2533,9 @@ fn gate_fixture_experiment(
             delta: spec.delta,
             ci_low: spec.delta,
             ci_high: spec.delta,
+            p_value: 1.0,
             decision: spec.decision.clone(),
-            test: StatisticalTest::PairedNormalApproximation,
+            test: StatisticalTest::PairedT,
             adjusted_alpha: 0.05,
         },
         decision: spec.decision,

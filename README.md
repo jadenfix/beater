@@ -71,6 +71,7 @@ Or run the all-in-one server and smoke it remotely:
 ```bash
 cargo run -q -p beaterd -- --data-dir /tmp/beaterd
 cargo run -q -p beaterctl -- smoke --http-url http://127.0.0.1:8080
+cargo run -q -p beaterctl -- ingest test --http-url http://127.0.0.1:8080
 ```
 
 Point a stock OpenTelemetry exporter at the local OTLP port:
@@ -553,6 +554,8 @@ result in the same PR.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the build-ready plan and the source for
   requirement intent.
+- [docs/architecture-status.md](docs/architecture-status.md) is the built/partial/planned
+  status ledger cross-checked against the actual repo tree.
 - [CONTRIBUTING.md](CONTRIBUTING.md) defines PR shape, CI gates, local setup,
   and contract regeneration.
 - [CLAUDE.md](CLAUDE.md) states the hard contract-regeneration rule for coding

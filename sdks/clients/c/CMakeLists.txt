@@ -131,6 +131,7 @@ set(SRCS
     model/publish_ack.c
     model/queued_trace_work.c
     model/redaction_class.c
+    model/reliability_bin.c
     model/review_annotation.c
     model/review_queue.c
     model/review_task.c
@@ -283,6 +284,7 @@ set(HDRS
     model/publish_ack.h
     model/queued_trace_work.h
     model/redaction_class.h
+    model/reliability_bin.h
     model/review_annotation.h
     model/review_queue.h
     model/review_task.h

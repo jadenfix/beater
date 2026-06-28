@@ -26,6 +26,38 @@ async fn remote_smoke_http_reports_query_lag_under_oss_slo() -> anyhow::Result<(
 }
 
 #[tokio::test]
+async fn ingest_test_reports_trace_and_zero_code_env() -> anyhow::Result<()> {
+    let tempdir = tempfile::tempdir()?;
+    let addrs = free_addrs(2)?;
+    let http_addr = addrs[0];
+    let grpc_addr = addrs[1];
+    let _server = BeaterdChild::spawn(tempdir.path().to_path_buf(), http_addr, grpc_addr)?;
+    let http_url = format!("http://{http_addr}");
+    wait_for_health(&http_url).await?;
+
+    let output = run_beaterctl_ingest_test(&http_url)?;
+    assert_eq!(output["command"], "ingest test");
+    assert_eq!(output["mode"], "remote");
+    assert_eq!(output["protocol"], "http");
+    assert_eq!(output["source"], "otlp");
+    assert_eq!(output["trace_span_count"], 1);
+    assert_lag_under_slo(&output);
+
+    let env = &output["zero_code_env"];
+    assert_eq!(env["BEATER_TENANT_ID"], "demo");
+    assert_eq!(env["BEATER_PROJECT_ID"], "demo");
+    assert_eq!(env["BEATER_ENVIRONMENT_ID"], "local");
+    assert_eq!(env["OTEL_EXPORTER_OTLP_PROTOCOL"], "http/protobuf");
+    assert_eq!(env["OTEL_EXPORTER_OTLP_HEADERS"], "");
+    assert_eq!(
+        env["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"],
+        format!("{http_url}/v1/otlp/demo/demo/local/v1/traces")
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn remote_smoke_grpc_reports_query_lag_under_oss_slo() -> anyhow::Result<()> {
     let tempdir = tempfile::tempdir()?;
     let addrs = free_addrs(2)?;
@@ -44,6 +76,30 @@ async fn remote_smoke_grpc_reports_query_lag_under_oss_slo() -> anyhow::Result<(
     assert_lag_under_slo(&smoke);
 
     Ok(())
+}
+
+fn run_beaterctl_ingest_test(http_url: &str) -> anyhow::Result<serde_json::Value> {
+    let output = Command::new(env!("CARGO_BIN_EXE_beaterctl"))
+        .arg("ingest")
+        .arg("test")
+        .arg("--http-url")
+        .arg(http_url)
+        .arg("--tenant-id")
+        .arg("demo")
+        .arg("--project-id")
+        .arg("demo")
+        .arg("--environment-id")
+        .arg("local")
+        .arg("--timeout-ms")
+        .arg(OSS_QUERY_LAG_SLO_MS.to_string())
+        .output()?;
+    assert!(
+        output.status.success(),
+        "beaterctl ingest test failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).map_err(anyhow::Error::from)
 }
 
 struct BeaterdChild {

@@ -164,6 +164,8 @@ pub mod queued_trace_work;
 pub use self::queued_trace_work::QueuedTraceWork;
 pub mod redaction_class;
 pub use self::redaction_class::RedactionClass;
+pub mod reliability_bin;
+pub use self::reliability_bin::ReliabilityBin;
 pub mod review_annotation;
 pub use self::review_annotation::ReviewAnnotation;
 pub mod review_queue;
