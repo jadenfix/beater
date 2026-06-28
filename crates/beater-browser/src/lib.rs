@@ -585,10 +585,12 @@ mod tests {
     async fn mock_driver_block_private_rejects_metadata_endpoint() {
         let mut driver =
             MockDriver::new(BrowserEngine::Chromium).with_policy(UrlPolicy::block_private());
-        let err = driver
+        let Err(err) = driver
             .goto("http://169.254.169.254/latest/meta-data/iam/security-credentials/")
             .await
-            .unwrap_err();
+        else {
+            panic!("expected SsrfBlocked for metadata endpoint");
+        };
         assert!(
             matches!(err, BrowserError::SsrfBlocked(_)),
             "expected SsrfBlocked, got: {err:?}"
@@ -613,7 +615,9 @@ mod tests {
             "http://10.0.0.1",
             "http://192.168.1.1",
         ] {
-            let err = driver.goto(url).await.unwrap_err();
+            let Err(err) = driver.goto(url).await else {
+                panic!("expected SsrfBlocked for {url:?}");
+            };
             assert!(
                 matches!(err, BrowserError::SsrfBlocked(_)),
                 "expected SsrfBlocked for {url:?}, got: {err:?}"
@@ -627,7 +631,9 @@ mod tests {
     async fn mock_driver_block_private_rejects_file_scheme() {
         let mut driver =
             MockDriver::new(BrowserEngine::Chromium).with_policy(UrlPolicy::block_private());
-        let err = driver.goto("file:///etc/passwd").await.unwrap_err();
+        let Err(err) = driver.goto("file:///etc/passwd").await else {
+            panic!("expected SsrfBlocked for file scheme");
+        };
         assert!(
             matches!(err, BrowserError::SsrfBlocked(_)),
             "expected SsrfBlocked, got: {err:?}"
@@ -657,7 +663,9 @@ mod tests {
         let action = BrowserAction::Goto {
             url: "http://169.254.169.254".to_string(),
         };
-        let err = driver.act(&action).await.unwrap_err();
+        let Err(err) = driver.act(&action).await else {
+            panic!("expected SsrfBlocked via act()");
+        };
         assert!(
             matches!(err, BrowserError::SsrfBlocked(_)),
             "expected SsrfBlocked via act(), got: {err:?}"

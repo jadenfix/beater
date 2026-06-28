@@ -483,7 +483,9 @@ mod tests {
     #[test]
     fn enforce_returns_ssrf_blocked_error_for_blocked_url() {
         let p = UrlPolicy::block_private();
-        let err = p.enforce("http://127.0.0.1").unwrap_err();
+        let Err(err) = p.enforce("http://127.0.0.1") else {
+            panic!("expected enforce to block loopback");
+        };
         assert!(
             matches!(err, BrowserError::SsrfBlocked(_)),
             "expected SsrfBlocked, got: {err:?}"
@@ -499,9 +501,9 @@ mod tests {
     #[test]
     fn enforce_returns_ssrf_blocked_for_metadata_endpoint() {
         let p = UrlPolicy::block_private();
-        let err = p
-            .enforce("http://169.254.169.254/latest/meta-data/")
-            .unwrap_err();
+        let Err(err) = p.enforce("http://169.254.169.254/latest/meta-data/") else {
+            panic!("expected enforce to block metadata endpoint");
+        };
         assert!(matches!(err, BrowserError::SsrfBlocked(_)));
     }
 
