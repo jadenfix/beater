@@ -2,8 +2,29 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Plug,
+  ListTree,
+  FlaskConical,
+  ShieldCheck,
+  Activity,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  ArrowRight,
+} from "lucide-react";
+
+import { BrandLockup } from "../components/BeaterMark";
 
 type Mode = "login" | "register";
+
+const LOOP = [
+  { icon: Plug, label: "Instrument any agent with stock OpenTelemetry" },
+  { icon: ListTree, label: "Inspect the trace as an agent-native span tree" },
+  { icon: FlaskConical, label: "Promote failures to datasets and run evals" },
+  { icon: ShieldCheck, label: "Gate CI on experiment reports" },
+  { icon: Activity, label: "Monitor production — same loop, end to end" },
+];
 
 function humanize(status: number, code: unknown): string {
   if (code === "email_taken") return "That email is already registered — try signing in.";
@@ -18,8 +39,11 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [reveal, setReveal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const isRegister = mode === "register";
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -45,96 +69,137 @@ export default function LoginPage() {
     }
   }
 
-  const isRegister = mode === "register";
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+  }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "2rem",
-      }}
-    >
-      <form
-        onSubmit={submit}
-        style={{
-          width: "100%",
-          maxWidth: 360,
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-          border: "1px solid #2a2a2a",
-          borderRadius: 12,
-          padding: "1.5rem",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: "1.25rem" }}>
-          {isRegister ? "Create your Beater account" : "Sign in to Beater"}
-        </h1>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>Email</span>
-          <input
-            type="email"
-            name="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ padding: "0.5rem", borderRadius: 6, border: "1px solid #333" }}
-          />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>Password</span>
-          <input
-            type="password"
-            name="password"
-            autoComplete={isRegister ? "new-password" : "current-password"}
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: "0.5rem", borderRadius: 6, border: "1px solid #333" }}
-          />
-        </label>
-        {error ? (
-          <p role="alert" style={{ color: "#f87171", fontSize: "0.85rem", margin: 0 }}>
-            {error}
+    <main className="auth">
+      <aside className="auth-brand">
+        <BrandLockup size={30} />
+        <div className="auth-pitch">
+          <h2>Observability, replay, and eval for AI agents.</h2>
+          <p>
+            The local-first platform for understanding, replaying, and improving
+            agent behavior — one Rust binary, one contract, one loop.
           </p>
-        ) : null}
-        <button
-          type="submit"
-          disabled={busy}
-          style={{
-            padding: "0.6rem",
-            borderRadius: 6,
-            border: "none",
-            background: "#3b82f6",
-            color: "white",
-            cursor: busy ? "default" : "pointer",
-            opacity: busy ? 0.7 : 1,
-          }}
-        >
-          {busy ? "Working…" : isRegister ? "Create account" : "Sign in"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMode(isRegister ? "login" : "register");
-            setError(null);
-          }}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#93c5fd",
-            cursor: "pointer",
-            fontSize: "0.85rem",
-          }}
-        >
-          {isRegister ? "Already have an account? Sign in" : "Need an account? Create one"}
-        </button>
-      </form>
+          <div className="loop" style={{ marginTop: 28 }}>
+            {LOOP.map(({ icon: Icon, label }) => (
+              <div className="loop-step" key={label}>
+                <span className="loop-dot" aria-hidden="true">
+                  <Icon />
+                </span>
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="auth-foot">
+          Self-hosted by default. Your traces stay in your <code>beaterd</code>.
+        </p>
+      </aside>
+
+      <section className="auth-panel">
+        <div className="auth-card">
+          <div className="auth-card-head">
+            <h1>{isRegister ? "Create your account" : "Welcome back"}</h1>
+            <p className="auth-sub">
+              {isRegister
+                ? "Spin up a tenant and mint your first API key in seconds."
+                : "Sign in to inspect traces, run evals, and manage keys."}
+            </p>
+          </div>
+
+          <div className="segmented" role="tablist" aria-label="Authentication mode">
+            <button
+              type="button"
+              role="tab"
+              aria-pressed={!isRegister}
+              onClick={() => switchMode("login")}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-pressed={isRegister}
+              onClick={() => switchMode("register")}
+            >
+              Create account
+            </button>
+          </div>
+
+          <form className="auth-form" onSubmit={submit}>
+            <label className="field">
+              <span className="field-label">
+                Email <span className="req">*</span>
+              </span>
+              <input
+                type="email"
+                name="email"
+                autoComplete="email"
+                placeholder="you@company.com"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+
+            <label className="field">
+              <span className="field-label">
+                Password <span className="req">*</span>
+              </span>
+              <div className="input-affix">
+                <input
+                  type={reveal ? "text" : "password"}
+                  name="password"
+                  autoComplete={isRegister ? "new-password" : "current-password"}
+                  placeholder={isRegister ? "At least 8 characters" : "Your password"}
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="affix-btn"
+                  aria-label={reveal ? "Hide password" : "Show password"}
+                  onClick={() => setReveal((v) => !v)}
+                >
+                  {reveal ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                </button>
+              </div>
+              {isRegister ? (
+                <span className="field-hint">Use 8+ characters with a mix you won't forget.</span>
+              ) : null}
+            </label>
+
+            {error ? (
+              <div className="alert alert-danger" role="alert">
+                <AlertCircle aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            ) : null}
+
+            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
+              {busy ? "Working…" : isRegister ? "Create account" : "Sign in"}
+              {!busy ? <ArrowRight aria-hidden="true" /> : null}
+            </button>
+          </form>
+
+          <p className="auth-alt">
+            {isRegister ? "Already have an account? " : "New to Beater? "}
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => switchMode(isRegister ? "login" : "register")}
+            >
+              {isRegister ? "Sign in" : "Create one"}
+            </button>
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
