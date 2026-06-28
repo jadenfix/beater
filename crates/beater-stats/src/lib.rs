@@ -17,6 +17,8 @@
 //! | [`compare_paired`] | §10.3 | paired deploy-gate selector |
 //! | [`paired_t_test`] | §10.3 | continuous paired metric |
 //! | [`mcnemar_exact_p`] | §10.3 | paired binary outcome |
+//! | [`required_sample_size`] / [`minimum_detectable_effect`] / [`achieved_power`] | §10.3 #5 | power / MDE / minimum-sample planning |
+//! | [`holm_bonferroni`] / [`benjamini_hochberg`] | §10.3 #4 | multiple-comparison corrections |
 //!
 //! The paired layer ([`compare_paired`]) is what the **experiment gate** calls
 //! today: it picks **Student's paired t** for continuous metrics and the **exact
@@ -39,11 +41,15 @@
 //!   helpers below) so the crate pulls in only `thiserror`.
 
 mod mcnemar;
+mod multiplicity;
 mod numerics;
 mod paired;
+mod power;
 
 pub use mcnemar::mcnemar_exact_p;
+pub use multiplicity::{benjamini_hochberg, holm_bonferroni, MultiplicityDecision};
 pub use paired::paired_t_test;
+pub use power::{achieved_power, minimum_detectable_effect, required_sample_size, DEFAULT_POWER};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error type
@@ -203,10 +209,11 @@ pub const Z_99: f64 = 2.575_829_303_548_901;
 /// ```
 /// use beater_stats::{wilson_interval, Z_95};
 ///
-/// let ci = wilson_interval(8, 10, Z_95).unwrap();
+/// let ci = wilson_interval(8, 10, Z_95)?;
 /// // 95 % Wilson CI for 8/10 ≈ [0.490, 0.943]
 /// assert!((ci.lower - 0.490).abs() < 1e-3);
 /// assert!((ci.upper - 0.943).abs() < 1e-3);
+/// # Ok::<(), beater_stats::StatsError>(())
 /// ```
 pub fn wilson_interval(successes: u64, trials: u64, z: f64) -> Result<Interval, StatsError> {
     if trials == 0 {
@@ -275,9 +282,10 @@ pub fn wilson_interval(successes: u64, trials: u64, z: f64) -> Result<Interval, 
 /// use beater_stats::two_proportion_z_test;
 ///
 /// // candidate: 85/100, baseline: 70/100 → should be significant at 95 %
-/// let res = two_proportion_z_test(85, 100, 70, 100).unwrap();
+/// let res = two_proportion_z_test(85, 100, 70, 100)?;
 /// assert!(res.p_value < 0.05);
 /// assert!(res.z_stat > 0.0); // candidate is better
+/// # Ok::<(), beater_stats::StatsError>(())
 /// ```
 pub fn two_proportion_z_test(
     k1: u64,
@@ -371,10 +379,11 @@ pub fn two_proportion_z_test(
 ///
 /// let a = vec![0.9, 0.8, 0.95, 0.85, 0.88];
 /// let b = vec![0.6, 0.7, 0.65, 0.62, 0.68];
-/// let ci = bootstrap_diff_ci(&a, &b, 0.95, 10_000, 42).unwrap();
+/// let ci = bootstrap_diff_ci(&a, &b, 0.95, 10_000, 42)?;
 /// // candidate is better by ~0.25; CI should be entirely positive
 /// assert!(ci.lower > 0.0);
 /// assert!(ci.estimate > 0.0);
+/// # Ok::<(), beater_stats::StatsError>(())
 /// ```
 pub fn bootstrap_diff_ci(
     sample_a: &[f64],
@@ -385,6 +394,15 @@ pub fn bootstrap_diff_ci(
 ) -> Result<BootstrapInterval, StatsError> {
     if sample_a.is_empty() || sample_b.is_empty() {
         return Err(StatsError::EmptySample);
+    }
+    // Honor the crate-wide "validate every input" invariant: a NaN/inf here would
+    // otherwise propagate silently into an unstable sort and a NaN CI returned as Ok.
+    if sample_a
+        .iter()
+        .chain(sample_b.iter())
+        .any(|v| !v.is_finite())
+    {
+        return Err(StatsError::NonFinite);
     }
     if !(0.0 < confidence && confidence < 1.0) {
         return Err(StatsError::InvalidParameter {
@@ -490,10 +508,15 @@ fn mcnemar_outcome(
     let p_value = mcnemar_exact_p(b, c)?;
     let n = total as f64;
     let diff = (b as f64 - c as f64) / n;
-    // Standard McNemar large-sample SE for the difference of paired proportions.
-    let discordant = b as f64 + c as f64;
-    let variance = (discordant - (b as f64 - c as f64).powi(2) / n) / (n * n);
-    let ci = if variance <= 0.0 {
+    let discordant = b + c;
+    // CI for the paired difference (b-c)/n. Only the discordant pairs are
+    // informative: b | (b+c) ~ Binomial(b+c, π), and the difference equals
+    // (m/n)·(2π − 1) with m = b+c. Build a *score* (Wilson) interval for π and map
+    // it through, rather than a Wald normal-approximation SE — the Wald interval is
+    // anti-conservative for small discordant counts and can disagree with the exact
+    // sign test (e.g. b=0, c=3, n=10 → Wald reports a regression while the exact
+    // p = 0.25 does not). The score interval stays consistent with the exact p.
+    let ci = if discordant == 0 {
         ConfidenceInterval {
             low: diff,
             high: diff,
@@ -501,10 +524,11 @@ fn mcnemar_outcome(
         }
     } else {
         let z = numerics::normal_quantile(1.0 - alpha / 2.0);
-        let half = z * variance.sqrt();
+        let pi = wilson_interval(b, discordant, z)?;
+        let scale = discordant as f64 / n;
         ConfidenceInterval {
-            low: diff - half,
-            high: diff + half,
+            low: scale * (2.0 * pi.lower - 1.0),
+            high: scale * (2.0 * pi.upper - 1.0),
             confidence: 1.0 - alpha,
         }
     };
@@ -530,32 +554,18 @@ pub fn normal_cdf(x: f64) -> f64 {
     0.5 * erfc_approx(-x / core::f64::consts::SQRT_2)
 }
 
-/// Inverse normal CDF: Φ⁻¹(p) using the rational approximation from
-/// Abramowitz & Stegun §26.2.17.  Accurate to about 4.5×10⁻⁴.
+/// Inverse normal CDF: Φ⁻¹(p). Delegates to the crate's higher-accuracy Acklam
+/// implementation (~1.2×10⁻⁹) so the public API returns the same value the crate
+/// uses internally (e.g. for the McNemar score interval). Previously this was a
+/// separate Abramowitz & Stegun §26.2.17 rational form accurate only to ~4.5×10⁻⁴,
+/// which silently disagreed with the internal quantile.
 ///
 /// Returns `NaN` for inputs outside `(0, 1)`.
 pub fn normal_quantile(p: f64) -> f64 {
     if !(0.0 < p && p < 1.0) {
         return f64::NAN;
     }
-
-    let c0 = 2.515517_f64;
-    let c1 = 0.802853_f64;
-    let c2 = 0.010328_f64;
-    let d1 = 1.432788_f64;
-    let d2 = 0.189269_f64;
-    let d3 = 0.001308_f64;
-
-    // Halley iteration is not needed for the accuracy we claim.
-    let (t, sign) = if p <= 0.5 {
-        ((-2.0 * p.ln()).sqrt(), -1.0_f64)
-    } else {
-        ((-2.0 * (1.0 - p).ln()).sqrt(), 1.0_f64)
-    };
-
-    let numerator = c0 + c1 * t + c2 * t * t;
-    let denominator = 1.0 + d1 * t + d2 * t * t + d3 * t * t * t;
-    sign * (t - numerator / denominator)
+    numerics::normal_quantile(p)
 }
 
 // Abramowitz & Stegun §7.1.26 — erfc approximation (max |ε| < 1.5×10⁻⁷)
@@ -1020,6 +1030,18 @@ mod tests {
         assert!(bootstrap_diff_ci(&[1.0], &[1.0], 0.0, 100, 1).is_err());
         assert!(bootstrap_diff_ci(&[1.0], &[1.0], 1.0, 100, 1).is_err());
         assert!(bootstrap_diff_ci(&[1.0], &[1.0], -0.5, 100, 1).is_err());
+    }
+
+    #[test]
+    fn bootstrap_error_non_finite() {
+        assert_eq!(
+            bootstrap_diff_ci(&[1.0, f64::NAN], &[1.0, 2.0], 0.95, 100, 1),
+            Err(StatsError::NonFinite)
+        );
+        assert_eq!(
+            bootstrap_diff_ci(&[1.0, 2.0], &[1.0, f64::INFINITY], 0.95, 100, 1),
+            Err(StatsError::NonFinite)
+        );
     }
 
     #[test]
