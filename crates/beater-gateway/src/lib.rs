@@ -170,7 +170,9 @@ pub struct ChatCompletionResponse {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModelRouting {
     /// Bring-your-own-key: resolve the tenant's opaque provider secret.
-    Byok { provider_secret_id: ProviderSecretId },
+    Byok {
+        provider_secret_id: ProviderSecretId,
+    },
     /// Use the managed default model (hosted only).
     Managed { default_model: ModelRef },
 }
@@ -475,10 +477,7 @@ where
     /// Proxy a chat completion: resolve routing, check cache, reserve budget,
     /// call providers with retry/backoff + failover, record cost, and emit a
     /// canonical `llm.call` span.
-    pub async fn complete(
-        &self,
-        request: GatewayRequest,
-    ) -> Result<GatewayOutcome, GatewayError> {
+    pub async fn complete(&self, request: GatewayRequest) -> Result<GatewayOutcome, GatewayError> {
         let routes = self.resolve_routes(&request).await?;
 
         // The primary (first) route's model identifies the call for hashing,
@@ -504,8 +503,17 @@ where
             .map_err(|err| GatewayError::Cache(err.to_string()))?
         {
             let tokens = cached.response.usage.to_token_counts();
-            self.emit_span(&request, &primary_model, SpanStatus::Ok, &tokens, &cached.cost, true, 0, start_time)
-                .await?;
+            self.emit_span(
+                &request,
+                &primary_model,
+                SpanStatus::Ok,
+                &tokens,
+                &cached.cost,
+                true,
+                0,
+                start_time,
+            )
+            .await?;
             return Ok(GatewayOutcome {
                 response: cached.response,
                 cost: cached.cost,
@@ -529,11 +537,9 @@ where
         let mut attempts: u32 = 0;
         for route in &routes {
             attempts = attempts.saturating_add(1);
-            let call = self.provider.complete(
-                &route.model,
-                &request.completion,
-                &route.credentials,
-            );
+            let call =
+                self.provider
+                    .complete(&route.model, &request.completion, &route.credentials);
             match tokio::time::timeout(self.request_timeout, call).await {
                 Err(_elapsed) => {
                     failures.push(format!(
@@ -648,7 +654,10 @@ where
                             provider: provider.clone(),
                             name: request.completion.model.clone(),
                         },
-                        credentials: ProviderCredentials::new(provider.clone(), secret.secret_value()),
+                        credentials: ProviderCredentials::new(
+                            provider.clone(),
+                            secret.secret_value(),
+                        ),
                         provider,
                     });
                 }

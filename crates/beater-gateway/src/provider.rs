@@ -160,7 +160,10 @@ impl ChatProvider for OpenAiChatProvider {
         insert_optional(
             &mut body,
             "reasoning_effort",
-            request.reasoning_effort.clone().map(serde_json::Value::from),
+            request
+                .reasoning_effort
+                .clone()
+                .map(serde_json::Value::from),
         );
 
         let response = send_json_with_retries(
@@ -230,9 +233,7 @@ impl ChatProvider for AnthropicChatProvider {
             .messages
             .iter()
             .filter(|message| message.role != "system")
-            .map(|message| {
-                serde_json::json!({ "role": message.role, "content": message.content })
-            })
+            .map(|message| serde_json::json!({ "role": message.role, "content": message.content }))
             .collect::<Vec<_>>();
         let mut body = serde_json::json!({
             "model": model.name,

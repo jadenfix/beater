@@ -854,7 +854,9 @@ async fn gateway_chat_completions_route(
             environment_id,
             completion: request.completion,
             routing: request.routing,
-            budget_micros: request.budget_micros.unwrap_or(DEFAULT_GATEWAY_BUDGET_MICROS),
+            budget_micros: request
+                .budget_micros
+                .unwrap_or(DEFAULT_GATEWAY_BUDGET_MICROS),
             window_start: now,
             reset_at: now + chrono::Duration::hours(1),
         })

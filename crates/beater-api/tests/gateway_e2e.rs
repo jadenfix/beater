@@ -17,8 +17,9 @@ use beater_bus::InMemoryBus;
 use beater_core::Money;
 use beater_gateway::{
     ChatCompletionChoice, ChatCompletionRequest, ChatCompletionResponse, ChatCompletionUsage,
-    ChatMessage, ChatProvider, ChatProviderError, ChatProviderResult, Gateway, InMemoryGatewayCache,
-    LlmCallSpan, LlmCallSpanSink, ManagedDefault, ProviderCompletion, SpanSinkError,
+    ChatMessage, ChatProvider, ChatProviderError, ChatProviderResult, Gateway,
+    InMemoryGatewayCache, LlmCallSpan, LlmCallSpanSink, ManagedDefault, ProviderCompletion,
+    SpanSinkError,
 };
 use beater_ingest::{IngestPolicy, IngestService};
 use beater_judge::ProviderCredentials;
@@ -108,9 +109,18 @@ impl RecordingSpanSink {
     }
 }
 
-fn build_app(cost_micros: i64) -> (Router, Arc<AtomicUsize>, RecordingSpanSink, tempfile::TempDir) {
+fn build_app(
+    cost_micros: i64,
+) -> (
+    Router,
+    Arc<AtomicUsize>,
+    RecordingSpanSink,
+    tempfile::TempDir,
+) {
     let tempdir = unwrap(tempfile::tempdir());
-    let artifacts = Arc::new(unwrap(FsArtifactStore::new(tempdir.path().join("artifacts"))));
+    let artifacts = Arc::new(unwrap(FsArtifactStore::new(
+        tempdir.path().join("artifacts"),
+    )));
     let traces = Arc::new(InMemoryTraceStore::new());
     let bus = Arc::new(InMemoryBus::new(32));
     let ingest = IngestService::new(artifacts, traces.clone(), bus, IngestPolicy::default());
@@ -193,7 +203,11 @@ async fn gateway_returns_openai_shape_caches_and_emits_span() {
     let (status, json) = post_chat(&app, chat_body(Some(1_000_000))).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["cached"], serde_json::Value::Bool(true));
-    assert_eq!(calls.load(Ordering::SeqCst), 1, "cache should prevent a 2nd provider call");
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "cache should prevent a 2nd provider call"
+    );
 
     // A canonical llm.call span is emitted per proxied call (live + cached).
     let spans = sink.snapshot();

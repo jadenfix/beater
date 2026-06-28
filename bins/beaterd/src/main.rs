@@ -13,12 +13,12 @@ use beater_core::{IdempotencyKey, Money, Page, PageRequest, ProjectId, TenantId,
 use beater_datasets::SqliteDatasetStore;
 use beater_experiments::SqliteExperimentStore;
 use beater_gates::SqliteGateStore;
+use beater_gateway::{Gateway, NoopSpanSink, RoutingChatProvider, SqliteGatewayCache};
 use beater_human::SqliteHumanReviewStore;
 use beater_ingest::{
     ImportError, IngestPolicy, IngestService, RawTraceIngestRequest, SourceImporter,
     TRACE_INGESTED_KIND, TRACE_WRITE_BATCH_KIND,
 };
-use beater_gateway::{Gateway, NoopSpanSink, RoutingChatProvider, SqliteGatewayCache};
 use beater_judge::{
     HttpRoutingJudgeProvider, JudgeBrokerService, JudgeProvider, KeywordJudgeProvider,
     SqliteJudgeLedger,

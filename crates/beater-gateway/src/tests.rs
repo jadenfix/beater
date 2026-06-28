@@ -131,10 +131,7 @@ fn environment() -> EnvironmentId {
 }
 
 fn completion() -> ChatCompletionRequest {
-    ChatCompletionRequest::new(
-        "gpt-test",
-        vec![ChatMessage::new("user", "hello there")],
-    )
+    ChatCompletionRequest::new("gpt-test", vec![ChatMessage::new("user", "hello there")])
 }
 
 fn gateway_request(routing: Vec<ModelRouting>, budget_micros: i64) -> GatewayRequest {
@@ -493,10 +490,8 @@ async fn provider_key_material_is_never_exposed() {
 
     // The reused redacted credential type must not leak, and neither must the
     // managed default config Debug.
-    assert!(!format!(
-        "{:?}",
-        ProviderCredentials::new("openai", secret_value)
-    )
-    .contains(secret_value));
+    assert!(
+        !format!("{:?}", ProviderCredentials::new("openai", secret_value)).contains(secret_value)
+    );
     assert!(!format!("{:?}", managed_default()).contains("managed-secret-xyz"));
 }
