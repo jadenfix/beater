@@ -3475,6 +3475,22 @@ fn trace_project_id(trace: &TraceView) -> Result<ProjectId, ApiError> {
         })
 }
 
+/// Redacts a [`TraceView`] before it leaves the read path.
+///
+/// Default-deny posture for Sensitive spans (closes the read-path fail-open
+/// from #126 / #314): for any span whose redaction class is sensitive
+/// ([`is_sensitive_redaction`]), EVERY attribute value is scrubbed to
+/// `"[redacted]"` — not just `input.value` / `output.value`. Previously only
+/// those two inline payload keys were scrubbed, so the ~16-key exact-match
+/// ingest denylist was the only defense for attribute keys: any sensitive key
+/// not on that list (e.g. `http.request.header.x-auth-token`, `db.statement`,
+/// `gen_ai.prompt.*`, custom `api_key`/`secret`/`token`) read out in cleartext
+/// on a Sensitive span. Redacting all values is future-proof: a Sensitive span
+/// can never read out a cleartext attribute value regardless of its key.
+///
+/// Attribute KEYS are preserved (only values change), so the response shape /
+/// `TraceView` schema is identical and this is not an OpenAPI contract change.
+/// Non-sensitive spans are left completely untouched (no over-redaction).
 fn redact_trace_view(mut trace: TraceView) -> TraceView {
     for span in &mut trace.spans {
         let span_sensitive = is_sensitive_redaction(&span.raw_ref.redaction_class);
@@ -3482,20 +3498,12 @@ fn redact_trace_view(mut trace: TraceView) -> TraceView {
         span.input_ref = span.input_ref.as_ref().map(redact_artifact_ref);
         span.output_ref = span.output_ref.as_ref().map(redact_artifact_ref);
         if span_sensitive {
-            redact_payload_attribute(&mut span.attributes, "input.value");
-            redact_payload_attribute(&mut span.attributes, "output.value");
+            for value in span.attributes.values_mut() {
+                *value = serde_json::json!("[redacted]");
+            }
         }
     }
     trace
-}
-
-fn redact_payload_attribute(
-    attributes: &mut std::collections::BTreeMap<String, serde_json::Value>,
-    key: &str,
-) {
-    if let Some(value) = attributes.get_mut(key) {
-        *value = serde_json::json!("[redacted]");
-    }
 }
 
 fn redact_artifact_ref(artifact_ref: &ArtifactRef) -> ArtifactRef {
@@ -4303,6 +4311,141 @@ mod tests {
     fn string_value(value: &str) -> AnyValue {
         AnyValue {
             value: Some(any_value::Value::StringValue(value.to_string())),
+        }
+    }
+
+    fn redaction_test_span(
+        redaction_class: RedactionClass,
+        attributes: BTreeMap<String, serde_json::Value>,
+    ) -> CanonicalSpan {
+        CanonicalSpan {
+            schema_version: 1,
+            normalizer_version: "test".to_string(),
+            tenant_id: TenantId::new("acme").unwrap_or_else(|err| panic!("{err}")),
+            project_id: ProjectId::new("proj").unwrap_or_else(|err| panic!("{err}")),
+            environment_id: EnvironmentId::new("prod").unwrap_or_else(|err| panic!("{err}")),
+            trace_id: TraceId::new("trace").unwrap_or_else(|err| panic!("{err}")),
+            span_id: SpanId::new("span").unwrap_or_else(|err| panic!("{err}")),
+            parent_span_id: None,
+            seq: 1,
+            kind: AgentSpanKind::ToolCall,
+            name: "tool".to_string(),
+            status: SpanStatus::Ok,
+            start_time: Utc::now(),
+            end_time: None,
+            model: None,
+            cost: None,
+            tokens: None,
+            input_ref: None,
+            output_ref: None,
+            attributes,
+            unmapped_attrs: json!({}),
+            raw_ref: ArtifactRef {
+                artifact_id: ArtifactId::new("artifact").unwrap_or_else(|err| panic!("{err}")),
+                uri: "artifact://tenant/project/artifact".to_string(),
+                sha256: Sha256Hash::new("hash").unwrap_or_else(|err| panic!("{err}")),
+                size_bytes: 7,
+                mime_type: "application/json".to_string(),
+                redaction_class,
+            },
+        }
+    }
+
+    /// #126 / #314: a Sensitive span must default-deny EVERY attribute value,
+    /// not just `input.value` / `output.value`. The denylist-evading leaker keys
+    /// (non-`authorization` auth headers, `db.statement`, raw prompt attrs,
+    /// custom secret keys) must all read out as `"[redacted]"`, with keys kept.
+    #[test]
+    fn redact_trace_view_default_denies_all_attribute_values_on_sensitive_span() {
+        let leaker_keys = [
+            "input.value",
+            "output.value",
+            "http.request.header.x-auth-token",
+            "x-amz-security-token",
+            "db.statement",
+            "gen_ai.prompt.0.content",
+            "gen_ai.request.messages",
+            "api_key",
+            "secret",
+            "token",
+        ];
+        let attributes: BTreeMap<String, serde_json::Value> = leaker_keys
+            .iter()
+            .map(|key| (key.to_string(), json!(format!("cleartext-{key}"))))
+            .collect();
+
+        let trace = TraceView {
+            tenant_id: TenantId::new("acme").unwrap_or_else(|err| panic!("{err}")),
+            trace_id: TraceId::new("trace").unwrap_or_else(|err| panic!("{err}")),
+            spans: vec![redaction_test_span(RedactionClass::Sensitive, attributes)],
+        };
+
+        let redacted = redact_trace_view(trace);
+        let span = &redacted.spans[0];
+
+        for key in leaker_keys {
+            assert!(
+                span.attributes.contains_key(key),
+                "attribute key {key} must be preserved"
+            );
+            assert_eq!(
+                span.attributes.get(key),
+                Some(&json!("[redacted]")),
+                "attribute value for {key} must be default-denied to [redacted]"
+            );
+        }
+        // The sensitive raw_ref artifact pointer is also scrubbed.
+        assert_eq!(span.raw_ref.uri, "artifact://redacted");
+    }
+
+    /// A Secret span is also sensitive and must be fully redacted.
+    #[test]
+    fn redact_trace_view_default_denies_all_attribute_values_on_secret_span() {
+        let attributes = BTreeMap::from([
+            ("password".to_string(), json!("hunter2")),
+            ("custom.field".to_string(), json!("payload")),
+        ]);
+        let trace = TraceView {
+            tenant_id: TenantId::new("acme").unwrap_or_else(|err| panic!("{err}")),
+            trace_id: TraceId::new("trace").unwrap_or_else(|err| panic!("{err}")),
+            spans: vec![redaction_test_span(RedactionClass::Secret, attributes)],
+        };
+
+        let span = &redact_trace_view(trace).spans[0];
+        assert_eq!(span.attributes.get("password"), Some(&json!("[redacted]")));
+        assert_eq!(
+            span.attributes.get("custom.field"),
+            Some(&json!("[redacted]"))
+        );
+    }
+
+    /// Non-sensitive spans (Public / Internal) must be returned VERBATIM —
+    /// proving the default-deny does not over-redact normal spans.
+    #[test]
+    fn redact_trace_view_leaves_non_sensitive_span_attributes_verbatim() {
+        for class in [RedactionClass::Public, RedactionClass::Internal] {
+            assert!(
+                !is_sensitive_redaction(&class),
+                "{class:?} must not be classified as sensitive"
+            );
+            let attributes = BTreeMap::from([
+                ("input.value".to_string(), json!("hello")),
+                ("db.statement".to_string(), json!("SELECT 1")),
+                ("api_key".to_string(), json!("not-secret-here")),
+            ]);
+            let trace = TraceView {
+                tenant_id: TenantId::new("acme").unwrap_or_else(|err| panic!("{err}")),
+                trace_id: TraceId::new("trace").unwrap_or_else(|err| panic!("{err}")),
+                spans: vec![redaction_test_span(class.clone(), attributes.clone())],
+            };
+
+            let span = &redact_trace_view(trace).spans[0];
+            assert_eq!(
+                span.attributes, attributes,
+                "{class:?} span attributes must be unchanged"
+            );
+            // Non-sensitive raw_ref is also untouched.
+            assert_eq!(span.raw_ref.uri, "artifact://tenant/project/artifact");
         }
     }
 }
