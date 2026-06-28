@@ -474,7 +474,7 @@ async fn register(
                     .map(|g| g.as_str().to_string())
                     .collect(),
                 token_endpoint_auth_method: client.token_endpoint_auth_method.as_str().to_string(),
-                scope: client.scopes.iter().cloned().collect::<Vec<_>>().join(" "),
+                scope: client.scopes.iter().map(String::as_str).collect::<Vec<_>>().join(" "),
             })
             .into_response()
         }
@@ -764,7 +764,7 @@ async fn token(
             token_type: tokens.token_type,
             expires_in: tokens.expires_in,
             refresh_token: tokens.refresh_token,
-            scope: tokens.scope.iter().cloned().collect::<Vec<_>>().join(" "),
+            scope: tokens.scope.iter().map(String::as_str).collect::<Vec<_>>().join(" "),
         })
         .into_response(),
         Err(err) => oauth_error_from(err),
