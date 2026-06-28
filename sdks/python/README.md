@@ -3,7 +3,7 @@
 Ergonomic, OpenTelemetry-native agent observability for [Beater](https://github.com/beater/beater).
 
 This is the **Layer 2** (hand-written, ergonomic) SDK: `@observe` decorators,
-drop-in OpenAI/Anthropic wrappers, and LangChain/LlamaIndex callbacks. The
+drop-in provider wrappers, and LangChain/LlamaIndex callbacks. The
 **Layer 1** generated control-plane client (datasets, experiments, gates, evals,
 usage, etc.) is published separately as `beater_client`, generated from the
 Beater OpenAPI contract so it never drifts from the API.
@@ -14,6 +14,8 @@ Beater OpenAPI contract so it never drifts from the API.
 pip install beater-sdk                 # core (OTLP/HTTP export)
 pip install "beater-sdk[openai]"       # + OpenAI wrapper
 pip install "beater-sdk[anthropic]"    # + Anthropic wrapper
+pip install "beater-sdk[groq]"         # + Groq SDK for wrap_groq()
+pip install "beater-sdk[mistral]"      # + OpenAI client for Mistral's compatible endpoint
 pip install "beater-sdk[langchain]"    # + LangChain callback
 pip install "beater-sdk[llamaindex]"   # + LlamaIndex callback
 pip install "beater-sdk[grpc]"         # OTLP/gRPC export instead of HTTP
@@ -90,6 +92,13 @@ client = beater.wrap_openai(OpenAI())
 
 from anthropic import Anthropic
 client = beater.wrap_anthropic(Anthropic())
+
+from groq import Groq
+client = beater.wrap_groq(Groq())
+
+from openai import OpenAI
+mistral_client = OpenAI(base_url="https://api.mistral.ai/v1")
+client = beater.wrap_mistral(mistral_client)
 ```
 
 ## Framework callbacks
