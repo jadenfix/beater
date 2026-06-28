@@ -18,6 +18,9 @@ crates/beater-api handlers  ──#[utoipa::path] + ToSchema on the REAL types�
 Nothing re-describes the API by hand. A handler change regenerates the spec; CI
 (`sdk-contract.yml`) fails if the spec, any SDK client, or MCP tool set is stale,
 and `oasdiff` blocks breaking changes. Drift is a merge-blocker, not a hope.
+The local path is the same chain: `cargo xtask regen-spec` ->
+`scripts/regen-sdks.sh` -> `cargo xtask regen-semconv` ->
+`scripts/check-contract-sync.sh`.
 
 ## Modern API design conventions (enforced)
 
