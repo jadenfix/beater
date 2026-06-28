@@ -524,7 +524,7 @@ mod tests {
     /// Reference values from Wilson (1927) / statsmodels proportion_confint.
     #[test]
     fn wilson_8_of_10_95pct() {
-        let ci = wilson_interval(8, 10, Z_95).unwrap();
+        let ci = wilson_interval(8, 10, Z_95).unwrap_or_else(|err| panic!("{err}"));
         // Reference: lower ≈ 0.4904, upper ≈ 0.9432
         assert!((ci.lower - 0.4904).abs() < 1e-3, "lower = {}", ci.lower);
         assert!((ci.upper - 0.9432).abs() < 1e-3, "upper = {}", ci.upper);
@@ -534,7 +534,7 @@ mod tests {
     #[test]
     fn wilson_all_success() {
         // k = n = 10 — p̂ = 1.0; interval should be < 1.0 (shrinkage towards 0.5)
-        let ci = wilson_interval(10, 10, Z_95).unwrap();
+        let ci = wilson_interval(10, 10, Z_95).unwrap_or_else(|err| panic!("{err}"));
         assert!(ci.lower > 0.0, "lower = {}", ci.lower);
         assert!((ci.upper - 1.0).abs() < 1e-9, "upper = {}", ci.upper);
         assert!(ci.center < 1.0);
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn wilson_zero_successes() {
         // k = 0 — p̂ = 0.0; interval should be > 0.0 (shrinkage towards 0.5)
-        let ci = wilson_interval(0, 10, Z_95).unwrap();
+        let ci = wilson_interval(0, 10, Z_95).unwrap_or_else(|err| panic!("{err}"));
         assert!((ci.lower - 0.0).abs() < 1e-9, "lower = {}", ci.lower);
         assert!(ci.upper > 0.0, "upper = {}", ci.upper);
         assert!(ci.center > 0.0);
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn wilson_single_trial_success() {
-        let ci = wilson_interval(1, 1, Z_95).unwrap();
+        let ci = wilson_interval(1, 1, Z_95).unwrap_or_else(|err| panic!("{err}"));
         assert!(ci.lower >= 0.0);
         assert!(ci.upper <= 1.0);
     }
@@ -559,7 +559,7 @@ mod tests {
     #[test]
     fn wilson_large_n() {
         // At large n Wilson and Wald converge — sanity-check for 900/1000
-        let ci = wilson_interval(900, 1000, Z_95).unwrap();
+        let ci = wilson_interval(900, 1000, Z_95).unwrap_or_else(|err| panic!("{err}"));
         let p_hat = 0.9_f64;
         let wald_half = Z_95 * (p_hat * (1.0 - p_hat) / 1000.0_f64).sqrt();
         assert!((ci.center - p_hat).abs() < 0.01);
@@ -603,7 +603,7 @@ mod tests {
         let expected_half = (z / (1.0 + z2 / n as f64))
             * (p_hat * (1.0 - p_hat) / n as f64 + z2 / (4.0 * (n as f64).powi(2))).sqrt();
 
-        let ci = wilson_interval(k, n, z).unwrap();
+        let ci = wilson_interval(k, n, z).unwrap_or_else(|err| panic!("{err}"));
         assert!(
             (ci.center - expected_center).abs() < 1e-12,
             "center mismatch: {} vs {}",
@@ -629,7 +629,7 @@ mod tests {
     /// p-val = 2 * Φ(-2.540) ≈ 0.0111
     #[test]
     fn two_prop_significant_at_95pct() {
-        let res = two_proportion_z_test(85, 100, 70, 100).unwrap();
+        let res = two_proportion_z_test(85, 100, 70, 100).unwrap_or_else(|err| panic!("{err}"));
         assert!((res.z_stat - 2.540).abs() < 0.01, "z = {}", res.z_stat);
         assert!((res.p_value - 0.0111).abs() < 0.001, "p = {}", res.p_value);
         assert!(res.p_value < 0.05);
@@ -638,7 +638,7 @@ mod tests {
     /// Identical proportions → z = 0, p = 1.
     #[test]
     fn two_prop_identical_proportions() {
-        let res = two_proportion_z_test(50, 100, 50, 100).unwrap();
+        let res = two_proportion_z_test(50, 100, 50, 100).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(res.z_stat, 0.0);
         assert!((res.p_value - 1.0).abs() < 1e-9);
     }
@@ -646,7 +646,7 @@ mod tests {
     /// Both all-success or all-fail → SE = 0 → z = 0, p = 1.
     #[test]
     fn two_prop_all_success_se_zero() {
-        let res = two_proportion_z_test(10, 10, 10, 10).unwrap();
+        let res = two_proportion_z_test(10, 10, 10, 10).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(res.z_stat, 0.0);
         assert!((res.p_value - 1.0).abs() < 1e-9);
     }
@@ -658,7 +658,7 @@ mod tests {
         // p_pool = 5/10 = 0.5
         // SE = sqrt(0.5 * 0.5 * (1/5 + 1/5)) = sqrt(0.25 * 0.4) = sqrt(0.1) ≈ 0.3162
         // z = (1.0 - 0.0) / 0.3162 ≈ 3.162
-        let res = two_proportion_z_test(5, 5, 0, 5).unwrap();
+        let res = two_proportion_z_test(5, 5, 0, 5).unwrap_or_else(|err| panic!("{err}"));
         assert!((res.z_stat - 3.162).abs() < 0.01, "z = {}", res.z_stat);
         assert!(res.p_value < 0.01);
     }
@@ -666,7 +666,7 @@ mod tests {
     #[test]
     fn two_prop_direction() {
         // Candidate worse than baseline → negative z
-        let res = two_proportion_z_test(40, 100, 60, 100).unwrap();
+        let res = two_proportion_z_test(40, 100, 60, 100).unwrap_or_else(|err| panic!("{err}"));
         assert!(res.z_stat < 0.0);
     }
 
@@ -695,8 +695,8 @@ mod tests {
     fn bootstrap_deterministic_with_seed() {
         let a = vec![0.9, 0.8, 0.85, 0.88, 0.92];
         let b = vec![0.6, 0.65, 0.7, 0.62, 0.68];
-        let ci1 = bootstrap_diff_ci(&a, &b, 0.95, 1000, 42).unwrap();
-        let ci2 = bootstrap_diff_ci(&a, &b, 0.95, 1000, 42).unwrap();
+        let ci1 = bootstrap_diff_ci(&a, &b, 0.95, 1000, 42).unwrap_or_else(|err| panic!("{err}"));
+        let ci2 = bootstrap_diff_ci(&a, &b, 0.95, 1000, 42).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(ci1.lower, ci2.lower);
         assert_eq!(ci1.upper, ci2.upper);
     }
@@ -706,8 +706,8 @@ mod tests {
     fn bootstrap_different_seeds_differ() {
         let a: Vec<f64> = (0..50).map(|i| 0.5 + (i as f64 * 0.01) % 0.4).collect();
         let b: Vec<f64> = (0..50).map(|i| 0.3 + (i as f64 * 0.01) % 0.3).collect();
-        let ci1 = bootstrap_diff_ci(&a, &b, 0.95, 500, 1).unwrap();
-        let ci2 = bootstrap_diff_ci(&a, &b, 0.95, 500, 99999).unwrap();
+        let ci1 = bootstrap_diff_ci(&a, &b, 0.95, 500, 1).unwrap_or_else(|err| panic!("{err}"));
+        let ci2 = bootstrap_diff_ci(&a, &b, 0.95, 500, 99999).unwrap_or_else(|err| panic!("{err}"));
         // They should differ (probability of collision is negligible)
         assert!(
             (ci1.lower - ci2.lower).abs() > 1e-12
@@ -721,7 +721,7 @@ mod tests {
     fn bootstrap_positive_diff_ci() {
         let a = vec![0.9, 0.85, 0.88, 0.92, 0.95];
         let b = vec![0.5, 0.55, 0.45, 0.52, 0.48];
-        let ci = bootstrap_diff_ci(&a, &b, 0.95, 5000, 7).unwrap();
+        let ci = bootstrap_diff_ci(&a, &b, 0.95, 5000, 7).unwrap_or_else(|err| panic!("{err}"));
         assert!(
             ci.lower > 0.0,
             "lower = {} — expected entirely positive diff CI",
@@ -735,7 +735,7 @@ mod tests {
     fn bootstrap_negative_diff_ci() {
         let a = vec![0.5, 0.55, 0.45, 0.52, 0.48];
         let b = vec![0.9, 0.85, 0.88, 0.92, 0.95];
-        let ci = bootstrap_diff_ci(&a, &b, 0.95, 5000, 7).unwrap();
+        let ci = bootstrap_diff_ci(&a, &b, 0.95, 5000, 7).unwrap_or_else(|err| panic!("{err}"));
         assert!(ci.upper < 0.0, "upper = {} — expected entirely negative", ci.upper);
         assert!(ci.estimate < 0.0);
     }
@@ -745,7 +745,7 @@ mod tests {
     fn bootstrap_single_element_samples() {
         let a = vec![0.8];
         let b = vec![0.6];
-        let ci = bootstrap_diff_ci(&a, &b, 0.95, 100, 1).unwrap();
+        let ci = bootstrap_diff_ci(&a, &b, 0.95, 100, 1).unwrap_or_else(|err| panic!("{err}"));
         // With one-element samples every resample has the same mean → point interval
         assert!((ci.lower - 0.2).abs() < 1e-9);
         assert!((ci.upper - 0.2).abs() < 1e-9);
@@ -757,7 +757,7 @@ mod tests {
     fn bootstrap_estimate_is_observed_diff() {
         let a = vec![1.0, 2.0, 3.0];
         let b = vec![0.5, 1.5, 2.5];
-        let ci = bootstrap_diff_ci(&a, &b, 0.95, 1000, 0).unwrap();
+        let ci = bootstrap_diff_ci(&a, &b, 0.95, 1000, 0).unwrap_or_else(|err| panic!("{err}"));
         // mean(a) = 2.0, mean(b) = 1.5 → estimate = 0.5
         assert!((ci.estimate - 0.5).abs() < 1e-12);
     }
@@ -800,7 +800,7 @@ mod tests {
         // "test" (held-out) scores: lower
         let test: Vec<f64> = vec![0.60; 20];
 
-        let ci = bootstrap_diff_ci(&train, &test, 0.95, 2000, 123).unwrap();
+        let ci = bootstrap_diff_ci(&train, &test, 0.95, 2000, 123).unwrap_or_else(|err| panic!("{err}"));
         // gap CI-low > 0 → overfitting signal should trip the guardrail
         assert!(
             ci.lower > 0.0,
