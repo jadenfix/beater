@@ -194,18 +194,13 @@ struct MappingFields {
     tokens_cache_read: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum MappingTimestampUnit {
+    #[default]
     Rfc3339,
     UnixMillis,
     UnixSeconds,
-}
-
-impl Default for MappingTimestampUnit {
-    fn default() -> Self {
-        Self::Rfc3339
-    }
 }
 
 fn mapping_normalizer_version() -> String {
