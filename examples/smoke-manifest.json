@@ -1,0 +1,22 @@
+{
+  "_comment": "Smoke-command manifest for examples/. Every immediate subdirectory of examples/ MUST have an entry here. Run examples/check-examples.sh to verify coverage. Add an entry whenever a new example directory is added.",
+  "convention": "Each key is the directory name under examples/. 'smoke' is the command a developer runs after starting a local beaterd (docker compose up beaterd). 'notes' is optional context.",
+  "examples": {
+    "python": {
+      "smoke": "python examples/python/five_line_otel.py",
+      "notes": "Requires: pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc; local beaterd on :4317. Dockerfile also provided for container-based smoke."
+    },
+    "rust": {
+      "smoke": "cargo build --examples --manifest-path sdks/rust/Cargo.toml",
+      "notes": "Files in examples/rust/ are registered as [[example]] targets of sdks/rust/. Build-smoke proves they compile against the current SDK API. For a live run: cargo run --example tracing_app --manifest-path sdks/rust/Cargo.toml"
+    },
+    "temporal": {
+      "smoke": "echo 'temporal: docs-only — see examples/temporal/README.md for curl-based smoke command'",
+      "notes": "No standalone runnable file; the integration is doc-demonstrated via Temporal CLI + curl. The live test lives in crates/beater-temporal."
+    },
+    "typescript": {
+      "smoke": "node examples/typescript/frameworks/express-otlp.mjs",
+      "notes": "Requires: npm install express @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-proto; local beaterd on :8080."
+    }
+  }
+}
