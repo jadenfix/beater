@@ -71,6 +71,7 @@ Or run the all-in-one server and smoke it remotely:
 ```bash
 cargo run -q -p beaterd -- --data-dir /tmp/beaterd
 cargo run -q -p beaterctl -- smoke --http-url http://127.0.0.1:8080
+cargo run -q -p beaterctl -- ingest test --http-url http://127.0.0.1:8080
 ```
 
 Point a stock OpenTelemetry exporter at the local OTLP port:
