@@ -60,3 +60,58 @@ Requires Docker (the generator runs in the pinned
 `--check` so a handler change that isn't regenerated cannot merge, and `oasdiff`
 blocks breaking contract changes. On release, all packages bump to one
 synchronized version and publish together.
+
+## Behavioral parity
+
+Contract sync (`scripts/check-contract-sync.sh`) proves that all 7 generated
+clients match the OpenAPI spec — types and operation signatures cannot drift.
+But there is a second dimension: **behavioral** parity — retry logic, auth
+header shape, error envelope handling, pagination helpers — that the generator
+cannot enforce because it lives in hand-written SDK glue, not in schema types.
+
+### Manifest
+
+`sdks/conformance/parity-manifest.json` is the single source of truth for
+cross-SDK behavioral contracts. It declares:
+
+- **`sdks`** — the ordered list of all 7 language targets.
+- **`behaviors`** — each entry has an `id`, human-readable `title` and
+  `description`, `assertions` (the testable claims), and an `sdk_status`
+  map (`"TODO"` / `"implemented"` / `"N/A"`) per SDK.
+
+Current behaviors declared in the manifest:
+
+| id | title |
+| --- | --- |
+| `retry-429-backoff` | Exponential back-off retry on HTTP 429 |
+| `auth-header-shape` | Authorization header carries Bearer token (RFC 6750) |
+| `error-envelope-mapping` | API error envelope deserializes to typed SDK errors |
+| `pagination-cursor` | List endpoints iterate via next_cursor keyset pagination |
+
+All statuses are currently `TODO` — this scaffold establishes the contract;
+implementations land per-SDK as follow-on PRs.
+
+### Checking parity
+
+```bash
+scripts/check-sdk-parity.sh           # validate manifest + print status matrix
+scripts/check-sdk-parity.sh --check   # same (CI / dry-run alias)
+```
+
+The script validates the manifest JSON, confirms every declared SDK has a
+conformance directory under `sdks/conformance/<lang>/`, and prints a behavior
+× SDK matrix showing which entries are `TODO` vs `implemented`. It exits
+non-zero only on structural drift (missing dir, malformed manifest, missing
+`sdk_status` key) — `TODO` entries are informational, not failures.
+
+### Extending the scaffold
+
+1. **Add a new behavior** — append an entry to `behaviors` in
+   `sdks/conformance/parity-manifest.json` following the existing schema.
+2. **Implement for a language** — add or extend the language's conformance
+   test (e.g. `sdks/conformance/python/conformance.py`) to exercise the
+   behavior, then update `sdk_status.<lang>` from `"TODO"` to `"implemented"`.
+3. **Drive the runtime** — the per-language `run.sh` scripts handle
+   environment setup; add a call to your new test from there.
+4. **Re-run the check** — `scripts/check-sdk-parity.sh` will reflect the
+   updated status automatically (it reads the manifest at runtime).

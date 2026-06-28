@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Beater SDK behavioral parity manifest. Each entry in 'behaviors' declares a cross-SDK contract that every language SDK must implement identically. See 'sdks/README.md §Behavioral parity' for the authoring guide and extension workflow.",
+  "version": "1",
+  "sdks": ["c", "cpp", "go", "java", "python", "rust", "typescript"],
+  "behaviors": [
+    {
+      "id": "retry-429-backoff",
+      "title": "Exponential back-off retry on HTTP 429",
+      "description": "When the server responds 429 (Too Many Requests) the client MUST retry with truncated exponential back-off and per-attempt jitter. It MUST respect a Retry-After header when present. It MUST give up after a configurable max_retries limit (default 3) and surface the final error as a typed RateLimitError (or language-idiomatic equivalent).",
+      "references": [
+        "ARCHITECTURE.md §10 provider clients retry/backoff",
+        "ARCHITECTURE.md §3599 Retry with backoff + jitter",
+        "ARCHITECTURE.md §3128 quota 429 with retry/reset headers"
+      ],
+      "assertions": [
+        "client retries exactly max_retries times before giving up on a 429",
+        "each retry delay >= previous_delay * 2 (truncated exponential) before jitter",
+        "Retry-After response header value is used as the minimum wait when present",
+        "the final error is a typed RateLimitError / equivalent, not a generic error",
+        "retry behaviour is configurable (max_retries=0 disables retries)"
+      ],
+      "sdk_status": {
+        "c":          "TODO",
+        "cpp":        "TODO",
+        "go":         "TODO",
+        "java":       "TODO",
+        "python":     "TODO",
+        "rust":       "TODO",
+        "typescript": "TODO"
+      }
+    },
+    {
+      "id": "auth-header-shape",
+      "title": "Authorization header carries Bearer token (RFC 6750)",
+      "description": "Every authenticated request MUST include 'Authorization: Bearer <token>'. The SDK MUST NOT place the token in a query parameter or a custom header. Session cookies from the OAuth flow are not forwarded by the SDK layer — only the API key Bearer token.",
+      "references": [
+        "crates/beater-auth/src/lib.rs",
+        "ARCHITECTURE.md §5 auth / §20.7"
+      ],
+      "assertions": [
+        "Authorization header is present on every non-health request when a token is configured",
+        "header value matches the pattern: Authorization: Bearer <token>",
+        "no token leakage via query parameter (e.g. ?api_key=) or custom header (e.g. X-Api-Key)",
+        "missing token results in an unauthenticated request, not a client-side panic"
+      ],
+      "sdk_status": {
+        "c":          "TODO",
+        "cpp":        "TODO",
+        "go":         "TODO",
+        "java":       "TODO",
+        "python":     "TODO",
+        "rust":       "TODO",
+        "typescript": "TODO"
+      }
+    },
+    {
+      "id": "error-envelope-mapping",
+      "title": "API error envelope deserializes to typed SDK errors",
+      "description": "The server returns {\"error\": {\"code\": \"...\", \"message\": \"...\", \"request_id\": \"...\"}} on every 4xx/5xx (ErrorResponse schema). The SDK MUST deserialize this envelope and surface a typed error that exposes at minimum: code (string), message (string), request_id (string), and the HTTP status integer. Generic network errors MUST NOT swallow the structured body.",
+      "references": [
+        "crates/beater-api/src/lib.rs ErrorResponse",
+        "sdks/openapi/beater-api.json components/schemas/ErrorResponse"
+      ],
+      "assertions": [
+        "4xx response body is deserialized into a typed error, not a raw string",
+        "typed error exposes .code matching the server-sent 'code' field",
+        "typed error exposes .request_id matching the server-sent 'request_id' field",
+        "typed error exposes the HTTP status integer (e.g. 404, 422)",
+        "5xx errors also go through the envelope (when the server sends one)"
+      ],
+      "sdk_status": {
+        "c":          "TODO",
+        "cpp":        "TODO",
+        "go":         "TODO",
+        "java":       "TODO",
+        "python":     "TODO",
+        "rust":       "TODO",
+        "typescript": "TODO"
+      }
+    },
+    {
+      "id": "pagination-cursor",
+      "title": "List endpoints iterate via next_cursor keyset pagination",
+      "description": "Paginated list responses carry an optional 'next_cursor' string. The SDK MUST provide a helper (iterator / stream / async generator / callback) that transparently fetches subsequent pages by forwarding next_cursor as the 'page_cursor' query parameter until next_cursor is absent. Callers must be able to retrieve all items without manually managing cursors.",
+      "references": [
+        "ARCHITECTURE.md §20.2 #0.2 pagination/pushdown keyset cursors",
+        "sdks/openapi/beater-api.json — PageRequest / PageResponse schemas"
+      ],
+      "assertions": [
+        "when next_cursor is non-empty, the helper issues a follow-up request with page_cursor=<value>",
+        "iteration stops when next_cursor is absent or empty (last page)",
+        "page_size parameter is forwarded on every request in the sequence",
+        "items from a partial last page are not silently dropped"
+      ],
+      "sdk_status": {
+        "c":          "TODO",
+        "cpp":        "TODO",
+        "go":         "TODO",
+        "java":       "TODO",
+        "python":     "TODO",
+        "rust":       "TODO",
+        "typescript": "TODO"
+      }
+    }
+  ]
+}
