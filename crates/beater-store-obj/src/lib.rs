@@ -39,11 +39,11 @@ impl FsArtifactStore {
         redaction_class: &RedactionClass,
     ) -> StoreResult<u64> {
         let size_bytes = u64::try_from(size_bytes).map_err(|_| {
-            StoreError::Backpressure("artifact too large to represent as u64".to_string())
+            StoreError::LimitExceeded("artifact too large to represent as u64".to_string())
         })?;
         if let Some(max_bytes) = self.max_bytes {
             if size_bytes > max_bytes {
-                return Err(StoreError::Backpressure(format!(
+                return Err(StoreError::LimitExceeded(format!(
                     "artifact too large: {size_bytes} > {max_bytes} bytes \
                      (redaction_class={redaction_class:?})"
                 )));
@@ -309,12 +309,12 @@ mod tests {
             .await;
 
         match result {
-            Err(StoreError::Backpressure(message)) => {
+            Err(StoreError::LimitExceeded(message)) => {
                 assert!(message.contains("artifact too large: 5 > 4 bytes"));
                 assert!(message.contains("redaction_class=Sensitive"));
             }
             other => {
-                panic!("expected StoreError::Backpressure for oversized artifact, got {other:?}")
+                panic!("expected StoreError::LimitExceeded for oversized artifact, got {other:?}")
             }
         }
         assert_eq!(artifact_file_count(tempdir.path()), 0);
