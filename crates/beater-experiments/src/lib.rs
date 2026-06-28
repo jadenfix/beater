@@ -780,6 +780,12 @@ pub enum OptimizerStrategy {
     ParamSearch,
 }
 
+impl Default for OptimizerStrategy {
+    fn default() -> Self {
+        Self::LlmRewrite
+    }
+}
+
 /// The policy-π (§6.1) lever a [`CandidateChange`] targets, mirroring the planned
 /// §21.1 `ChangeKind` taxonomy. Kept internal to this crate; intentionally not a
 /// `/v1` contract type.
@@ -845,6 +851,13 @@ pub enum OptimizerError {
     /// implemented. Returned as a typed error — never a panic / `unimplemented!()`.
     #[error("optimizer strategy {0:?} is not yet implemented")]
     NotYetImplemented(OptimizerStrategy),
+    /// A candidate was emitted with provenance that does not match the selected
+    /// dispatch strategy.
+    #[error("optimizer strategy mismatch: expected {expected:?}, candidate recorded {actual:?}")]
+    StrategyMismatch {
+        expected: OptimizerStrategy,
+        actual: OptimizerStrategy,
+    },
     /// The proposal context was insufficient to produce a candidate.
     #[error("invalid proposal context: {0}")]
     InvalidContext(String),
@@ -900,14 +913,31 @@ pub fn propose_with(
     strategy: OptimizerStrategy,
     ctx: &ProposalContext,
 ) -> Result<Vec<CandidateChange>, OptimizerError> {
-    match strategy {
+    let candidates = match strategy {
         OptimizerStrategy::LlmRewrite => LlmRewrite.propose(ctx),
         OptimizerStrategy::FewShotBayesian
         | OptimizerStrategy::Mipro
         | OptimizerStrategy::Evolutionary
         | OptimizerStrategy::Gepa
         | OptimizerStrategy::ParamSearch => Err(OptimizerError::NotYetImplemented(strategy)),
+    }?;
+    ensure_candidates_record_strategy(strategy, candidates)
+}
+
+fn ensure_candidates_record_strategy(
+    strategy: OptimizerStrategy,
+    candidates: Vec<CandidateChange>,
+) -> Result<Vec<CandidateChange>, OptimizerError> {
+    if let Some(candidate) = candidates
+        .iter()
+        .find(|candidate| candidate.proposed_by != strategy)
+    {
+        return Err(OptimizerError::StrategyMismatch {
+            expected: strategy,
+            actual: candidate.proposed_by,
+        });
     }
+    Ok(candidates)
 }
 
 #[cfg(test)]
@@ -927,6 +957,69 @@ mod tests {
             goal: "reduce hallucinations on factual lookups".to_string(),
             current_prompt: "You are a helpful assistant.".to_string(),
         }
+    }
+
+    #[test]
+    fn optimizer_strategy_defaults_to_llm_rewrite() {
+        assert_eq!(OptimizerStrategy::default(), OptimizerStrategy::LlmRewrite);
+    }
+
+    #[test]
+    fn optimizer_strategy_serializes_named_variants() {
+        for (strategy, serialized) in [
+            (OptimizerStrategy::LlmRewrite, "llm_rewrite"),
+            (OptimizerStrategy::FewShotBayesian, "few_shot_bayesian"),
+            (OptimizerStrategy::Mipro, "mipro"),
+            (OptimizerStrategy::Evolutionary, "evolutionary"),
+            (OptimizerStrategy::Gepa, "gepa"),
+            (OptimizerStrategy::ParamSearch, "param_search"),
+        ] {
+            let value = serde_json::to_value(strategy).unwrap_or_else(|err| panic!("{err}"));
+            assert_eq!(value, json!(serialized));
+            let round_trip: OptimizerStrategy =
+                serde_json::from_value(value).unwrap_or_else(|err| panic!("{err}"));
+            assert_eq!(round_trip, strategy);
+        }
+    }
+
+    #[test]
+    fn candidate_change_serializes_strategy_provenance() {
+        let candidate = CandidateChange {
+            kind: ChangeKind::SystemPrompt,
+            target: "system_prompt".to_string(),
+            description: "Try a MIPRO candidate".to_string(),
+            rationale: "records the optimizer family for the gate audit".to_string(),
+            proposed_by: OptimizerStrategy::Mipro,
+        };
+
+        let value = serde_json::to_value(&candidate).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(value["proposed_by"], json!("mipro"));
+
+        let round_trip: CandidateChange =
+            serde_json::from_value(value).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(round_trip.proposed_by, OptimizerStrategy::Mipro);
+    }
+
+    #[test]
+    fn candidate_strategy_guard_rejects_mismatched_provenance() {
+        let candidate = CandidateChange {
+            kind: ChangeKind::SystemPrompt,
+            target: "system_prompt".to_string(),
+            description: "Mis-stamped candidate".to_string(),
+            rationale: "would confuse gate audit provenance".to_string(),
+            proposed_by: OptimizerStrategy::LlmRewrite,
+        };
+
+        let err = ensure_candidates_record_strategy(OptimizerStrategy::Mipro, vec![candidate])
+            .err()
+            .unwrap_or_else(|| panic!("expected strategy mismatch"));
+        assert_eq!(
+            err,
+            OptimizerError::StrategyMismatch {
+                expected: OptimizerStrategy::Mipro,
+                actual: OptimizerStrategy::LlmRewrite,
+            }
+        );
     }
 
     #[test]
