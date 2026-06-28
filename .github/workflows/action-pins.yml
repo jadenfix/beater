@@ -4,6 +4,13 @@ name: action-pins
 # SHAs so an upstream tag move or repo compromise cannot change code that runs in
 # CI with deploy/publish credentials. See issue #135 and scripts/check-action-pins.sh.
 
+# Supersede an in-flight run when a PR branch is pushed again, so the shared CI
+# runner pool is not starved by stacked redundant runs. main pushes are never
+# cancelled (their CI history must stay complete).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   pull_request:
     paths:
@@ -20,6 +27,6 @@ jobs:
   check-action-pins:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify all third-party actions are pinned to commit SHAs
         run: scripts/check-action-pins.sh

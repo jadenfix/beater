@@ -1,5 +1,12 @@
 name: backend
 
+# Supersede an in-flight run when a PR branch is pushed again, so the shared CI
+# runner pool is not starved by stacked redundant runs. main pushes are never
+# cancelled (their CI history must stay complete).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The Rust workspace, split into tests and lint.
 #
 # `backend-tests` runs every crate's unit/integration tests EXCEPT:
@@ -34,7 +41,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal && rustup default stable
       - name: Test the workspace (excluding beaterd gates + browser crates)
@@ -64,7 +71,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Install Rust (clippy + rustfmt)
         run: |
           rustup toolchain install stable --profile minimal --component clippy --component rustfmt

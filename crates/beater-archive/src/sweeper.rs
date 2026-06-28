@@ -57,10 +57,13 @@ impl OrphanedArtifactSweeper {
         project: Option<ProjectId>,
         candidates: &[ArtifactRef],
     ) -> StoreResult<SweepReport> {
+        let sweep_tenant = tenant.clone();
+        let sweep_project = project.clone();
         let live = self
             .live_referenced_uris(trace_store, tenant, project)
             .await?;
-        self.delete_orphans(candidates, &live).await
+        self.delete_orphans(candidates, &live, &sweep_tenant, sweep_project.as_ref())
+            .await
     }
 
     async fn live_referenced_uris(
@@ -112,9 +115,14 @@ impl OrphanedArtifactSweeper {
         &self,
         candidates: &[ArtifactRef],
         live: &BTreeSet<String>,
+        tenant: &TenantId,
+        project: Option<&ProjectId>,
     ) -> StoreResult<SweepReport> {
         let mut report = SweepReport::default();
         for candidate in candidates {
+            if !artifact_uri_in_scope(&candidate.uri, tenant, project) {
+                continue;
+            }
             if live.contains(&candidate.uri) {
                 report.retained += 1;
                 continue;
@@ -125,6 +133,27 @@ impl OrphanedArtifactSweeper {
         }
         report.deleted_uris.sort();
         Ok(report)
+    }
+}
+
+fn artifact_uri_in_scope(uri: &str, tenant: &TenantId, project: Option<&ProjectId>) -> bool {
+    let Some(path) = uri.strip_prefix("artifact://") else {
+        return false;
+    };
+    let segments = path.split('/').collect::<Vec<_>>();
+    if segments.len() != 3
+        || segments
+            .iter()
+            .any(|segment| segment.is_empty() || *segment == "." || *segment == "..")
+    {
+        return false;
+    }
+    if segments[0] != tenant.as_str() {
+        return false;
+    }
+    match project {
+        Some(project) => segments[1] == project.as_str(),
+        None => true,
     }
 }
 
@@ -142,4 +171,164 @@ fn referenced_artifact_uris(spans: &[CanonicalSpan]) -> BTreeSet<String> {
         }
     }
     uris
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use beater_core::{ArtifactId, Sha256Hash};
+    use beater_schema::RedactionClass;
+    use std::sync::Mutex;
+
+    #[test]
+    fn artifact_uri_scope_uses_exact_path_segments() {
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let other_tenant = TenantId::new("tenant-other").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+
+        assert!(artifact_uri_in_scope(
+            "artifact://tenant/project/artifact",
+            &tenant,
+            Some(&project)
+        ));
+        assert!(artifact_uri_in_scope(
+            "artifact://tenant/other-project/artifact",
+            &tenant,
+            None
+        ));
+        assert!(!artifact_uri_in_scope(
+            "artifact://tenant/projectile/artifact",
+            &tenant,
+            Some(&project)
+        ));
+        assert!(!artifact_uri_in_scope(
+            "artifact://tenant-other/project/artifact",
+            &tenant,
+            Some(&project)
+        ));
+        assert!(!artifact_uri_in_scope(
+            "artifact://tenant/project/artifact/extra",
+            &tenant,
+            Some(&project)
+        ));
+        assert!(!artifact_uri_in_scope(
+            "artifact://tenant/project",
+            &tenant,
+            Some(&project)
+        ));
+        assert!(!artifact_uri_in_scope(
+            "artifact://tenant/../project",
+            &tenant,
+            None
+        ));
+        assert!(!artifact_uri_in_scope(
+            "https://tenant/project/artifact",
+            &tenant,
+            Some(&project)
+        ));
+
+        let slash_tenant = TenantId::new("tenant/slash").unwrap_or_else(|err| panic!("{err}"));
+        assert!(!artifact_uri_in_scope(
+            "artifact://tenant/slash/project/artifact",
+            &slash_tenant,
+            Some(&project)
+        ));
+        assert!(!artifact_uri_in_scope(
+            "artifact://tenant/project/artifact",
+            &other_tenant,
+            None
+        ));
+    }
+
+    #[tokio::test]
+    async fn delete_orphans_skips_candidates_outside_sweep_scope() {
+        let artifacts = Arc::new(RecordingArtifactStore::default());
+        let sweeper = OrphanedArtifactSweeper::new(artifacts.clone());
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+        let live = BTreeSet::from([String::from("artifact://tenant/project/live")]);
+
+        let report = sweeper
+            .delete_orphans(
+                &[
+                    artifact("artifact://tenant/project/live"),
+                    artifact("artifact://tenant/project/orphan"),
+                    artifact("artifact://tenant/projectile/orphan"),
+                    artifact("artifact://tenant/other-project/orphan"),
+                    artifact("artifact://tenant-other/project/orphan"),
+                    artifact("artifact://tenant/project/orphan/extra"),
+                    artifact("artifact://tenant/project"),
+                    artifact("https://tenant/project/orphan"),
+                ],
+                &live,
+                &tenant,
+                Some(&project),
+            )
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(report.retained, 1);
+        assert_eq!(report.deleted, 1);
+        assert_eq!(
+            report.deleted_uris,
+            vec![String::from("artifact://tenant/project/orphan")]
+        );
+        assert_eq!(
+            artifacts.deleted(),
+            vec![String::from("artifact://tenant/project/orphan")]
+        );
+    }
+
+    #[derive(Default)]
+    struct RecordingArtifactStore {
+        deleted: Mutex<Vec<String>>,
+    }
+
+    impl RecordingArtifactStore {
+        fn deleted(&self) -> Vec<String> {
+            self.deleted
+                .lock()
+                .unwrap_or_else(|err| panic!("{err}"))
+                .clone()
+        }
+    }
+
+    #[async_trait]
+    impl ArtifactStore for RecordingArtifactStore {
+        async fn put_bytes(
+            &self,
+            _tenant_id: &TenantId,
+            _project_id: &ProjectId,
+            _mime_type: &str,
+            _redaction_class: RedactionClass,
+            _bytes: &[u8],
+        ) -> StoreResult<ArtifactRef> {
+            panic!("not used")
+        }
+
+        async fn get_bytes(&self, _artifact_ref: &ArtifactRef) -> StoreResult<Vec<u8>> {
+            panic!("not used")
+        }
+
+        async fn delete_bytes(&self, artifact_ref: &ArtifactRef) -> StoreResult<()> {
+            self.deleted
+                .lock()
+                .unwrap_or_else(|err| panic!("{err}"))
+                .push(artifact_ref.uri.clone());
+            Ok(())
+        }
+    }
+
+    fn artifact(uri: &str) -> ArtifactRef {
+        ArtifactRef {
+            artifact_id: ArtifactId::new(uri.replace("://", "-").replace('/', "-"))
+                .unwrap_or_else(|err| panic!("{err}")),
+            uri: uri.to_string(),
+            sha256: Sha256Hash::new("test-sha").unwrap_or_else(|err| panic!("{err}")),
+            size_bytes: 1,
+            mime_type: "application/octet-stream".to_string(),
+            redaction_class: RedactionClass::Internal,
+        }
+    }
 }

@@ -22,6 +22,11 @@ pub enum EvalError {
     },
     #[error("invalid regex: {0}")]
     InvalidRegex(String),
+    #[error("invalid numeric tolerance for evaluator {evaluator_id}: {reason}")]
+    InvalidNumericTolerance {
+        evaluator_id: String,
+        reason: String,
+    },
     #[error(
         "underpowered comparison: sample_size={sample_size}, min_sample_size={min_sample_size}"
     )]
@@ -66,6 +71,10 @@ pub enum EvaluatorKind {
     ExactMatch,
     RegexMatch {
         pattern: String,
+    },
+    NumericTolerance {
+        abs: f64,
+        rel: f64,
     },
     JsonObject,
     CostBudget {
@@ -127,6 +136,16 @@ pub const EVALUATOR_CATALOG: &[EvaluatorCatalogEntry] = &[
         display_name: "Regex match",
         description: "Scores a string output against a configured regular expression.",
         requires_reference: false,
+        consumes_trace: false,
+        wasm_safe: true,
+    },
+    EvaluatorCatalogEntry {
+        id: "numeric_tolerance",
+        lane: EvaluatorLane::DeterministicWasi,
+        display_name: "Numeric tolerance",
+        description:
+            "Scores numeric output against a numeric reference within absolute/relative tolerance.",
+        requires_reference: true,
         consumes_trace: false,
         wasm_safe: true,
     },
@@ -217,6 +236,7 @@ impl EvaluatorKind {
         match self {
             Self::ExactMatch => "exact_match",
             Self::RegexMatch { .. } => "regex_match",
+            Self::NumericTolerance { .. } => "numeric_tolerance",
             Self::JsonObject => "json_object",
             Self::CostBudget { .. } => "cost_budget",
             Self::LatencyBudgetMs { .. } => "latency_budget_ms",
@@ -273,6 +293,9 @@ pub fn evaluate_deterministic(
             let regex =
                 Regex::new(pattern).map_err(|err| EvalError::InvalidRegex(err.to_string()))?;
             Ok(binary_score(regex.is_match(output), "regex_match"))
+        }
+        EvaluatorKind::NumericTolerance { abs, rel } => {
+            numeric_tolerance_score(spec, case, *abs, *rel)
         }
         EvaluatorKind::JsonObject => Ok(binary_score(case.output.is_object(), "json_object")),
         EvaluatorKind::CostBudget { max_micros } => {
@@ -404,6 +427,46 @@ pub fn evaluate_deterministic(
     }
 }
 
+fn numeric_tolerance_score(
+    spec: &EvaluatorSpec,
+    case: &EvaluationCase,
+    abs: f64,
+    rel: f64,
+) -> Result<ScoreResult, EvalError> {
+    if !abs.is_finite() || !rel.is_finite() || abs < 0.0 || rel < 0.0 {
+        return Err(EvalError::InvalidNumericTolerance {
+            evaluator_id: spec.id.clone(),
+            reason: "abs and rel must be finite non-negative numbers".to_string(),
+        });
+    }
+
+    let output = case.output.as_f64();
+    let reference = case.reference.as_ref().and_then(Value::as_f64);
+    let (difference, allowed, pass) = match (output, reference) {
+        (Some(output), Some(reference)) => {
+            let difference = (output - reference).abs();
+            let allowed = abs.max(rel * reference.abs());
+            (Some(difference), Some(allowed), difference <= allowed)
+        }
+        _ => (None, None, false),
+    };
+
+    Ok(ScoreResult {
+        score: if pass { 1.0 } else { 0.0 },
+        label: Some(if pass { "pass" } else { "fail" }.to_string()),
+        evidence: serde_json::json!({
+            "metric": "numeric_tolerance",
+            "output": output,
+            "reference": reference,
+            "difference": difference,
+            "allowed": allowed,
+            "abs": abs,
+            "rel": rel,
+            "pass": pass,
+        }),
+    })
+}
+
 /// Extract the `browser_steps` array (serialized `StepTriple`s) from a case
 /// trace. Returns an empty vec when absent — every browser evaluator degrades to
 /// a deterministic "fail/neutral" rather than erroring on a non-browser trace.
@@ -457,6 +520,24 @@ pub struct ExperimentComparison {
     pub decision: GateDecision,
     pub test: StatisticalTest,
     pub adjusted_alpha: f64,
+    /// Minimum detectable effect at the current sample size, in the metric's own
+    /// units, at the gate's (adjusted) alpha and the standard power of 0.8
+    /// (§10.3 #5). Populated only when `decision` is `Inconclusive` — the
+    /// comparison lacked the power to resolve the regression bound, and
+    /// regressions smaller than this are invisible at this N. `None` on a
+    /// conclusive decision (or when the paired differences have zero spread, so
+    /// no effect-scale is defined). This replaces a bare "underpowered" flag with
+    /// the actionable "how small an effect could we even have seen" number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mde: Option<f64>,
+    /// Number of paired observations that would be required to detect the
+    /// *observed* effect at the gate's (adjusted) alpha and power 0.8 (§10.3 #5).
+    /// Populated only when `decision` is `Inconclusive` and the observed effect is
+    /// non-degenerate (non-zero delta over non-zero difference spread). `None`
+    /// otherwise. This answers "how many more cases would have made this
+    /// conclusive?".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_n: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -525,21 +606,50 @@ pub fn compare_paired_scores(
     candidate: &[f64],
     policy: &GatePolicy,
 ) -> Result<ExperimentComparison, EvalError> {
-    let n = baseline.len().min(candidate.len());
+    // Pairs must align one-to-one; a length mismatch is a caller bug, not
+    // something to silently paper over by truncating to the shorter prefix.
+    if baseline.len() != candidate.len() {
+        return Err(EvalError::Statistics(format!(
+            "baseline and candidate must be the same length, got {} and {}",
+            baseline.len(),
+            candidate.len()
+        )));
+    }
+    let n = baseline.len();
     if n < policy.min_sample_size {
         return Err(EvalError::Underpowered {
             sample_size: n,
             min_sample_size: policy.min_sample_size,
         });
     }
+    // Reject non-finite scores up front so they cannot slip past the degenerate
+    // single-case branch below and silently produce a Pass on NaN.
+    if baseline
+        .iter()
+        .chain(candidate.iter())
+        .any(|score| !score.is_finite())
+    {
+        return Err(EvalError::Statistics(
+            "scores must be finite (no NaN or infinity)".to_string(),
+        ));
+    }
+    if !(policy.alpha.is_finite() && policy.alpha > 0.0 && policy.alpha < 1.0) {
+        return Err(EvalError::Statistics(format!(
+            "alpha must be in (0, 1), got {}",
+            policy.alpha
+        )));
+    }
 
-    // Bonferroni single-step correction across the comparison family; this becomes
-    // the per-comparison level the CI and decision are computed at. (Holm /
-    // Benjamini-Hochberg over many metrics live in `beater_stats::multiplicity`
-    // for callers that compare more than one metric at once.)
-    let adjusted_alpha = (policy.alpha / policy.comparison_count.max(1) as f64).clamp(0.0001, 0.5);
-    let baseline = &baseline[..n];
-    let candidate = &candidate[..n];
+    // Single-step Bonferroni correction across the comparison family: the
+    // per-comparison level the CI and decision are computed at. No lower clamp — a
+    // large `comparison_count` must genuinely shrink alpha; clamping it up would let
+    // the family-wise error rate exceed the requested level. `compare_paired`
+    // validates the result is a usable alpha in (0, 1).
+    let adjusted_alpha = policy.alpha / policy.comparison_count.max(1) as f64;
+
+    if n == 0 {
+        return Err(EvalError::Statistics("no scores to compare".to_string()));
+    }
 
     // A single paired observation has no sampling variability, so a real
     // variance-based test is undefined — `beater-stats` correctly refuses n < 2.
@@ -567,6 +677,10 @@ pub fn compare_paired_scores(
             decision,
             test: StatisticalTest::PairedT,
             adjusted_alpha,
+            // The single-case smoke-gate regime never returns `Inconclusive`, so
+            // there is no underpowered verdict to annotate.
+            mde: None,
+            required_n: None,
         });
     }
 
@@ -593,6 +707,21 @@ pub fn compare_paired_scores(
         GateDecision::Inconclusive
     };
 
+    // §10.3 #5: an inconclusive verdict means the comparison lacked the power to
+    // resolve the regression bound. Rather than a bare "underpowered", report the
+    // minimum detectable effect at this N and the sample size that would have made
+    // the *observed* effect detectable — both at the gate's alpha and power 0.8.
+    // The planning math is standardized (Cohen's d), so we scale by the SD of the
+    // paired differences to express the MDE in the metric's own units and to
+    // standardize the observed delta. This covers both the paired-t and (as a
+    // normal approximation) the McNemar path, since both reduce to a mean
+    // difference of the paired observations.
+    let (mde, required_n) = if decision == GateDecision::Inconclusive {
+        power_annotations(baseline, candidate, n, delta, adjusted_alpha)
+    } else {
+        (None, None)
+    };
+
     Ok(ExperimentComparison {
         sample_size: n,
         baseline_mean: mean(baseline),
@@ -604,7 +733,58 @@ pub fn compare_paired_scores(
         decision,
         test: outcome.test.into(),
         adjusted_alpha,
+        mde,
+        required_n,
     })
+}
+
+/// Compute the §10.3 #5 power annotations for an inconclusive comparison: the
+/// minimum detectable effect at the current sample size (in the metric's own
+/// units) and the sample size required to detect the observed effect, both at the
+/// gate's `alpha` and the standard power of 0.8.
+///
+/// Returns `(None, None)` when the paired differences have no spread (no
+/// effect-scale is defined), and a `None` `required_n` when the observed effect is
+/// exactly zero (no finite N detects a null effect) — the MDE is still reported in
+/// that case.
+fn power_annotations(
+    baseline: &[f64],
+    candidate: &[f64],
+    n: usize,
+    delta: f64,
+    alpha: f64,
+) -> (Option<f64>, Option<usize>) {
+    let differences: Vec<f64> = candidate
+        .iter()
+        .zip(baseline.iter())
+        .map(|(c, b)| c - b)
+        .collect();
+    let sd = std_dev(&differences);
+    if !sd.is_finite() || sd <= 0.0 {
+        // Zero (or non-finite) spread: a standardized effect is undefined.
+        return (None, None);
+    }
+
+    // MDE in the metric's own units = standardized MDE × SD of the differences.
+    let mde = beater_stats::minimum_detectable_effect(n, alpha, beater_stats::DEFAULT_POWER)
+        .ok()
+        .map(|d| d * sd);
+
+    // Required N to detect the observed standardized effect d = |delta| / SD.
+    let required_n =
+        beater_stats::required_sample_size(delta / sd, alpha, beater_stats::DEFAULT_POWER).ok();
+
+    (mde, required_n)
+}
+
+/// Unbiased (n − 1) sample standard deviation; 0.0 for fewer than two values.
+fn std_dev(values: &[f64]) -> f64 {
+    if values.len() < 2 {
+        return 0.0;
+    }
+    let m = mean(values);
+    let sum_sq: f64 = values.iter().map(|v| (v - m).powi(2)).sum();
+    (sum_sq / (values.len() as f64 - 1.0)).sqrt()
 }
 
 fn mean(values: &[f64]) -> f64 {
@@ -719,7 +899,7 @@ mod tests {
     #[test]
     fn evaluator_catalog_classifies_execution_lanes() {
         let catalog = evaluator_catalog();
-        assert_eq!(catalog.len(), 10);
+        assert_eq!(catalog.len(), 11);
 
         let exact = evaluator_catalog_entry("exact_match")
             .unwrap_or_else(|| panic!("exact_match catalog entry should exist"));
@@ -731,6 +911,11 @@ mod tests {
         assert_eq!(cost.catalog_id(), "cost_budget");
         assert_eq!(cost.expected_lane(), EvaluatorLane::DeterministicWasi);
         assert!(cost.catalog_entry().consumes_trace);
+
+        let numeric = EvaluatorKind::NumericTolerance { abs: 0.1, rel: 0.0 };
+        assert_eq!(numeric.catalog_id(), "numeric_tolerance");
+        assert!(numeric.catalog_entry().requires_reference);
+        assert!(!numeric.catalog_entry().consumes_trace);
 
         let judge = EvaluatorKind::LlmJudge {
             rubric: "correctness".to_string(),
@@ -753,6 +938,67 @@ mod tests {
                 actual: EvaluatorLane::JudgeBroker,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn numeric_tolerance_scores_against_numeric_reference() {
+        let spec = deterministic_spec(EvaluatorKind::NumericTolerance {
+            abs: 0.05,
+            rel: 0.01,
+        });
+        let passing = EvaluationCase {
+            input: serde_json::json!("estimate"),
+            output: serde_json::json!(100.9),
+            reference: Some(serde_json::json!(100.0)),
+            trace: None,
+        };
+        let failing = EvaluationCase {
+            output: serde_json::json!(102.0),
+            ..passing.clone()
+        };
+        let non_numeric = EvaluationCase {
+            output: serde_json::json!("100.0"),
+            ..passing.clone()
+        };
+
+        let pass = evaluate_deterministic(&spec, &passing).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(pass.score, 1.0);
+        let difference = pass.evidence["difference"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("difference should be numeric"));
+        let allowed = pass.evidence["allowed"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("allowed should be numeric"));
+        assert!((difference - 0.9).abs() < 1e-12);
+        assert_eq!(allowed, 1.0);
+
+        let fail = evaluate_deterministic(&spec, &failing).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(fail.score, 0.0);
+        assert_eq!(fail.evidence["pass"], serde_json::json!(false));
+
+        let rejected =
+            evaluate_deterministic(&spec, &non_numeric).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(rejected.score, 0.0);
+        assert_eq!(rejected.evidence["difference"], serde_json::json!(null));
+    }
+
+    #[test]
+    fn numeric_tolerance_rejects_invalid_thresholds() {
+        let spec = deterministic_spec(EvaluatorKind::NumericTolerance {
+            abs: -0.1,
+            rel: 0.0,
+        });
+        let case = EvaluationCase {
+            input: serde_json::json!(null),
+            output: serde_json::json!(1.0),
+            reference: Some(serde_json::json!(1.0)),
+            trace: None,
+        };
+
+        assert!(matches!(
+            evaluate_deterministic(&spec, &case),
+            Err(EvalError::InvalidNumericTolerance { .. })
         ));
     }
 
@@ -802,9 +1048,13 @@ mod tests {
         );
         assert!(matches!(underpowered, Err(EvalError::Underpowered { .. })));
 
+        // Ten paired cases that all regress pass->fail. The exact McNemar p
+        // (2 * 0.5^10 ~ 2e-3) clears the 4x-Bonferroni-corrected alpha (0.0125),
+        // so the score-interval upper bound excludes the regression threshold and
+        // the gate fails the candidate.
         let comparison = compare_paired_scores(
-            &[1.0, 1.0, 1.0, 1.0, 1.0],
-            &[0.0, 0.0, 0.0, 0.0, 0.0],
+            &[1.0; 10],
+            &[0.0; 10],
             &GatePolicy {
                 min_sample_size: 5,
                 max_regression: 0.05,
@@ -816,6 +1066,96 @@ mod tests {
 
         assert_eq!(comparison.decision, GateDecision::FailRegression);
         assert!(comparison.adjusted_alpha < 0.05);
+        // A conclusive verdict carries no underpowered annotation.
+        assert!(comparison.mde.is_none());
+        assert!(comparison.required_n.is_none());
+    }
+
+    #[test]
+    fn inconclusive_gate_reports_mde_and_required_n() {
+        // A tiny, noisy paired effect: the difference distribution straddles zero,
+        // so the CI straddles the regression bound and the gate is *inconclusive*
+        // — exactly the underpowered regime §10.3 #5 must annotate.
+        let baseline = vec![0.0; 8];
+        let candidate = vec![0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.4];
+        let comparison = compare_paired_scores(
+            &baseline,
+            &candidate,
+            &GatePolicy {
+                min_sample_size: 4,
+                ..GatePolicy::default()
+            },
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(
+            comparison.decision,
+            GateDecision::Inconclusive,
+            "expected an inconclusive (underpowered) verdict, got {:?}",
+            comparison.decision
+        );
+
+        // Instead of a bare "underpowered", the comparison now reports actionable
+        // power numbers: a finite, positive MDE at this N and a finite required-N
+        // to detect the observed effect.
+        let mde = comparison
+            .mde
+            .unwrap_or_else(|| panic!("inconclusive comparison must report an MDE"));
+        assert!(mde.is_finite() && mde > 0.0, "mde = {mde}");
+        let required_n = comparison
+            .required_n
+            .unwrap_or_else(|| panic!("inconclusive comparison must report required_n"));
+        // The observed effect is far smaller than the spread, so detecting it
+        // would take many more than the 8 cases we ran.
+        assert!(
+            required_n > comparison.sample_size,
+            "required_n = {required_n}"
+        );
+    }
+
+    #[test]
+    fn gate_is_inconclusive_when_too_few_discordant_for_exact_significance() {
+        // Five paired cases all regress, but with a 4x correction the exact
+        // McNemar p (2 * 0.5^5 = 0.0625) does NOT clear alpha = 0.0125. The honest
+        // verdict is Inconclusive, not FailRegression: the score interval used for
+        // the decision stays consistent with the exact test (the old Wald-CI path
+        // wrongly reported a regression here).
+        let comparison = compare_paired_scores(
+            &[1.0; 5],
+            &[0.0; 5],
+            &GatePolicy {
+                min_sample_size: 5,
+                max_regression: 0.05,
+                comparison_count: 4,
+                ..GatePolicy::default()
+            },
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(comparison.decision, GateDecision::Inconclusive);
+        assert!(
+            (comparison.p_value - 0.0625).abs() < 1e-9,
+            "p={}",
+            comparison.p_value
+        );
+    }
+
+    #[test]
+    fn mismatched_score_lengths_error() {
+        let result = compare_paired_scores(&[1.0, 1.0, 1.0], &[1.0, 1.0], &GatePolicy::default());
+        assert!(matches!(result, Err(EvalError::Statistics(_))));
+    }
+
+    #[test]
+    fn non_finite_scores_error() {
+        let result = compare_paired_scores(
+            &[1.0, 1.0, 1.0, 1.0, 1.0],
+            &[1.0, f64::NAN, 1.0, 1.0, 1.0],
+            &GatePolicy {
+                min_sample_size: 1,
+                ..GatePolicy::default()
+            },
+        );
+        assert!(matches!(result, Err(EvalError::Statistics(_))));
     }
 
     fn browser_step(action: &str, selector: Option<&str>, matched: bool, status: &str) -> Value {
