@@ -1302,6 +1302,7 @@ dependencies = [
  "beater-core",
  "beater-schema",
  "beater-store",
+ "blake3",
  "tempfile",
  "tokio",
  "uuid",
