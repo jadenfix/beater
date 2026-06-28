@@ -430,6 +430,9 @@ async fn main() -> anyhow::Result<()> {
             )
             .context("compare paired scores")?;
             println!("{}", serde_json::to_string_pretty(&comparison)?);
+            if comparison.decision != GateDecision::Pass {
+                std::process::exit(1);
+            }
         }
         Command::JudgeBudget { remaining_micros } => {
             let budget = Money::usd_micros(remaining_micros);
@@ -2534,9 +2537,13 @@ fn gate_fixture_experiment(
             ci_low: spec.delta,
             ci_high: spec.delta,
             p_value: 1.0,
+            mde: None,
+            required_n: None,
             decision: spec.decision.clone(),
             test: StatisticalTest::PairedT,
             adjusted_alpha: 0.05,
+            mde: None,
+            required_n: None,
         },
         decision: spec.decision,
         gate_policy: GatePolicy {
