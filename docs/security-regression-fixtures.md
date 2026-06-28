@@ -39,9 +39,9 @@ Can tenant A access or modify tenant B's resources using tenant A's own valid ke
 
 | Threat | Test (file :: function) | What it asserts | Status |
 |---|---|---|---|
-| Cross-tenant key revoke returns 404 | `crates/beater-api/tests/full_stack.rs :: api_key_revoke_is_scoped_to_path_tenant_project_environment` | Admin key scoped to `tenant-a/project-a` attempts to revoke a key belonging to `tenant-b/project-b`; returns `404 Not Found`; victim key is still active | Covered |
+| Cross-tenant key revoke returns 404 | — | No test that an admin key scoped to `tenant-a/project-a` is rejected when revoking a key in `tenant-b/project-b`. The revoke route `/v1/api-keys/{tenant}/{project}/{env}/{id}/revoke` is path-scoped, but the only revoke regression (`strict_auth_enforces_scoped_keys_and_overwrites_ingest_auth_context`) revokes a key within the **same** scope and asserts `200 OK`; no cross-tenant boundary is exercised. | **GAP** |
 | Environment mismatch on archive route → 403 | `crates/beater-api/tests/full_stack.rs :: strict_auth_enforces_scoped_keys_and_overwrites_ingest_auth_context` | Archive span query with `environment_id=dev` on a key scoped to `prod` returns `403 Forbidden` | Covered |
-| Store-layer scoped revoke does not cross tenants | `crates/beater-auth/src/lib.rs :: sqlite_store_scoped_revoke_does_not_revoke_other_scope` | `revoke_key_in_scope(tenant-a, project-a, …)` on a key owned by `tenant-b/project-b` returns `None`; victim key's `active` and `rotated_at` fields unchanged | Covered |
+| Store-layer scoped revoke does not cross tenants | — | No tenant-scoped revoke exists at the store layer: `SqliteApiKeyStore::revoke_key` takes only an `api_key_id` (there is no `revoke_key_in_scope`). The only store revoke test (`sqlite_store_creates_reads_and_revokes_keys`) revokes within a single tenant/project; no store-layer test exercises a cross-tenant revoke boundary. | **GAP** |
 | Cross-tenant trace read (IDOR on read path) | — | No test that tenant-a's valid key cannot retrieve tenant-b's trace via `GET /v1/traces/{tenant-b}/{trace}`. The security review notes `verify_api_key` is called on every read route, but no regression test exercises this boundary directly. | **GAP** |
 
 ### API-key leakage / scope
@@ -124,17 +124,19 @@ Do alternate access paths enforce the same auth policy?
 | 1 | Default auth mode is insecure (`Local`) | H4 |
 | 2 | `trace_write` key not tested against admin-only routes | — |
 | 3 | Cross-tenant trace read (IDOR on read path) | — |
-| 4 | `secret_hash` absent from list/get key responses | — |
-| 5 | OTLP / browser-capture redaction bypass | H1 |
-| 6 | Browser DOM / console / prompt redaction | H1 / H3 |
-| 7 | DataFusion archive SQL injection | H6 |
-| 8 | Tantivy query DSL injection / DoS | H7 |
-| 9 | FS artifact store path traversal | M2 |
-| 10 | Browser `goto` SSRF | M3 |
-| 11 | Webhook `endpoint_url` SSRF | M4 |
-| 12 | MCP surface with auth enabled | — |
-| 13 | OAuth session / PKCE / redirect-URI | — |
+| 4 | Cross-tenant API-key revoke not enforced/tested (404 boundary) | — |
+| 5 | Store-layer tenant-scoped revoke boundary untested | — |
+| 6 | `secret_hash` absent from list/get key responses | — |
+| 7 | OTLP / browser-capture redaction bypass | H1 |
+| 8 | Browser DOM / console / prompt redaction | H1 / H3 |
+| 9 | DataFusion archive SQL injection | H6 |
+| 10 | Tantivy query DSL injection / DoS | H7 |
+| 11 | FS artifact store path traversal | M2 |
+| 12 | Browser `goto` SSRF | M3 |
+| 13 | Webhook `endpoint_url` SSRF | M4 |
+| 14 | MCP surface with auth enabled | — |
+| 15 | OAuth session / PKCE / redirect-URI | — |
 
 Findings marked H4, H1, H6, H7 are rated **Critical / High** in the security
-review.  Recommend addressing items 1, 5, 7, 8 first (aligned with the
+review.  Recommend addressing items 1, 7, 9, 10 first (aligned with the
 security review's Top 5).
