@@ -21,6 +21,84 @@ use uuid::Uuid;
 
 pub type JudgeProviderResult<T> = Result<T, JudgeProviderError>;
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum JudgeModelKind {
+    Frontier {
+        provider: String,
+        model: String,
+    },
+    Distilled {
+        base_model: String,
+        adapter_ref: String,
+        calibration_version: String,
+    },
+}
+
+impl JudgeModelKind {
+    pub fn frontier(provider: impl Into<String>, model: impl Into<String>) -> Self {
+        Self::Frontier {
+            provider: provider.into(),
+            model: model.into(),
+        }
+    }
+
+    pub fn distilled(
+        base_model: impl Into<String>,
+        adapter_ref: impl Into<String>,
+        calibration_version: impl Into<String>,
+    ) -> Self {
+        Self::Distilled {
+            base_model: base_model.into(),
+            adapter_ref: adapter_ref.into(),
+            calibration_version: calibration_version.into(),
+        }
+    }
+
+    pub fn model_id(&self) -> &str {
+        match self {
+            Self::Frontier { model, .. } => model,
+            Self::Distilled { adapter_ref, .. } => adapter_ref,
+        }
+    }
+
+    pub fn is_distilled(&self) -> bool {
+        matches!(self, Self::Distilled { .. })
+    }
+
+    pub fn validate(&self) -> Result<(), JudgeModelKindError> {
+        match self {
+            Self::Frontier { provider, model } => {
+                require_nonempty("provider", provider)?;
+                require_nonempty("model", model)?;
+            }
+            Self::Distilled {
+                base_model,
+                adapter_ref,
+                calibration_version,
+            } => {
+                require_nonempty("base_model", base_model)?;
+                require_nonempty("adapter_ref", adapter_ref)?;
+                require_nonempty("calibration_version", calibration_version)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+pub enum JudgeModelKindError {
+    #[error("judge model kind field {field} cannot be empty")]
+    EmptyField { field: &'static str },
+}
+
+fn require_nonempty(field: &'static str, value: &str) -> Result<(), JudgeModelKindError> {
+    if value.trim().is_empty() {
+        return Err(JudgeModelKindError::EmptyField { field });
+    }
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum JudgeProviderError {
     #[error("judge provider error: {0}")]
@@ -1240,6 +1318,52 @@ mod tests {
     use beater_secrets::{PutProviderSecretRequest, SqliteProviderSecretStore};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn judge_model_kind_serializes_frontier_and_distilled_models() {
+        let frontier = JudgeModelKind::frontier("openai", "gpt-judge");
+        let distilled =
+            JudgeModelKind::distilled("frontier-judge-v1", "s3://models/judge-adapter", "cal-v3");
+
+        assert_eq!(
+            serde_json::to_value(&frontier).unwrap_or_else(|err| panic!("{err}")),
+            serde_json::json!({
+                "type": "frontier",
+                "provider": "openai",
+                "model": "gpt-judge"
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&distilled).unwrap_or_else(|err| panic!("{err}")),
+            serde_json::json!({
+                "type": "distilled",
+                "base_model": "frontier-judge-v1",
+                "adapter_ref": "s3://models/judge-adapter",
+                "calibration_version": "cal-v3"
+            })
+        );
+        assert_eq!(frontier.model_id(), "gpt-judge");
+        assert_eq!(distilled.model_id(), "s3://models/judge-adapter");
+        assert!(!frontier.is_distilled());
+        assert!(distilled.is_distilled());
+    }
+
+    #[test]
+    fn judge_model_kind_rejects_empty_required_fields() {
+        assert_eq!(
+            JudgeModelKind::frontier(" ", "gpt-judge").validate(),
+            Err(JudgeModelKindError::EmptyField { field: "provider" })
+        );
+        assert_eq!(
+            JudgeModelKind::distilled("frontier", "", "cal-v3").validate(),
+            Err(JudgeModelKindError::EmptyField {
+                field: "adapter_ref"
+            })
+        );
+        assert!(JudgeModelKind::distilled("frontier", "adapter", "cal-v3")
+            .validate()
+            .is_ok());
+    }
 
     #[tokio::test]
     async fn judge_broker_caches_and_audits_without_exposing_provider_secret() {
