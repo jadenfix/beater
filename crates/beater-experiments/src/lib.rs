@@ -1,3 +1,5 @@
+pub mod rsi;
+
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use beater_core::{
@@ -823,16 +825,40 @@ pub struct CandidateChange {
     pub proposed_by: OptimizerStrategy,
 }
 
+/// A high-dimensional failure feature steering a proposal toward a real failure
+/// mode rather than a generic rewrite.
+///
+/// Populated from the optimization-split failures (taxonomy label distribution
+/// via an auto-classifier, root-cause span attribution, failure clusters). The
+/// feature surface is intentionally simple here; richer extraction lands with the
+/// simulation harness. Keeping it on [`ProposalContext`] lets reflective
+/// optimizers (e.g. GEPA) target the dominant failure instead of guessing.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+pub struct FailureFeature {
+    /// Failure-mode label (e.g. a MAST/AgentError taxonomy category).
+    pub label: String,
+    /// Share of analyzed failures attributed to this mode, in `[0, 1]`.
+    pub weight: f64,
+    /// A representative failing case id, if one is available.
+    pub exemplar_case_id: Option<String>,
+}
+
 /// Read-only context handed to a [`ProposalStrategy`].
 ///
-/// The strategy reflects on the optimization goal and the indexed agent surface
-/// (§21.1 `index_agent`) to emit candidates; it has no ability to accept them.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// The strategy reflects on the optimization goal, the current lever text, and
+/// (when available) high-dimensional [`FailureFeature`]s mined from the
+/// optimization-split failures (§21.1 `index_agent`) to emit candidates; it has
+/// no ability to accept them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProposalContext {
     /// The improvement goal in natural language (§21.3 "goal + params").
     pub goal: String,
     /// The current prompt (or other lever text) the optimizer may rewrite.
     pub current_prompt: String,
+    /// High-dimensional failure features steering the proposal. Empty by default
+    /// so existing callers are unaffected; populated by the failure analyzer.
+    #[serde(default)]
+    pub failure_features: Vec<FailureFeature>,
 }
 
 /// Errors a [`ProposalStrategy`] or [`propose_with`] can return.
@@ -926,6 +952,7 @@ mod tests {
         ProposalContext {
             goal: "reduce hallucinations on factual lookups".to_string(),
             current_prompt: "You are a helpful assistant.".to_string(),
+            failure_features: Vec::new(),
         }
     }
 
@@ -945,6 +972,7 @@ mod tests {
         let ctx = ProposalContext {
             goal: "   ".to_string(),
             current_prompt: "x".to_string(),
+            failure_features: Vec::new(),
         };
         let err = LlmRewrite
             .propose(&ctx)

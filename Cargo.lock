@@ -927,6 +927,7 @@ dependencies = [
  "beater-eval",
  "beater-judge",
  "beater-schema",
+ "beater-stats",
  "beater-store",
  "chrono",
  "rusqlite",
