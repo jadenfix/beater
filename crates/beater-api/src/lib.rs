@@ -4091,17 +4091,11 @@ mod tests {
             serde_json::from_slice(&response_body).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(trace.spans.len(), 1);
         assert_eq!(trace.spans[0].normalizer_version, "beater-otlp-v1");
-        let raw_bytes = artifacts
-            .get_bytes(&trace.spans[0].raw_ref)
-            .await
-            .unwrap_or_else(|err| panic!("{err}"));
-        assert_eq!(raw_bytes, body);
+        assert_eq!(trace.spans[0].raw_ref.uri, "artifact://redacted");
 
-        let raw_idempotency_key = IdempotencyKey::new(format!(
-            "raw:otlp:tenant:project:{}",
-            sha256_hex(&raw_bytes)
-        ))
-        .unwrap_or_else(|err| panic!("{err}"));
+        let raw_idempotency_key =
+            IdempotencyKey::new(format!("raw:otlp:tenant:project:{}", sha256_hex(&body)))
+                .unwrap_or_else(|err| panic!("{err}"));
         let raw = traces
             .get_raw_envelope(
                 TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}")),
@@ -4111,6 +4105,11 @@ mod tests {
             .await
             .unwrap_or_else(|err| panic!("{err}"))
             .unwrap_or_else(|| panic!("raw otlp envelope should be stored"));
+        let raw_bytes = artifacts
+            .get_bytes(&raw.body_ref)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(raw_bytes, body);
         assert_eq!(raw.source, SourceDialect::Otlp);
         assert_eq!(raw.source_schema_version.as_deref(), Some("1.37.0"));
     }

@@ -171,10 +171,26 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
   await expect(detail.getByRole("heading", { name: "Attributes", exact: true })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Canonical" })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Unmapped" })).toBeVisible();
-  await expect(detail.getByLabel("Prompt I/O").locator("pre")).toHaveText(
+  const unmaskSelectedIo = async (reason: string) => {
+    const form = detail.getByLabel("Unmask redacted I/O");
+    await expect(form).toBeVisible();
+    await form.getByLabel("Reason").fill(reason);
+    await form.getByRole("button", { name: "Unmask" }).click();
+    await expect(page).toHaveURL(/unmask=true/);
+    await expect(page).toHaveURL(new RegExp(`reason=${reason}`));
+    await expect(detail).toContainText("Unmask requested");
+    await expect(detail).toContainText(reason);
+  };
+  const promptIo = detail.getByLabel("Prompt I/O");
+  const completionIo = detail.getByLabel("Completion I/O");
+  await expect(detail.getByLabel("Span I/O")).toContainText("redacted");
+  await expect(promptIo.locator("pre")).toHaveText("redacted by policy");
+  await expect(completionIo.locator("pre")).toHaveText("redacted by policy");
+  await unmaskSelectedIo("gate2-stock-llm-review");
+  await expect(promptIo.locator("pre")).toHaveText(
     "Can this order be refunded after 31 days?"
   );
-  await expect(detail.getByLabel("Completion I/O").locator("pre")).toHaveText(
+  await expect(completionIo.locator("pre")).toHaveText(
     "Escalate because the order is outside the standard window."
   );
   const proofOrder = await detail.evaluate((node) => {
@@ -194,10 +210,16 @@ test("renders a stock OTLP llm span through table, waterfall, detail, and I/O", 
   await tool.click();
   await expect(detail.getByRole("heading", { name: "Input" })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "Output" })).toBeVisible();
-  await expect(detail.getByLabel("Input I/O").locator("pre")).toHaveText(
+  const inputIo = detail.getByLabel("Input I/O");
+  const outputIo = detail.getByLabel("Output I/O");
+  await expect(detail.getByLabel("Span I/O")).toContainText("redacted");
+  await expect(inputIo.locator("pre")).toHaveText("redacted by policy");
+  await expect(outputIo.locator("pre")).toHaveText("redacted by policy");
+  await unmaskSelectedIo("gate2-stock-tool-review");
+  await expect(inputIo.locator("pre")).toHaveText(
     '{\n  "order_id": "ord_123"\n}'
   );
-  await expect(detail.getByLabel("Output I/O").locator("pre")).toHaveText(
+  await expect(outputIo.locator("pre")).toHaveText(
     '{\n  "status": "delivered",\n  "age_days": 31\n}'
   );
 });
