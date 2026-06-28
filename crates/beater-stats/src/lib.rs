@@ -46,20 +46,31 @@
 //!   quickselects only the two percentile endpoints it needs instead of fully
 //!   sorting the resample distribution.
 
+mod bca;
+mod clustered;
 mod mcnemar;
 mod multiplicity;
 mod numerics;
 mod overfit;
 mod paired;
 mod power;
+mod wilcoxon;
 
+pub use bca::{bootstrap_bca_ci, paired_bootstrap_test, PairedBootstrapOutcome};
+pub use clustered::{
+    clustered_bootstrap_ci, clustered_standard_error, iid_standard_error, ClusteredStandardError,
+};
 pub use mcnemar::mcnemar_exact_p;
 pub use multiplicity::{benjamini_hochberg, holm_bonferroni, MultiplicityDecision};
 pub use overfit::{
     assess_generalization_gap, GapAssessment, Ladder, Thresholdout, ThresholdoutAnswer,
 };
 pub use paired::paired_t_test;
-pub use power::{achieved_power, minimum_detectable_effect, required_sample_size, DEFAULT_POWER};
+pub use power::{
+    achieved_power, mcnemar_achieved_power, mcnemar_required_discordant, minimum_detectable_effect,
+    required_sample_size, DEFAULT_POWER,
+};
+pub use wilcoxon::{wilcoxon_signed_rank, WilcoxonOutcome};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Error type
@@ -584,6 +595,111 @@ fn mcnemar_outcome(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// §10.3 #3 — paired test selection by metric type AND satisfied assumptions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Which paired test a data-driven selector recommends. This is `beater-stats`'
+/// own advice type, deliberately decoupled from [`TestKind`] / the gate's
+/// `StatisticalTest` contract enum: surfacing Wilcoxon/bootstrap through the
+/// persisted report is the follow-on contract change (roadmap PR-A4), which maps
+/// this recommendation onto the wire types. Keeping the recommendation separate
+/// lets the estimators and the selection logic land without touching `/v1`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairedTestChoice {
+    /// Paired binary outcome → exact McNemar.
+    McnemarExact,
+    /// Continuous, ~normal paired differences → Student's paired t.
+    PairedT,
+    /// Continuous, non-normal differences → Wilcoxon signed-rank.
+    WilcoxonSignedRank,
+    /// Small N / unclear assumptions → paired bootstrap.
+    PairedBootstrap,
+}
+
+/// Below this many pairs the normality of the difference distribution cannot be
+/// assessed reliably, so the selector prefers the assumption-light paired
+/// bootstrap (§10.3 #3, "Any, assumptions unclear / small N").
+const SMALL_N_THRESHOLD: usize = 8;
+
+/// Recommend a paired test for `(baseline, candidate)` by metric type and
+/// satisfied assumptions (§10.3 #3):
+///
+/// * both samples binary → [`PairedTestChoice::McnemarExact`];
+/// * otherwise, fewer than [`SMALL_N_THRESHOLD`] pairs → [`PairedTestChoice::PairedBootstrap`];
+/// * otherwise, difference distribution looks ~normal → [`PairedTestChoice::PairedT`];
+/// * otherwise → [`PairedTestChoice::WilcoxonSignedRank`].
+///
+/// The normality screen is a moment-based heuristic (`|skew| < 1` and
+/// `|excess kurtosis| < 2`); a pre-registered design may override the choice in
+/// the gate. Returns advice only — it runs no test.
+///
+/// # Errors
+///
+/// [`StatsError::MismatchedLengths`], [`StatsError::TooFewSamples`] (`n < 2`), or
+/// [`StatsError::NonFinite`].
+pub fn recommend_paired_test(
+    baseline: &[f64],
+    candidate: &[f64],
+) -> Result<PairedTestChoice, StatsError> {
+    if baseline.len() != candidate.len() {
+        return Err(StatsError::MismatchedLengths {
+            baseline: baseline.len(),
+            candidate: candidate.len(),
+        });
+    }
+    let n = baseline.len();
+    if n < 2 {
+        return Err(StatsError::TooFewSamples { got: n, need: 2 });
+    }
+    for v in baseline.iter().chain(candidate.iter()) {
+        if !v.is_finite() {
+            return Err(StatsError::NonFinite);
+        }
+    }
+
+    if is_binary(baseline) && is_binary(candidate) {
+        return Ok(PairedTestChoice::McnemarExact);
+    }
+
+    let differences: Vec<f64> = candidate
+        .iter()
+        .zip(baseline.iter())
+        .map(|(c, b)| c - b)
+        .collect();
+
+    if n < SMALL_N_THRESHOLD {
+        return Ok(PairedTestChoice::PairedBootstrap);
+    }
+    if looks_normal(&differences) {
+        Ok(PairedTestChoice::PairedT)
+    } else {
+        Ok(PairedTestChoice::WilcoxonSignedRank)
+    }
+}
+
+/// Moment-based normality screen: `true` when the sample skewness and excess
+/// kurtosis are both small (`|g₁| < 1`, `|g₂| < 2`). A (near-)constant sample has
+/// no defined shape and is treated as normal — the degenerate paired-t path
+/// handles it. Not a formal test; a deliberately cheap, dependency-free screen.
+pub(crate) fn looks_normal(values: &[f64]) -> bool {
+    let n = values.len();
+    if n < 3 {
+        return true;
+    }
+    let m = mean(values);
+    let nf = n as f64;
+    let m2 = values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / nf;
+    if m2 <= 1e-18 {
+        return true;
+    }
+    let m3 = values.iter().map(|v| (v - m).powi(3)).sum::<f64>() / nf;
+    let m4 = values.iter().map(|v| (v - m).powi(4)).sum::<f64>() / nf;
+    let skew = m3 / m2.powf(1.5);
+    let excess_kurtosis = m4 / (m2 * m2) - 3.0;
+    skew.abs() < 1.0 && excess_kurtosis.abs() < 2.0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Math helpers — normal CDF and quantile (no external deps)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -633,7 +749,7 @@ fn erfc_approx(x: f64) -> f64 {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
-struct Xorshift64 {
+pub(crate) struct Xorshift64 {
     state: u64,
 }
 
@@ -649,7 +765,7 @@ fn splitmix64(mut z: u64) -> u64 {
 }
 
 impl Xorshift64 {
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         // Avoid the forbidden all-zero state
         Self {
             state: if seed == 0 {
@@ -669,7 +785,7 @@ impl Xorshift64 {
     }
 
     /// Returns the next pseudo-random `u64`.
-    fn next_u64(&mut self) -> u64 {
+    pub(crate) fn next_u64(&mut self) -> u64 {
         let mut x = self.state;
         x ^= x << 13;
         x ^= x >> 7;
@@ -679,7 +795,7 @@ impl Xorshift64 {
     }
 
     /// Returns a `usize` in `[0, n)`.
-    fn next_index(&mut self, n: usize) -> usize {
+    pub(crate) fn next_index(&mut self, n: usize) -> usize {
         (self.next_u64() % n as u64) as usize
     }
 }
@@ -797,6 +913,55 @@ mod tests {
         let out = compare_paired(&data, &data, 0.05).unwrap_or_else(|err| panic!("{err}"));
         assert!((out.estimate).abs() < 1e-12);
         assert!((out.p_value - 1.0).abs() < 1e-9);
+    }
+
+    // ── recommend_paired_test (§10.3 #3 dispatch) ─────────────────────────────
+
+    #[test]
+    fn recommends_mcnemar_for_binary() {
+        let baseline = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0];
+        let candidate = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0];
+        let choice =
+            recommend_paired_test(&baseline, &candidate).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(choice, PairedTestChoice::McnemarExact);
+    }
+
+    #[test]
+    fn recommends_bootstrap_for_small_n() {
+        let baseline = [0.5, 0.6, 0.55];
+        let candidate = [0.7, 0.8, 0.75];
+        let choice =
+            recommend_paired_test(&baseline, &candidate).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(choice, PairedTestChoice::PairedBootstrap);
+    }
+
+    #[test]
+    fn recommends_paired_t_for_normalish_continuous() {
+        // Roughly symmetric differences with light tails.
+        let baseline = [0.50, 0.55, 0.48, 0.52, 0.51, 0.49, 0.53, 0.47, 0.50, 0.52];
+        let candidate = [0.60, 0.64, 0.59, 0.62, 0.61, 0.58, 0.63, 0.57, 0.60, 0.62];
+        let choice =
+            recommend_paired_test(&baseline, &candidate).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(choice, PairedTestChoice::PairedT);
+    }
+
+    #[test]
+    fn recommends_wilcoxon_for_skewed_continuous() {
+        // One huge outlier difference makes the difference distribution skewed and
+        // heavy-tailed, so the normality screen fails → Wilcoxon.
+        let baseline = [0.0; 12];
+        let candidate = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 9.0];
+        let choice =
+            recommend_paired_test(&baseline, &candidate).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(choice, PairedTestChoice::WilcoxonSignedRank);
+    }
+
+    #[test]
+    fn recommend_rejects_mismatched_lengths() {
+        assert!(matches!(
+            recommend_paired_test(&[0.0, 1.0, 1.0], &[1.0, 1.0]),
+            Err(StatsError::MismatchedLengths { .. })
+        ));
     }
 
     // ── normal_cdf / normal_quantile ─────────────────────────────────────────
