@@ -737,9 +737,12 @@ version = "0.1.0"
 dependencies = [
  "beater-core",
  "beater-schema",
+ "beater-store",
+ "beater-store-memory",
  "chrono",
  "criterion",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
