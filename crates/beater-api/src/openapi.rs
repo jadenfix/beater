@@ -59,6 +59,14 @@ use utoipa::OpenApi;
         crate::promote_review_annotation_route,
         crate::decide_online_sampling,
         crate::evaluate_alert,
+        crate::get_plans_route,
+        crate::get_plan_route,
+        crate::get_subscription_route,
+        crate::create_subscription_route,
+        crate::change_subscription_plan_route,
+        crate::get_org_invoices_route,
+        crate::get_invoice_route,
+        crate::stripe_webhook_route,
     ),
     tags(
         (name = "health", description = "Runtime health"),
@@ -77,6 +85,7 @@ use utoipa::OpenApi;
         (name = "online", description = "Online sampling decisions"),
         (name = "alerts", description = "Alert policy evaluation"),
         (name = "usage", description = "Usage summaries"),
+        (name = "billing", description = "Plans, subscriptions, invoices, and Stripe billing"),
         (name = "audit", description = "Audit events"),
         (name = "apiKeys", description = "API key management"),
         (name = "providerSecrets", description = "Provider secret management")

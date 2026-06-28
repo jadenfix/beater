@@ -11,6 +11,7 @@ beater-alerts = { path = "../beater-alerts" }
 beater-archive = { path = "../beater-archive" }
 beater-audit = { path = "../beater-audit" }
 beater-auth = { path = "../beater-auth" }
+beater-billing = { path = "../beater-billing" }
 beater-calibration = { path = "../beater-calibration" }
 beater-core = { path = "../beater-core" }
 beater-datasets = { path = "../beater-datasets" }

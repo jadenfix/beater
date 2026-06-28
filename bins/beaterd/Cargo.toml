@@ -13,6 +13,7 @@ beater-api = { path = "../../crates/beater-api" }
 beater-archive = { path = "../../crates/beater-archive" }
 beater-audit = { path = "../../crates/beater-audit" }
 beater-auth = { path = "../../crates/beater-auth" }
+beater-billing = { path = "../../crates/beater-billing" }
 beater-oauth = { path = "../../crates/beater-oauth" }
 beater-oauth-server = { path = "../../crates/beater-oauth-server" }
 beater-bus = { path = "../../crates/beater-bus" }
