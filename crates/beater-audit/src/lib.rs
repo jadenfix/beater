@@ -586,7 +586,9 @@ mod tests {
 
         let verification = store.verify_chain(tenant_id, project_id)?;
         assert!(!verification.valid);
-        let failure = verification.failure.expect("tamper failure");
+        let Some(failure) = verification.failure else {
+            panic!("expected a tamper failure to be reported");
+        };
         assert_eq!(failure.audit_event_id, event.audit_event_id);
         assert_ne!(
             Some(&failure.expected_event_hash),
