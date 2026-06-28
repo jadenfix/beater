@@ -113,6 +113,7 @@ beater_client/models/provider_secret_metadata.py
 beater_client/models/publish_ack.py
 beater_client/models/queued_trace_work.py
 beater_client/models/redaction_class.py
+beater_client/models/reliability_bin.py
 beater_client/models/review_annotation.py
 beater_client/models/review_queue.py
 beater_client/models/review_task.py
@@ -251,6 +252,7 @@ docs/ProviderSecretsApi.md
 docs/PublishAck.md
 docs/QueuedTraceWork.md
 docs/RedactionClass.md
+docs/ReliabilityBin.md
 docs/ReviewAnnotation.md
 docs/ReviewQueue.md
 docs/ReviewTask.md
@@ -399,6 +401,7 @@ test/test_provider_secrets_api.py
 test/test_publish_ack.py
 test/test_queued_trace_work.py
 test/test_redaction_class.py
+test/test_reliability_bin.py
 test/test_review_annotation.py
 test/test_review_queue.py
 test/test_review_task.py

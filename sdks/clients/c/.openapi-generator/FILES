@@ -143,6 +143,7 @@ docs/provider_secret_metadata.md
 docs/publish_ack.md
 docs/queued_trace_work.md
 docs/redaction_class.md
+docs/reliability_bin.md
 docs/review_annotation.md
 docs/review_queue.md
 docs/review_task.md
@@ -359,6 +360,8 @@ model/queued_trace_work.c
 model/queued_trace_work.h
 model/redaction_class.c
 model/redaction_class.h
+model/reliability_bin.c
+model/reliability_bin.h
 model/review_annotation.c
 model/review_annotation.h
 model/review_queue.c
@@ -525,6 +528,7 @@ unit-test/test_provider_secret_metadata.c
 unit-test/test_publish_ack.c
 unit-test/test_queued_trace_work.c
 unit-test/test_redaction_class.c
+unit-test/test_reliability_bin.c
 unit-test/test_review_annotation.c
 unit-test/test_review_queue.c
 unit-test/test_review_task.c

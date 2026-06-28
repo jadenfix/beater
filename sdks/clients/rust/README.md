@@ -155,6 +155,7 @@ Class | Method | HTTP request | Description
  - [PublishAck](docs/PublishAck.md)
  - [QueuedTraceWork](docs/QueuedTraceWork.md)
  - [RedactionClass](docs/RedactionClass.md)
+ - [ReliabilityBin](docs/ReliabilityBin.md)
  - [ReviewAnnotation](docs/ReviewAnnotation.md)
  - [ReviewQueue](docs/ReviewQueue.md)
  - [ReviewTask](docs/ReviewTask.md)

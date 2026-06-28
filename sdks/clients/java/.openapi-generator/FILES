@@ -103,6 +103,7 @@ docs/ProviderSecretsApi.md
 docs/PublishAck.md
 docs/QueuedTraceWork.md
 docs/RedactionClass.md
+docs/ReliabilityBin.md
 docs/ReviewAnnotation.md
 docs/ReviewQueue.md
 docs/ReviewTask.md
@@ -268,6 +269,7 @@ src/main/java/ai/beater/client/model/ProviderSecretMetadata.java
 src/main/java/ai/beater/client/model/PublishAck.java
 src/main/java/ai/beater/client/model/QueuedTraceWork.java
 src/main/java/ai/beater/client/model/RedactionClass.java
+src/main/java/ai/beater/client/model/ReliabilityBin.java
 src/main/java/ai/beater/client/model/ReviewAnnotation.java
 src/main/java/ai/beater/client/model/ReviewQueue.java
 src/main/java/ai/beater/client/model/ReviewTask.java
@@ -409,6 +411,7 @@ src/test/java/ai/beater/client/model/ProviderSecretMetadataTest.java
 src/test/java/ai/beater/client/model/PublishAckTest.java
 src/test/java/ai/beater/client/model/QueuedTraceWorkTest.java
 src/test/java/ai/beater/client/model/RedactionClassTest.java
+src/test/java/ai/beater/client/model/ReliabilityBinTest.java
 src/test/java/ai/beater/client/model/ReviewAnnotationTest.java
 src/test/java/ai/beater/client/model/ReviewQueueTest.java
 src/test/java/ai/beater/client/model/ReviewTaskStateTest.java

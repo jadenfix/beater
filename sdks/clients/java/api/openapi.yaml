@@ -4971,7 +4971,7 @@ components:
         evidence: ""
         judge_label: null
         human_label: pass
-        judge_score: 7.061401241503109
+        judge_score: 3.616076749251911
         dataset_case_id: dataset_case_id
         agreed: true
         judge_result_label: judge_result_label
@@ -5005,7 +5005,7 @@ components:
       type: string
     CalibrationPolicy:
       example:
-        pass_threshold: 3.616076749251911
+        pass_threshold: 4.145608029883936
       properties:
         pass_threshold:
           format: double
@@ -5020,12 +5020,29 @@ components:
         dataset_id: dataset_id
         dataset_version_id: dataset_version_id
         created_at: 2000-01-23T04:56:07.000+00:00
-        expected_agreement: 2.3021358869347655
-        observed_agreement: 9.301444243932576
+        expected_agreement: 7.061401241503109
+        expected_calibration_error: 9.301444243932576
+        observed_agreement: 2.027123023002322
+        reliability_bins:
+        - calibration_gap: 1.0246457001441578
+          lower_bound: 1.4894159098541704
+          mean_confidence: 6.84685269835264
+          bin_index: 0
+          sample_count: 0
+          accuracy: 7.386281948385884
+          upper_bound: 1.1730742509559433
+        - calibration_gap: 1.0246457001441578
+          lower_bound: 1.4894159098541704
+          mean_confidence: 6.84685269835264
+          bin_index: 0
+          sample_count: 0
+          accuracy: 7.386281948385884
+          upper_bound: 1.1730742509559433
         project_id: project_id
+        brier_score: 0.8008281904610115
         calibration_report_id: calibration_report_id
         sample_count: 0
-        cohen_kappa: 0.8008281904610115
+        cohen_kappa: 6.027456183070403
         confusion:
           human_pass_judge_fail: 0
           human_fail_judge_pass: 0
@@ -5035,20 +5052,23 @@ components:
         - evidence: ""
           judge_label: null
           human_label: pass
-          judge_score: 7.061401241503109
+          judge_score: 3.616076749251911
           dataset_case_id: dataset_case_id
           agreed: true
           judge_result_label: judge_result_label
         - evidence: ""
           judge_label: null
           human_label: pass
-          judge_score: 7.061401241503109
+          judge_score: 3.616076749251911
           dataset_case_id: dataset_case_id
           agreed: true
           judge_result_label: judge_result_label
         policy:
-          pass_threshold: 3.616076749251911
+          pass_threshold: 4.145608029883936
       properties:
+        brier_score:
+          format: double
+          type: number
         calibration_report_id:
           type: string
         cohen_kappa:
@@ -5070,6 +5090,9 @@ components:
         expected_agreement:
           format: double
           type: number
+        expected_calibration_error:
+          format: double
+          type: number
         items:
           items:
             $ref: '#/components/schemas/CalibrationItem'
@@ -5081,12 +5104,17 @@ components:
           $ref: '#/components/schemas/CalibrationPolicy'
         project_id:
           type: string
+        reliability_bins:
+          items:
+            $ref: '#/components/schemas/ReliabilityBin'
+          type: array
         sample_count:
           minimum: 0
           type: integer
         tenant_id:
           type: string
       required:
+      - brier_score
       - calibration_report_id
       - cohen_kappa
       - confusion
@@ -5096,10 +5124,12 @@ components:
       - eval_report_id
       - evaluator_version_id
       - expected_agreement
+      - expected_calibration_error
       - items
       - observed_agreement
       - policy
       - project_id
+      - reliability_bins
       - sample_count
       - tenant_id
     CalibrationReportId:
@@ -6901,6 +6931,45 @@ components:
       - sensitive
       - secret
       type: string
+    ReliabilityBin:
+      example:
+        calibration_gap: 1.0246457001441578
+        lower_bound: 1.4894159098541704
+        mean_confidence: 6.84685269835264
+        bin_index: 0
+        sample_count: 0
+        accuracy: 7.386281948385884
+        upper_bound: 1.1730742509559433
+      properties:
+        accuracy:
+          format: double
+          nullable: true
+          type: number
+        bin_index:
+          minimum: 0
+          type: integer
+        calibration_gap:
+          format: double
+          nullable: true
+          type: number
+        lower_bound:
+          format: double
+          type: number
+        mean_confidence:
+          format: double
+          nullable: true
+          type: number
+        sample_count:
+          minimum: 0
+          type: integer
+        upper_bound:
+          format: double
+          type: number
+      required:
+      - bin_index
+      - lower_bound
+      - sample_count
+      - upper_bound
     ReviewAnnotation:
       example:
         annotation_id: annotation_id

@@ -6659,11 +6659,18 @@
           "observed_agreement",
           "expected_agreement",
           "cohen_kappa",
+          "brier_score",
+          "expected_calibration_error",
+          "reliability_bins",
           "confusion",
           "items",
           "created_at"
         ],
         "properties": {
+          "brier_score": {
+            "type": "number",
+            "format": "double"
+          },
           "calibration_report_id": {
             "$ref": "#/components/schemas/CalibrationReportId"
           },
@@ -6694,6 +6701,10 @@
             "type": "number",
             "format": "double"
           },
+          "expected_calibration_error": {
+            "type": "number",
+            "format": "double"
+          },
           "items": {
             "type": "array",
             "items": {
@@ -6709,6 +6720,12 @@
           },
           "project_id": {
             "$ref": "#/components/schemas/ProjectId"
+          },
+          "reliability_bins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReliabilityBin"
+            }
           },
           "sample_count": {
             "type": "integer",
@@ -8765,6 +8782,54 @@
           "sensitive",
           "secret"
         ]
+      },
+      "ReliabilityBin": {
+        "type": "object",
+        "required": [
+          "bin_index",
+          "lower_bound",
+          "upper_bound",
+          "sample_count"
+        ],
+        "properties": {
+          "accuracy": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "bin_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "calibration_gap": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "lower_bound": {
+            "type": "number",
+            "format": "double"
+          },
+          "mean_confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "upper_bound": {
+            "type": "number",
+            "format": "double"
+          }
+        }
       },
       "ReviewAnnotation": {
         "type": "object",

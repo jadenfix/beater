@@ -5,6 +5,7 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
+**brier_score** | **float** |  | 
 **calibration_report_id** | **str** |  | 
 **cohen_kappa** | **float** |  | 
 **confusion** | [**CalibrationConfusion**](CalibrationConfusion.md) |  | 
@@ -14,10 +15,12 @@ Name | Type | Description | Notes
 **eval_report_id** | **str** |  | 
 **evaluator_version_id** | **str** |  | 
 **expected_agreement** | **float** |  | 
+**expected_calibration_error** | **float** |  | 
 **items** | [**List[CalibrationItem]**](CalibrationItem.md) |  | 
 **observed_agreement** | **float** |  | 
 **policy** | [**CalibrationPolicy**](CalibrationPolicy.md) |  | 
 **project_id** | **str** |  | 
+**reliability_bins** | [**List[ReliabilityBin]**](ReliabilityBin.md) |  | 
 **sample_count** | **int** |  | 
 **tenant_id** | **str** |  | 
 

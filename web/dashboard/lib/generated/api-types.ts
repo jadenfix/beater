@@ -832,6 +832,8 @@ export interface components {
             pass_threshold: number;
         };
         CalibrationReport: {
+            /** Format: double */
+            brier_score: number;
             calibration_report_id: components["schemas"]["CalibrationReportId"];
             /** Format: double */
             cohen_kappa: number;
@@ -844,11 +846,14 @@ export interface components {
             evaluator_version_id: components["schemas"]["EvaluatorVersionId"];
             /** Format: double */
             expected_agreement: number;
+            /** Format: double */
+            expected_calibration_error: number;
             items: components["schemas"]["CalibrationItem"][];
             /** Format: double */
             observed_agreement: number;
             policy: components["schemas"]["CalibrationPolicy"];
             project_id: components["schemas"]["ProjectId"];
+            reliability_bins: components["schemas"]["ReliabilityBin"][];
             sample_count: number;
             tenant_id: components["schemas"]["TenantId"];
         };
@@ -1372,6 +1377,20 @@ export interface components {
         };
         /** @enum {string} */
         RedactionClass: "public" | "internal" | "sensitive" | "secret";
+        ReliabilityBin: {
+            /** Format: double */
+            accuracy?: number | null;
+            bin_index: number;
+            /** Format: double */
+            calibration_gap?: number | null;
+            /** Format: double */
+            lower_bound: number;
+            /** Format: double */
+            mean_confidence?: number | null;
+            sample_count: number;
+            /** Format: double */
+            upper_bound: number;
+        };
         ReviewAnnotation: {
             annotation_id: components["schemas"]["AnnotationId"];
             /** Format: date-time */

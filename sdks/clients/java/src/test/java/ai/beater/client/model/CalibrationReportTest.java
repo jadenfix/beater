@@ -16,6 +16,7 @@ package ai.beater.client.model;
 import ai.beater.client.model.CalibrationConfusion;
 import ai.beater.client.model.CalibrationItem;
 import ai.beater.client.model.CalibrationPolicy;
+import ai.beater.client.model.ReliabilityBin;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -41,6 +42,14 @@ class CalibrationReportTest {
     @Test
     void testCalibrationReport() {
         // TODO: test CalibrationReport
+    }
+
+    /**
+     * Test the property 'brierScore'
+     */
+    @Test
+    void brierScoreTest() {
+        // TODO: test brierScore
     }
 
     /**
@@ -116,6 +125,14 @@ class CalibrationReportTest {
     }
 
     /**
+     * Test the property 'expectedCalibrationError'
+     */
+    @Test
+    void expectedCalibrationErrorTest() {
+        // TODO: test expectedCalibrationError
+    }
+
+    /**
      * Test the property 'items'
      */
     @Test
@@ -145,6 +162,14 @@ class CalibrationReportTest {
     @Test
     void projectIdTest() {
         // TODO: test projectId
+    }
+
+    /**
+     * Test the property 'reliabilityBins'
+     */
+    @Test
+    void reliabilityBinsTest() {
+        // TODO: test reliabilityBins
     }
 
     /**
