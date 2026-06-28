@@ -33,7 +33,7 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.57.0-noble
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Node
         uses: actions/setup-node@v4
