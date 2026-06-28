@@ -2368,7 +2368,7 @@ Goal: lower adoption friction to match the incumbents' framework coverage.
 | # | Requirement | Now | Target / concrete task | Effort | Blocker |
 | --- | --- | --- | --- | --- | --- |
 | 6.1 | Auto-instrumentation (OpenAI/Anthropic) | one-line `wrap_*` wrappers only | `beater.auto.instrument(providers=[...])` monkeypatching `openai`/`anthropic` (incl streaming + tool calls) in py + ts | L | none |
-| 6.2 | Zero-code env-var bootstrap (**DEFAULT onboarding**, §1 #13, §15) | all paths require code | `opentelemetry-distro`/configurator (py) + TS `--require` preload reading `BEATER_*` env, setting OTLP exporter+headers, enabling installed auto-instrumentors; promoted to the documented first path | M | none |
+| 6.2 | Zero-code env-var bootstrap (**DEFAULT onboarding**, §1 #13, §15) | `beaterctl ingest test` verifies live OTLP ingest and prints the exporter env block; env-var-only auto-instrumented app path is still planned | `opentelemetry-distro`/configurator (py) + TS `--require` preload reading `BEATER_*` env, setting OTLP exporter+headers, enabling installed auto-instrumentors; promoted to the documented first path | M | none |
 | 6.3 | Modern framework coverage | LangChain (py+ts), LlamaIndex (py) only | examples + instrumentation for Vercel AI SDK (TS), OpenAI Agents SDK, CrewAI, DSPy, Pydantic AI, AutoGen, Haystack; TS LlamaIndex; token-usage extraction; 3-level span-tree integration tests | XL | evidence |
 | 6.4 | `beaterctl quickstart` (time to first SCORED FAILURE) | manual compose + snippet | one command boots compose, provisions tenant/key, prints exporter snippet + dashboard URL; timed e2e asserting not just a trace but a *scored failing case* visible < the §15 SLO | M | evidence |
 
@@ -3340,7 +3340,7 @@ The CI gate is the workflow that blocks merge if the item regresses.
 | §20.7 #5.5 crypto-shred **[contract]** | a shredded tenant is unreadable across hot/cold/artifact | deletion + unreadable-after assertion `[planned]` | `sdk-contract` |
 | §20.7 #5.9 backups/restore | restore drill meets documented RPO/RTO | CI restore-drill job `[planned]` | `backend` |
 | §20.7 #5.11 governance/SECURITY | `SECURITY.md` + compliance docs present | repo presence check; **`SECURITY.md` now exists `[built]`** | `backend` |
-| §20.8 #6.2 zero-code bootstrap | env-var-only app produces traces with no code (§1 #13) | the README zero-code OTLP snippet `[built]` (manual); env-var distro `[planned]` | `gate1-live-smoke` |
+| §20.8 #6.2 zero-code bootstrap | env-var-only app produces traces with no code (§1 #13) | the README zero-code OTLP snippet `[built]` (manual); `beaterctl ingest test` prints/validates the OTLP env block `[built]`; env-var distro `[planned]` | `gate1-live-smoke` |
 | §20.8 #6.4 `beaterctl quickstart` | timed e2e shows a *scored failing case* under the §15 SLO | `beaterctl quickstart` `[planned]` | `gate1-live-smoke` |
 | §21 MCP stdio transport | `tools/list` over stdio returns the full tool set | `beaterd mcp --stdio` `[built]`; streamable-HTTP `/mcp` `[built]` | `sdk-contract` |
 | §21.1 RSI tools | propose→simulate(Train)→accept(Test) only on a stat-sig held-out win (A13/A14) | `gate_candidate` MCP recipe `[planned]` | `backend` |
@@ -3680,7 +3680,7 @@ to §18 milestones, §19 Bar-for-Done, §20/§21 phase items, and §22 tests.
 | --- | --- | --- | --- |
 | Columnar store wired | `beaterd --trace-store clickhouse` boots and serves traces | §22.3 §20.2 #0.1 row; `storage-backends` gate (compose integration test) | planned |
 | Scale: filtered search p95 | 10M-span seeded filtered search **p95 < 1s** in CI | §22.3 §20.2 #0.3 row; `beater-bench` load report (`backend` bench gate, §23.10) | planned |
-| Zero-SDK OTLP queryable | a stock OTel exporter trace (no Beater SDK) becomes queryable under the §16 ingest→queryable SLO | §22.1 Ingest e2e + §22.3 §20.8 #6.2; `gate1-live-smoke` | partial (built: SDK round-trip; env-var distro planned) |
+| Zero-SDK OTLP queryable | a stock OTel exporter trace (no Beater SDK) becomes queryable under the §16 ingest→queryable SLO | §22.1 Ingest e2e + §22.3 §20.8 #6.2; `gate1-live-smoke` | partial (built: SDK round-trip and `beaterctl ingest test` env block; env-var distro planned) |
 | Datasets read-API + UI | browse datasets/versions/cases via `GET /v1/datasets…` and the dashboard | §22.3 §20.4 #2.x (Playwright); `sdk-contract` + `frontend` | planned (create-only POST today) |
 | Evals browseable (deterministic + calibrated judge) | deterministic WASI + judge eval results browseable with rationale + calibration | §22.1 Evals/Calibration rows; `judge-dataset-fixture` `[built]`; eval UI §20.4 `[planned]` | partial |
 | Real statistics | method-appropriate CI, real p-value, test-selection, Holm-BH/FDR, anytime-valid | §22.1 Statistics row (A2–A8); `cargo test -p beater-stats` | planned (hardcoded-z path deleted; `beater-stats` not yet built, §10.3) |
