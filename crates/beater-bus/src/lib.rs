@@ -424,6 +424,29 @@ impl SqliteDurableBus {
             .map_err(|err| BusError::Poisoned(err.to_string()))
     }
 
+    /// Run synchronous `rusqlite` work on a blocking thread.
+    ///
+    /// The `std::sync::Mutex<Connection>` guard is acquired and released entirely
+    /// inside the `spawn_blocking` closure, so it is never held across an `.await`
+    /// boundary and the blocking SQLite I/O never executes on a Tokio worker
+    /// thread. The closure receives `&mut Connection` (covering both read-only and
+    /// transactional work) and must return an owned result.
+    async fn with_connection<F, R>(&self, work: F) -> Result<R, BusError>
+    where
+        F: FnOnce(&mut Connection) -> Result<R, BusError> + Send + 'static,
+        R: Send + 'static,
+    {
+        let connection = Arc::clone(&self.connection);
+        tokio::task::spawn_blocking(move || {
+            let mut guard = connection
+                .lock()
+                .map_err(|err| BusError::Poisoned(err.to_string()))?;
+            work(&mut guard)
+        })
+        .await
+        .map_err(|err| BusError::Storage(format!("bus blocking task failed: {err}")))?
+    }
+
     fn queue_depth(connection: &Connection) -> Result<usize, BusError> {
         connection
             .query_row("SELECT COUNT(*) FROM queue_messages", [], |row| {
@@ -649,16 +672,17 @@ impl SqliteDurableBus {
 #[async_trait]
 impl DurableBus for SqliteDurableBus {
     async fn publish(&self, message: BusMessage) -> Result<PublishAck, BusError> {
-        let connection = self.lock()?;
-        if Self::active_duplicate_exists(&connection, &message)? {
-            return Ok(PublishAck::duplicate());
-        }
-        if Self::active_depth(&connection)? >= self.capacity {
-            return Err(BusError::Backpressure {
-                capacity: self.capacity,
-            });
-        }
-        Self::insert_message(&connection, &message)
+        let capacity = self.capacity;
+        self.with_connection(move |connection| {
+            if Self::active_duplicate_exists(connection, &message)? {
+                return Ok(PublishAck::duplicate());
+            }
+            if Self::active_depth(connection)? >= capacity {
+                return Err(BusError::Backpressure { capacity });
+            }
+            Self::insert_message(connection, &message)
+        })
+        .await
     }
 
     async fn consume_batch(&self, limit: usize) -> Result<Vec<BusMessage>, BusError> {
@@ -693,12 +717,67 @@ impl DurableBus for SqliteDurableBus {
     }
 
     async fn ack(&self, message: BusMessage) -> Result<(), BusError> {
-        let connection = self.lock()?;
-        Self::delete_inflight(&connection, &message.message_id)
+        self.with_connection(move |connection| {
+            Self::delete_inflight(connection, &message.message_id)
+        })
+        .await
     }
 
-    async fn retry_or_dlq(&self, mut message: BusMessage, reason: String) -> Result<(), BusError> {
-        let mut connection = self.lock()?;
+    async fn retry_or_dlq(&self, message: BusMessage, reason: String) -> Result<(), BusError> {
+        let capacity = self.capacity;
+        self.with_connection(move |connection| {
+            Self::retry_or_dlq_blocking(connection, message, reason, capacity)
+        })
+        .await
+    }
+
+    async fn replay_dead_letter(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        message_id: &str,
+        reset_attempts: bool,
+    ) -> Result<PublishAck, BusError> {
+        let capacity = self.capacity;
+        let tenant_id = tenant_id.clone();
+        let project_id = project_id.clone();
+        let message_id = message_id.to_string();
+        self.with_connection(move |connection| {
+            Self::replay_dead_letter_blocking(
+                connection,
+                &tenant_id,
+                &project_id,
+                &message_id,
+                reset_attempts,
+                capacity,
+            )
+        })
+        .await
+    }
+
+    async fn dlq(&self) -> Result<Vec<DeadLetter>, BusError> {
+        self.with_connection(Self::dlq_blocking).await
+    }
+
+    async fn depth(&self) -> Result<usize, BusError> {
+        self.with_connection(|connection| Self::active_depth(connection))
+            .await
+    }
+
+    async fn depth_for_kind(&self, kind: &str) -> Result<usize, BusError> {
+        let kind = kind.to_string();
+        self.with_connection(move |connection| Self::active_depth_for_kind(connection, &kind))
+            .await
+    }
+}
+
+impl SqliteDurableBus {
+    fn retry_or_dlq_blocking(
+        connection: &mut Connection,
+        mut message: BusMessage,
+        reason: String,
+        capacity: usize,
+    ) -> Result<(), BusError> {
         let tx = connection
             .transaction()
             .map_err(|err| BusError::Storage(err.to_string()))?;
@@ -718,7 +797,7 @@ impl DurableBus for SqliteDurableBus {
         }
         let active_after_source_removal =
             Self::active_depth(&tx)?.saturating_sub(usize::from(source_is_inflight));
-        if active_after_source_removal >= self.capacity {
+        if active_after_source_removal >= capacity {
             let dead_letter = DeadLetter {
                 message,
                 reason: format!("retry queue full after failure: {reason}"),
@@ -737,14 +816,14 @@ impl DurableBus for SqliteDurableBus {
         Ok(())
     }
 
-    async fn replay_dead_letter(
-        &self,
+    fn replay_dead_letter_blocking(
+        connection: &mut Connection,
         tenant_id: &TenantId,
         project_id: &ProjectId,
         message_id: &str,
         reset_attempts: bool,
+        capacity: usize,
     ) -> Result<PublishAck, BusError> {
-        let mut connection = self.lock()?;
         let tx = connection
             .transaction()
             .map_err(|err| BusError::Storage(err.to_string()))?;
@@ -772,10 +851,8 @@ impl DurableBus for SqliteDurableBus {
         if Self::active_duplicate_exists(&tx, &message)? {
             return Ok(PublishAck::duplicate());
         }
-        if Self::active_depth(&tx)? >= self.capacity {
-            return Err(BusError::Backpressure {
-                capacity: self.capacity,
-            });
+        if Self::active_depth(&tx)? >= capacity {
+            return Err(BusError::Backpressure { capacity });
         }
         let ack = Self::insert_message(&tx, &message)?;
         if ack.accepted {
@@ -786,8 +863,7 @@ impl DurableBus for SqliteDurableBus {
         Ok(ack)
     }
 
-    async fn dlq(&self) -> Result<Vec<DeadLetter>, BusError> {
-        let connection = self.lock()?;
+    fn dlq_blocking(connection: &mut Connection) -> Result<Vec<DeadLetter>, BusError> {
         let mut statement = connection
             .prepare(
                 r#"
@@ -810,16 +886,6 @@ impl DurableBus for SqliteDurableBus {
         }
         Ok(dead_letters)
     }
-
-    async fn depth(&self) -> Result<usize, BusError> {
-        let connection = self.lock()?;
-        Self::active_depth(&connection)
-    }
-
-    async fn depth_for_kind(&self, kind: &str) -> Result<usize, BusError> {
-        let connection = self.lock()?;
-        Self::active_depth_for_kind(&connection, kind)
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -835,19 +901,64 @@ enum ConsumeFilter<'a> {
     },
 }
 
+/// Owned variant of [`ConsumeFilter`] so the consume work can be moved into a
+/// `spawn_blocking` closure (which requires `'static`).
+enum OwnedConsumeFilter {
+    All,
+    Kind {
+        kind: String,
+    },
+    ScopedKind {
+        tenant_id: TenantId,
+        project_id: ProjectId,
+        kind: String,
+    },
+}
+
+impl ConsumeFilter<'_> {
+    fn to_owned(self) -> OwnedConsumeFilter {
+        match self {
+            ConsumeFilter::All => OwnedConsumeFilter::All,
+            ConsumeFilter::Kind { kind } => OwnedConsumeFilter::Kind {
+                kind: kind.to_string(),
+            },
+            ConsumeFilter::ScopedKind {
+                tenant_id,
+                project_id,
+                kind,
+            } => OwnedConsumeFilter::ScopedKind {
+                tenant_id: tenant_id.clone(),
+                project_id: project_id.clone(),
+                kind: kind.to_string(),
+            },
+        }
+    }
+}
+
 impl SqliteDurableBus {
     async fn consume_batch_inner(
         &self,
         filter: ConsumeFilter<'_>,
         limit: usize,
     ) -> Result<Vec<BusMessage>, BusError> {
-        let mut connection = self.lock()?;
+        let filter = filter.to_owned();
+        self.with_connection(move |connection| {
+            Self::consume_batch_blocking(connection, filter, limit)
+        })
+        .await
+    }
+
+    fn consume_batch_blocking(
+        connection: &mut Connection,
+        filter: OwnedConsumeFilter,
+        limit: usize,
+    ) -> Result<Vec<BusMessage>, BusError> {
         let tx = connection
             .transaction()
             .map_err(|err| BusError::Storage(err.to_string()))?;
         let selected = {
             let mut statement = match filter {
-                ConsumeFilter::Kind { .. } => tx.prepare(
+                OwnedConsumeFilter::Kind { .. } => tx.prepare(
                     r#"
                     SELECT message_id, message_json
                     FROM queue_messages
@@ -856,7 +967,7 @@ impl SqliteDurableBus {
                     LIMIT ?1
                     "#,
                 ),
-                ConsumeFilter::ScopedKind { .. } => tx.prepare(
+                OwnedConsumeFilter::ScopedKind { .. } => tx.prepare(
                     r#"
                     SELECT message_id, message_json
                     FROM queue_messages
@@ -865,7 +976,7 @@ impl SqliteDurableBus {
                     LIMIT ?1
                     "#,
                 ),
-                ConsumeFilter::All => tx.prepare(
+                OwnedConsumeFilter::All => tx.prepare(
                     r#"
                     SELECT message_id, message_json
                     FROM queue_messages
@@ -876,10 +987,10 @@ impl SqliteDurableBus {
             }
             .map_err(|err| BusError::Storage(err.to_string()))?;
             let mut selected = Vec::new();
-            match filter {
-                ConsumeFilter::Kind { kind } => {
+            match &filter {
+                OwnedConsumeFilter::Kind { kind } => {
                     let rows = statement
-                        .query_map(params![limit as i64, kind], |row| {
+                        .query_map(params![limit as i64, kind.as_str()], |row| {
                             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                         })
                         .map_err(|err| BusError::Storage(err.to_string()))?;
@@ -887,14 +998,19 @@ impl SqliteDurableBus {
                         selected.push(row.map_err(|err| BusError::Storage(err.to_string()))?);
                     }
                 }
-                ConsumeFilter::ScopedKind {
+                OwnedConsumeFilter::ScopedKind {
                     tenant_id,
                     project_id,
                     kind,
                 } => {
                     let rows = statement
                         .query_map(
-                            params![limit as i64, tenant_id.as_str(), project_id.as_str(), kind],
+                            params![
+                                limit as i64,
+                                tenant_id.as_str(),
+                                project_id.as_str(),
+                                kind.as_str()
+                            ],
                             |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                         )
                         .map_err(|err| BusError::Storage(err.to_string()))?;
@@ -902,7 +1018,7 @@ impl SqliteDurableBus {
                         selected.push(row.map_err(|err| BusError::Storage(err.to_string()))?);
                     }
                 }
-                ConsumeFilter::All => {
+                OwnedConsumeFilter::All => {
                     let rows = statement
                         .query_map(params![limit as i64], |row| {
                             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -1890,5 +2006,113 @@ mod tests {
             "third publish must return Backpressure when at capacity=2"
         );
         assert_eq!(bus.depth().await, Ok(2));
+    }
+
+    /// Concurrency regression for issue #203: the SQLite durable bus must not
+    /// hold a `std::sync::MutexGuard<Connection>` across an `.await`, and its
+    /// blocking SQLite work must run via `spawn_blocking` rather than inline on a
+    /// Tokio worker. Concretely, many tasks publishing/consuming/acking against a
+    /// single shared `SqliteDurableBus` concurrently must make progress without
+    /// deadlocking and deliver every message at-least-once.
+    ///
+    /// The whole exercise runs under a hard timeout so a regression that
+    /// reintroduces a guard-across-await (which would serialize or deadlock the
+    /// multi-threaded runtime) fails fast instead of hanging.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn sqlite_bus_concurrent_publish_consume_ack_does_not_deadlock() {
+        use std::collections::HashSet;
+        use std::sync::Arc;
+        use tokio::time::{timeout, Duration};
+
+        const TASKS: usize = 32;
+        const PER_TASK: usize = 8;
+        const TOTAL: usize = TASKS * PER_TASK;
+
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("concurrent.sqlite");
+        // Capacity comfortably above the in-flight working set so publishes are
+        // not rejected for backpressure while producers and consumers race.
+        let bus: Arc<dyn DurableBus> = Arc::new(
+            SqliteDurableBus::open(&path, TOTAL * 2).unwrap_or_else(|err| panic!("{err}")),
+        );
+
+        let body = async {
+            // Producers: each task publishes PER_TASK uniquely-keyed messages.
+            let mut producers = Vec::with_capacity(TASKS);
+            for task in 0..TASKS {
+                let bus = Arc::clone(&bus);
+                producers.push(tokio::spawn(async move {
+                    for seq in 0..PER_TASK {
+                        let key = format!("concurrent-{task}-{seq}");
+                        let message = BusMessage::new(
+                            TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}")),
+                            ProjectId::new("project").unwrap_or_else(|err| panic!("{err}")),
+                            IdempotencyKey::new(key.clone()).unwrap_or_else(|err| panic!("{err}")),
+                            "concurrent.kind",
+                            key.into_bytes(),
+                        );
+                        let ack = bus
+                            .publish(message)
+                            .await
+                            .unwrap_or_else(|err| panic!("publish failed: {err}"));
+                        assert_eq!(ack, PublishAck::accepted(), "unique publish must accept");
+                    }
+                }));
+            }
+            for producer in producers {
+                producer.await.unwrap_or_else(|err| panic!("{err}"));
+            }
+
+            // Consumers: many tasks drain + ack concurrently until the queue is
+            // empty. Each delivered message id is recorded; at-least-once
+            // delivery means every published id is seen at least once.
+            let seen = Arc::new(Mutex::new(HashSet::<String>::new()));
+            let mut consumers = Vec::with_capacity(TASKS);
+            for _ in 0..TASKS {
+                let bus = Arc::clone(&bus);
+                let seen = Arc::clone(&seen);
+                consumers.push(tokio::spawn(async move {
+                    loop {
+                        let batch = bus
+                            .consume_batch(4)
+                            .await
+                            .unwrap_or_else(|err| panic!("consume failed: {err}"));
+                        if batch.is_empty() {
+                            if bus.depth().await.unwrap_or_else(|err| panic!("{err}")) == 0 {
+                                break;
+                            }
+                            tokio::task::yield_now().await;
+                            continue;
+                        }
+                        for message in batch {
+                            seen.lock()
+                                .unwrap_or_else(|err| panic!("{err}"))
+                                .insert(message.message_id.clone());
+                            bus.ack(message)
+                                .await
+                                .unwrap_or_else(|err| panic!("ack failed: {err}"));
+                        }
+                    }
+                }));
+            }
+            for consumer in consumers {
+                consumer.await.unwrap_or_else(|err| panic!("{err}"));
+            }
+
+            let delivered = seen.lock().unwrap_or_else(|err| panic!("{err}")).len();
+            assert_eq!(
+                delivered, TOTAL,
+                "every published message must be delivered at least once"
+            );
+            assert_eq!(
+                bus.depth().await,
+                Ok(0),
+                "queue and inflight must be drained after all acks"
+            );
+        };
+
+        timeout(Duration::from_secs(30), body)
+            .await
+            .unwrap_or_else(|_| panic!("concurrent bus workload deadlocked / timed out"));
     }
 }

@@ -7597,6 +7597,7 @@ dependencies = [
  "beater-api",
  "beater-schema",
  "clap",
+ "regex",
 ]
 
 [[package]]
