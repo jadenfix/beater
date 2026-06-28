@@ -1,5 +1,12 @@
 name: gate2-proof-contract
 
+# Supersede an in-flight run when a PR branch is pushed again, so the shared CI
+# runner pool is not starved by stacked redundant runs. main pushes are never
+# cancelled (their CI history must stay complete).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   pull_request:
   push:

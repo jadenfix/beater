@@ -200,10 +200,11 @@ Hosted cannot be sold seriously until all are true:
 
 ## R16. Completion Audit Rule
 
-Before marking Beater "shipped", audit every requirement above against direct
+Before marking Beater "shipped", audit every requirement against direct
 evidence. Passing tests are evidence only when the tests cover the requirement's
 full scope. Search results, intent, partial implementation, and plausible docs do
-not prove completion.
+not prove completion. **This rule applies to every requirement in this file,
+including R17–R18 below, not only those above it.**
 
 ## R17. Execution Readiness
 
@@ -212,3 +213,29 @@ not prove completion.
 | R17.1 | OSS MVP scope is not reduced below the documented minimum shippable product. | Milestone checklist includes all MVP items and release notes map each missing item to a known non-GA status |
 | R17.2 | Hosted GA has named ownership for Rust infra, backend/product, frontend/product, data/observability, evals/agent systems, and infra/security. | Staffing/ownership plan before hosted GA |
 | R17.3 | Hard engineering risks have explicit owners and test plans. | Risk register covering schema evolution, privacy, standards translation, ingest survivability, eval reproducibility, judge calibration, replay correctness, query speed, UX, and governance |
+
+## R18. Competitive-Parity Surfaces (Phase 7)
+
+These convert the §20.10 Phase 7 plan / §26.4 parity scorecard (ARCHITECTURE.md) into
+auditable wants: the product surfaces the incumbents (Braintrust, Judgment Labs,
+LangSmith, Langfuse, Arize, Comet Opik, Patronus, Galileo) ship. They are **post-MVP**
+— they do not reduce the R17.1 minimum shippable product — and every one is **gated by
+Beater's existing rigor**: a surface ships only with the held-out / calibrated /
+multiplicity-corrected discipline (R5/R6) that makes its answer correct, not merely
+present. Status today: all **[planned]**.
+
+| ID | Requirement | Evidence required |
+| --- | --- | --- |
+| R18.1 | Runtime guardrails enforce (block/redact/allow/flag) on input and output. | `beater-guardrails` pre/post-hook tests (prompt-injection/jailbreak, PII/PHI, toxicity, topic, custom WASI); `p95 < 200ms` bench; each verdict emits an observable `guardrail.check` span; blocked attempt auto-promotes to a red-team dataset; `POST /v1/guardrails/check` full-stack test |
+| R18.2 | A distilled small "house" judge can gate CI only after passing calibration. | `JudgeModelKind::Distilled` behind the broker; kappa (R6.5) + ECE bar test vs the frozen frontier judge on held-out human labels; gate-refusal test when a distilled judge is uncalibrated |
+| R18.3 | An OpenAI-compatible LLM gateway proxies app traffic with caching + failover, natively traced and online-scorable; **any model, BYOK optional**. | `beater-gateway` `POST /v1/gateway/chat/completions`; **any-model routing test**; **BYOK-optional test** (managed-default fallback so no key is required on hosted; typed `NoKey` error in OSS); request-hash cache-hit test; multi-key failover test; per-tenant budget via `QuotaLimiter` + timeout; provider-key **redaction** test (never logged/returned); auto-trace (`llm.call` span) + online-score integration test proving zero-SDK instrumentation |
+| R18.4 | Failing traces auto-cluster into named issues with a counterfactual root cause. | `beater-insights` clustering test; auto-name judge test; each `FailureIssue` carries a counterfactual earliest-flip root-cause span (R7.4) + sampling-weighted frequency; `GET /v1/insights/clusters\|issues`; one-click promote/guardrail/propose |
+| R18.5 | Embedding-space and distribution drift alert on an anytime-valid confidence sequence. | embedding-centroid, input-distribution (PSI/KL), and eval-score drift tests; mSPRT/confidence-sequence decision (R6/§10.3 #6), never fixed-N; sampling-weighted; UMAP view |
+| R18.6 | Named optimizer strategies are gated by held-out statistics. | `OptimizerStrategy` (LlmRewrite/FewShotBayesian/MIPRO/Evolutionary/GEPA/ParamSearch) dispatch test; every candidate flows the frozen-Test + multiplicity-control (R6.8) + §21.4 anti-overfit guardrail; test that an aggressive optimizer's overfit candidate is **rejected** |
+| R18.7 | Rubric / G-Eval generation is gated by calibration before any CI use. | `POST /v1/scorers/generate`; a generated `JudgeRubric` is refused at the gate until it clears the kappa + ECE bar on held-out labels |
+| R18.8 | Conversation- and agent-trajectory scorers exist with assumption/CI discipline. | catalog entries (Coherence/Session-Completeness/User-Frustration; Tool-Selection-Quality/Tool-Error-Rate/Action-Advancement/Action-Completion/Agent-Flow; RAG Context-Adherence/Chunk-Attribution/Chunk-Utilization); trajectory-clustered process-reward aggregation tests (not per-step means) |
+| R18.9 | A user-simulator drives multi-turn agent eval / leaderboards. | harness `Simulator` (Understudy) role over the simulation replay mode (R7.3); multi-turn scenario fixture; full trajectory scored under R6 clustered statistics |
+| R18.10 | End-user feedback is ingested and mined into preference pairs. | `POST /v1/feedback`; `Annotation.source = EndUser`; preference-mining job producing pairs feeding the R18.2 distilled judge and the R11.6 SFT/RL export |
+| R18.11 | BYOC data-plane / control-plane split with Terraform modules. | customer-hosted data plane (all payloads) vs Beater-hosted control plane (metadata only) topology; Terraform AWS/GCP/Azure modules; documented residency boundary (extends R8.2/R15) |
+| R18.12 | Auto-instrumentation breadth matches the incumbents. | examples + token-usage extraction + 3-level span-tree tests for Mastra/Agno/AgentScope/LiveKit/Strands/Google-ADK/Instructor/LiteLLM/Smolagents + Bedrock/Mistral/Groq/Gemini |
+| R18.13 | (conditional) A typed query language ships **only** if a measured filter-expressiveness limit forces it. | per ARCHITECTURE §26.3 the v1 answer stays structured filters + BM25 (R10.1/R10.2); not built until the limit is measured; if built, a sampling-weighted GQL `POST /v1/query` |

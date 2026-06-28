@@ -329,6 +329,20 @@ component by its crate path; reason about it by its beat name. Format below:
 - **Tip Jar** — the autonomy-credits metering layer (deferred productization, §21.7);
   what you pay into for verified gains — (crate: `beater-credits` [deferred]).
 
+**Runtime safety, model traffic & discovery (Phase 7, §20.10)**
+
+- **Bouncer** — the runtime guardrail/firewall: pre/post input+output checks
+  (injection, PII/PHI, toxicity, topic) that *enforce* (block/redact/allow/flag), not
+  just observe; the door staff who turn people away at showtime — (crate:
+  `beater-guardrails` [planned]).
+- **Patchbay** — the OpenAI-compatible LLM gateway/proxy for the customer agent's own
+  model calls: caching, BYOK failover/load-balance, and native tracing + online
+  scoring on every routed signal (a patchbay routes every signal to where it needs to
+  go) — (crate: `beater-gateway` [planned]).
+- **Medley** — failure discovery: clusters failing traces into named `FailureIssue`s,
+  each with a §11 counterfactual root cause and a one-click promote/guardrail/propose
+  (a medley groups related tracks into one set) — (crate: `beater-insights` [planned]).
+
 **Identity, secrets & trust**
 
 - **Backstage** — API keys, JWT/session, RBAC types, and audit scopes; the
@@ -484,6 +498,12 @@ beater/
     beater-identity/      # Passport [planned] OIDC/SAML/SCIM (§20.7)
     beater-billing/       # Bandwidth [planned] plans/subscriptions/Stripe metered sync (§20.7)
     beater-bench/         # Tech Rider [planned] criterion benches + load fixtures (§20.2)
+    beater-guardrails/    # Bouncer [planned] runtime guardrail/firewall: pre/post input+output
+                          #   checks (injection/PII/toxicity/topic), block|redact|allow|flag (§20.10 7.1)
+    beater-gateway/       # Patchbay [planned] OpenAI-compatible LLM proxy for app traffic:
+                          #   caching, BYOK failover/load-balance, native tracing + online scoring (§20.10 7.3)
+    beater-insights/      # Medley [planned] failure discovery: cluster failing traces -> named
+                          #   FailureIssues w/ counterfactual root-cause + one-click promote (§20.10 7.4)
   bins/
     beaterd/              # Beater — default all-in-one binary (also holds Heartbeat: metrics.rs / Prometheus facade)
     beaterctl/            # Stomp Box — CLI: init, ingest test, eval run, gate, export
@@ -521,22 +541,9 @@ The dashboard can use TypeScript/React for product velocity, but all platform
 logic, ingestion, storage, eval, replay, API contracts, and SDK primitives remain
 Rust-owned.
 
-**Crate deltas from the staff-SWE refactor (summary; details in the cited
-sections).** NEW: `beater-stats` (the statistics correctness layer, §10.3).
-CHANGED: `beater-calibration` (adds agent/score proper-scoring calibration, §10.5),
-`beater-eval` (deletes the hardcoded-z path, §10.3), `beater-datasets` +
-`beater-schema` + `beater-store` + `beater-ingest` (Train/Dev/Test split +
-`sampling_weight` + weighted aggregates, §5.3/§6.4/§9), `beater-replay` (real
-forked replay + earliest-failing-span attribution, §11), `beater-gates` (gate
-number sourced from `beater-stats`, §10.3), `beater-api` (mapping importer + bulk
-promote, §7/§20.4), `beater-mcp` (composite recipe tools + folded-in improvement
-loop, §21). DEFERRED (design-only, ideas preserved, not dropped): full
-evolutionary/population search over agent configs; a skill library on a vector
-store; and a standalone Studio / toolbelt / credits productization as separate
-products (§21). An MVP foundation for the latter (`beater-credits`,
-`beater-mcp-improve`) already exists on the `feat/mcp-improve-foundation` branch,
-but the architecture now prefers folding improvement into `beater-mcp` and
-deferring credits productization (§21.7).
+The per-crate `[NEW]`/`[CHANGED]`/`[planned]`/`[DEFERRED]` status is carried inline
+on the beat-box list and the crate tree above, and the new crates are sequenced in
+§20.9 — so it is not restated as a separate summary here.
 
 ### 4.1 Implementation Picks
 
@@ -604,6 +611,9 @@ replacement must preserve the architecture contracts in this document.
 - `RedactionPolicy`
 - `RetentionPolicy`
 - `AuditEvent`
+- `GuardrailPolicy` *(Phase 7, §20.10 #7.1 — runtime guardrail rules; verdicts emit `guardrail.check` spans)*
+- `FailureIssue` / `IssueCluster` *(Phase 7, §20.10 #7.4 — named failure-mode clusters with a counterfactual root cause)*
+- `FeedbackRecord` *(Phase 7, §20.10 #7.10 — end-user thumbs/edits/ratings; an `Annotation` with `source = EndUser`, mined into preference pairs)*
 
 ### 5.2 Agent Span Taxonomy
 
@@ -970,14 +980,26 @@ by `(dialect, source_span_kind)` → canonical span kind (§5.2), plus an
 **attribute-rename map** `source_attr → canonical_attr`, plus typed **unit/timestamp
 coercions** (epoch-ns vs RFC3339; tokens/cost field names; ms vs s). The pipeline per
 span is: (1) detect the dialect (explicit `?source=` or signature attributes); (2)
-look up the span-kind mapping (unknown kinds map to `agent.step` with the raw kind
-preserved as an attribute, never dropped); (3) apply the attribute-rename map and
-coerce units/timestamps; (4) emit the canonical span tagged with the **pinned
-normalizer version** (§10.2). The mapping is **table-driven** so adding/auditing a
-dialect is data, and every projection is re-derivable from the immutable raw envelope
-(§1 #3). The hard-coded normalizers (OTLP/OpenInference/GenAI/Vercel-AI) are
-hand-written tables on this same shape; the declarative MAPPING importer below is the
-same table supplied as config instead of code.
+look up the span-kind mapping (an unrecognized *declared* kind is not forced to
+`agent.step`; it falls through to the browser-marker and OTLP span-kind fallbacks,
+and the raw kind is preserved as an attribute, never dropped); (3) apply the
+attribute-rename map and coerce units/timestamps; (4) emit the canonical span tagged
+with the **pinned normalizer version** (§10.2). The mapping is **table-driven** so
+adding/auditing a dialect is data, and every projection is re-derivable from the
+immutable raw envelope (§1 #3). The hard-coded normalizers
+(OTLP/OpenInference/GenAI/Vercel-AI) are hand-written tables on this same shape; the
+declarative MAPPING importer below is the same table supplied as config instead of
+code.
+
+OpenInference defines ten `openinference.span.kind` values —
+`LLM`, `EMBEDDING`, `CHAIN`, `RETRIEVER`, `RERANKER`, `TOOL`, `AGENT`, `GUARDRAIL`,
+`EVALUATOR`, `PROMPT`. The `beater-otlp` table maps eight of them into §5.2 today
+(`CHAIN → agent.step`, `EMBEDDING → retrieval.query`, etc.); **`RERANKER` and
+`PROMPT` are not yet in the table and currently fall through to the OTLP fallback** —
+closing that gap (e.g. `RERANKER → retrieval.query` with the raw kind and
+`reranker.*` attributes preserved) is the §26.2 O8 interop-completeness target, along
+with the churn-prone new OTel `gen_ai.*` names (`gen_ai.provider.name` superseding
+`gen_ai.system`, `gen_ai.conversation.id`, `gen_ai.agent.*`, `gen_ai.tool.*`).
 
 Config-driven mapping importer (`SourceImporter` boundary). The hand-written
 normalizers above (OTLP/OpenInference/GenAI/Vercel-AI) cover the standard dialects,
@@ -1149,17 +1171,22 @@ Required survivability behavior:
 
 - Backpressure with bounded queues.
 - **At-least-once delivery reconciled by idempotency keys (the dedup algorithm).**
-  Each ingest unit carries an **idempotency key** = a stable content hash of its
-  identity — `blake3(tenant_id ‖ trace_id ‖ span_id ‖ canonical-payload-hash)`,
-  or a client-supplied `Idempotency-Key` when present. Dedup is an
-  **existence-check-then-insert**: the write path does an atomic
+  Each ingest unit carries an **idempotency key** — a deterministic identity string
+  built by `make_idempotency_key` (`beater-schema`) as
+  `tenant_id:project_id:trace_id:span_id:seq:payload_hash`, where `payload_hash` is
+  the SHA-256 of the canonical payload — or a client-supplied `Idempotency-Key` when
+  present. (The struct field is still `payload_hash: Sha256Hash`; moving the
+  hot-path payload hash to **blake3** — keeping SHA-256 only where an external
+  contract requires it — is the §26.2 O7 micro-optimization, not yet applied.) Dedup
+  is an **existence-check-then-insert**: the write path does an atomic
   insert-if-absent on that key (a `UNIQUE` constraint / `INSERT … ON CONFLICT DO
   NOTHING` in SQL backends, the natural primary key in ClickHouse's
   versioned-replacing model, §8.3); a key already present is acknowledged as a
-  no-op, never written twice. Because the key is a deterministic content hash, a
-  retried or fanned-out delivery (at-least-once bus, §8.4) collapses to **exactly
-  once** in storage without coordination. This is what makes "no silent drops" and
-  "at-least-once" coexist: redelivery is safe and observable.
+  no-op, never written twice. Because the key is a deterministic function of the
+  span's identity and payload hash, a retried or fanned-out delivery
+  (at-least-once bus, §8.4) collapses to **exactly once** in storage without
+  coordination. This is what makes "no silent drops" and "at-least-once" coexist:
+  redelivery is safe and observable.
 - Dead-letter queue for invalid, unauthenticated, unnormalizable, or repeatedly
   unwritable events.
 - Poison-message isolation so one bad tenant payload cannot stall a shard.
@@ -1660,6 +1687,24 @@ Two cross-cutting rules:
   process-reward scorer models promise/progress across the sequence and aggregates
   with trajectory-clustered standard errors [arXiv:2511.08325; arXiv:2507.21504].
 
+**Catalog extensions for conversation- and agent-level eval (Phase 7, §20.10 #7.8).**
+The incumbents (Comet Opik, Galileo) ship named conversation and agent-trajectory
+metrics; Beater adds them to `EVALUATOR_CATALOG` with the *same* assumption/CI
+discipline as every row above, not as opaque numbers:
+
+- **Conversation-level** (over the §20.3 session/thread grouping): **Coherence**,
+  **Session-Completeness**, **User-Frustration** — judge-lane, scored over the whole
+  thread, aggregated with conversation-clustered SE (§10.3 #1, cluster = thread).
+- **Agent-trajectory**: **Tool-Selection-Quality**, **Tool-Error-Rate**,
+  **Action-Advancement / Action-Completion**, **Agent-Flow**, and the RAG-specific
+  **Context-Adherence**, **Chunk-Attribution**, **Chunk-Utilization** — built on the
+  §10.4 execution-based tool-correctness + process-reward primitives (clustered by
+  trajectory, never a per-step mean).
+- **G-Eval-style task-agnostic judge**: CoT + auto-generated evaluation steps from a
+  task description — but the generated rubric is **gated** by §20.10 #7.7 (it cannot
+  enter a production gate until it clears the §10.1.1 kappa + §10.5 ECE bar on
+  held-out labels). This is what separates Beater's auto-rubric from a vibes-rubric.
+
 Aggregation always flows back through §10.3: per-case scores → metric-appropriate
 CI → clustered when non-independent → significance test by type → multiplicity
 control across scorers → power check before any *pass*.
@@ -1873,6 +1918,12 @@ Harness components:
 - `HumanReviewRunner`: queues trace/span review tasks, stores human annotations,
   and promotes corrected human references into dataset cases through the same
   dataset store used by automated evals.
+- `Simulator` *(Understudy, Phase 7 §20.10 #7.9)*: a user-simulator (persona + goal)
+  and tool-simulator that drive a target agent through **multi-turn** scenarios so a
+  full trajectory can be scored by the §10.4 conversation/agent-trajectory scorers
+  under §10.3 clustered statistics. This is what makes an agent leaderboard /
+  simulation benchmark (Galileo-style) expressible on Beater's own substrate — built
+  on the existing §11 `simulation` replay mode rather than a parallel system.
 - `TraceEmitter`: emits canonical traces and raw refs.
 
 The same harness must run locally, in CI, and in hosted workers.
@@ -1894,7 +1945,18 @@ Core UI requirements:
 - eval result drilldown
 - replay/cassette view
 - human review queues
-- failure clustering and root-cause annotations
+- **failure discovery** (Medley, §20.10 #7.4): unsupervised clustering of failing
+  traces into **named `FailureIssue`s**, each with a §11 counterfactual root-cause
+  span, sampling-weighted frequency (§9), estimated cost impact, and a one-click
+  → promote-to-dataset / → generate-online-evaluator / → `propose_change` (§21). The
+  discovery *front-end* (matching LangSmith Insights / Galileo Insights / Judgment
+  Behavior Discovery / Patronus Percival) over Beater's already-rigorous counterfactual
+  root-cause back-end (§11) — not a thin "cluster and hope."
+- **embedding-space & distribution drift** (§20.10 #7.5): embedding-centroid drift,
+  input-distribution drift (PSI/KL), and eval-score drift, each decided on the
+  anytime-valid confidence sequence below (never a fixed-N peek) and reported with §9
+  weighting — plus a UMAP point-cloud view (Soundstage, §25). Reuses the embedding
+  distance already computed for §21.4 OOD probes and the §10.4 embedding scorer.
 
 Search:
 
@@ -1908,6 +1970,11 @@ Search:
   `Σᵢ IDF(qᵢ)·( f(qᵢ,D)·(k₁+1) ) / ( f(qᵢ,D) + k₁·(1 − b + b·|D|/avgdl) )`. The
   index stores only what §8.3 permits (refs/redaction-aware fields), never
   unredacted payloads it should not hold.
+- a typed query language (GQL) is **deliberately NOT v1** (§26.3): structured filters
+  + BM25 cover the need; a Braintrust-BTQL-style DSL is revisited only if online-eval
+  targeting (§20.6) / alert-condition expressiveness becomes a *measured* limit
+  (§20.10 #7.11 is the escalation trigger, with §9 weighted-by-default if it is ever
+  built)
 - natural-language search is later; fast structured BM25 search is v1
 
 Alerting:
@@ -2170,6 +2237,24 @@ Acceptance:
 - Slack/webhook alerts
 - regional deployment story
 
+### v4: Competitive Parity (Phase 7)
+
+Post-GA, the §20.10 / §26.4 / R18 product surfaces that the incumbents ship — each
+landing *with* its honesty gate, never as an ungated feature.
+
+Acceptance:
+
+- runtime guardrails/firewall that enforce in `p95 < 200ms` and are themselves observed
+- a distilled, calibration-gated "house" judge; an OpenAI-compatible LLM gateway that
+  caches, traces with zero SDK, and online-scores
+- failure-discovery into named issues with counterfactual root cause; embedding/
+  distribution drift on anytime-valid sequences
+- named optimizer strategies (MIPRO/GEPA/evolutionary/Bayesian) bounded by the §21.4
+  held-out anti-overfit guardrail; calibration-gated AutoRubric/G-Eval generation
+- conversation- & agent-trajectory scorers; a user-simulator for multi-turn leaderboards
+- end-user feedback → preference mining → SFT/RL export
+- BYOC data/control-plane split + Terraform; auto-instrumentation breadth parity
+
 ## 19. Bar for Done
 
 The platform is real when a team can replace ad hoc Phoenix, LangSmith,
@@ -2203,8 +2288,10 @@ honest answer is *"X fixes it and generalizes,"* never *"X patches this trace."*
 
 This section is the concrete, technical execution plan to take Beater from its
 current state to feature parity with Arize Phoenix, Braintrust, LangSmith, and
-Langfuse for deep agent evaluation. It builds on — and does not replace — the
-milestones in §17–18. The milestones describe *what* must exist; this section
+Langfuse for deep agent evaluation — and **Phase 7 (§20.10)** extends that to the
+*full* field's product surfaces (Judgment Labs, Comet Opik, Patronus, Galileo), each
+mapped to a closure item in the §26.4 parity scorecard. It builds on — and does not
+replace — the milestones in §17–18. The milestones describe *what* must exist; this section
 describes the *current measured gap* and the *specific work* to close it, at the
 crate/type/endpoint level.
 
@@ -2371,11 +2458,16 @@ Goal: lower adoption friction to match the incumbents' framework coverage.
 | 6.2 | Zero-code env-var bootstrap (**DEFAULT onboarding**, §1 #13, §15) | `beaterctl ingest test` verifies live OTLP ingest and prints the exporter env block; env-var-only auto-instrumented app path is still planned | `opentelemetry-distro`/configurator (py) + TS `--require` preload reading `BEATER_*` env, setting OTLP exporter+headers, enabling installed auto-instrumentors; promoted to the documented first path | M | none |
 | 6.3 | Modern framework coverage | LangChain (py+ts), LlamaIndex (py) only | examples + instrumentation for Vercel AI SDK (TS), OpenAI Agents SDK, CrewAI, DSPy, Pydantic AI, AutoGen, Haystack; TS LlamaIndex; token-usage extraction; 3-level span-tree integration tests | XL | evidence |
 | 6.4 | `beaterctl quickstart` (time to first SCORED FAILURE) | manual compose + snippet | one command boots compose, provisions tenant/key, prints exporter snippet + dashboard URL; timed e2e asserting not just a trace but a *scored failing case* visible < the §15 SLO | M | evidence |
+| 6.5 | Cross-SDK behavioral parity conformance (**none drift, all do the same thing**, §3.3, §22.5) | `regen-sdks.sh --check` proves each generated client's *code* matches the spec and `check-semconv-drift.py` proves its constants match, but the **hand-authored ergonomic layer above the generated client** — `observe()/span()`, context propagation, auth-header assembly, retry/backoff, batch flush, `BEATER_*` env-var bootstrap, error→exception mapping, redaction/sampling — and the **native Rust SDK** (`sdks/rust`, excluded from spec generation, §3.3) are written per-language with **no cross-language parity gate**: two SDKs can each be spec- and semconv-conformant yet emit different wire bytes or expose a different method surface | New `sdks/conformance/` golden harness + `scripts/check-sdk-parity.sh` (new `sdk-parity` CI gate, §22.5): (a) one canonical scripted-agent program implemented in all 7 generated SDKs **+ native Rust**, run against a single in-process recorder, asserting **byte-identical canonical OTLP envelopes** (modulo language/runtime-only fields) for the same logical run; (b) a declarative `surface-manifest.json` of the required ergonomic API (method names, params, env vars, defaults) every SDK must expose, failing CI if any SDK adds, omits, or renames a member; (c) folds into Metronome as the **4th (behavioral) drift surface** (§22.5) so behavioral drift — not just structural — is unmergeable | XL | evidence |
 
 Acceptance: an env-var-only Python app produces traces with zero code edits;
 each named framework has a working example emitting a correct agent span tree;
 `beaterctl quickstart` demonstrates **time to first scored failure** under the §15
-SLO (a failing case shown with a score, not merely a trace rendered).
+SLO (a failing case shown with a score, not merely a trace rendered); the
+cross-SDK conformance matrix proves all 7 generated SDKs **plus native Rust** emit
+byte-identical canonical envelopes for the same program and expose the same
+ergonomic surface — no behavioral drift, every API endpoint exercised identically
+across languages.
 
 ### 20.9 New Crates, Contracts & Sequencing
 
@@ -2391,6 +2483,17 @@ New crates introduced by this plan (all under the §4 workspace conventions):
 - `beater-rbac` — role/permission resolution wired into `authorize()` (Phase 5).
 - `beater-identity` — OIDC/SAML/SCIM (Phase 5).
 - `beater-billing` — plans/subscriptions/Stripe metered sync (Phase 5).
+- `beater-guardrails` — Bouncer, runtime guardrail/firewall (Phase 7, §20.10 #7.1).
+- `beater-gateway` — Patchbay, OpenAI-compatible LLM proxy + caching + failover (Phase 7, §20.10 #7.3).
+- `beater-insights` — Medley, failure clustering/discovery + named issues (Phase 7, §20.10 #7.4).
+
+(Phase 7 also folds work into existing crates rather than new ones: distilled house
+judges into `beater-judge` (#7.2); optimizer strategies into `beater-experiments`
+(#7.6); AutoRubric/G-Eval into `beater-mcp`/`beater-eval` (#7.7); conversation/
+trajectory scorers into `beater-eval` (#7.8); the user-simulator into the harness
+(#7.9); embedding-drift into `beater-alerts` (#7.5). The GQL query language (#7.11) is
+**conditional** — deferred per §26.3 unless a measured expressiveness limit forces it,
+then into `beater-api`/`beater-store`.)
 
 **The beat-boxes rename (pre-1.0 follow-up, cross-cutting).** §4 establishes the
 beat-themed names now; the **physical directory rename** of each `beater-*` crate to
@@ -2427,6 +2530,48 @@ Cross-cutting bar for every item (no exceptions):
 
 Done, per §19, is when a team can replace ad-hoc Phoenix/LangSmith/Braintrust
 workflows end to end. This plan is the path from 33% to that bar.
+
+### 20.10 Phase 7 — Competitive-Gap Closure (parity surfaces the incumbents ship)
+
+Goal: close the specific product surfaces that Braintrust, Judgment Labs, LangSmith,
+Langfuse, Arize, Comet Opik, Patronus, and Galileo ship and Beater does not yet —
+**without** weakening any §1 honesty/statistics invariant. Every item is built *on top
+of* Beater's existing rigor (§10.3 statistics, §10.1.1/§10.5 calibration, §5.4/§6.4
+held-out discipline, §11 counterfactual replay), so each is a surface the incumbents
+have but a *more correct* version. The competitor each row answers is named so the
+parity claim is auditable; the full head-to-head is §26.4. These are committed wants:
+they appear in REQUIREMENTS.md as **R18**, in the §24.4 Definition-of-Done ledger, and
+as milestone **v4** (§18).
+
+| # | Requirement | Now | Target / concrete task | Answers | Effort | Blocker |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7.1 | **Runtime guardrails / firewall** | Beater *observes* `guardrail.check` spans (§5.2) but never *enforces* | New `beater-guardrails` (**Bouncer**): synchronous pre/post hook — input-side prompt-injection/jailbreak classifier + PII/PHI detect-and-redact (reuse §14 redaction); output-side toxicity, PII-leak, faithfulness/hallucination, topic enforcement, custom WASI guardrail (§10.1 deterministic lane). Verdict `block\|redact\|allow\|flag`; **p95 < 200 ms is a target, bench-gated per §1 (no perf claim without a benchmark) and reachable only with a local/small classifier — an in-path LLM-judge cannot hit it.** `POST /v1/guardrails/check` **[contract]** + inline SDK middleware. Every check emits a `guardrail.check` span (enforcement is itself observed + online-scorable) and blocked attempts auto-promote to a red-team dataset (§20.4 #2.1b) | Galileo Protect, Opik Guardrails, Patronus, Arize/Guardrails-AI | L | design |
+| 7.2 | **Distilled small/fast "house" judge models** | judge broker calibrates frontier judges (§10.1.1); no owned small judge | Add `JudgeModelKind::Distilled{base, adapter_ref, calibration_version}` to `beater-judge`: distil a small open-weight judge (single-token or short-CoT) from the §10.1.1 human reference + calibration set; pin behind the broker. **Honesty gate:** a distilled judge may gate *only* after clearing the §10.1.1 kappa + §10.5 ECE bar on held-out human labels vs the frozen frontier judge. "Luna/Lynx/Glider, but you own it and it is calibration-gated." | Galileo Luna-2, Patronus Lynx/Glider | XL | evidence |
+| 7.3 | **LLM gateway / proxy for app traffic** | judge broker routes *judge* calls only | New `beater-gateway` (**Patchbay**): OpenAI-compatible `POST /v1/gateway/chat/completions` over one `ModelProvider` trait — request-hash caching (reuse the §10.1 judge cache), failover/load-balance across BYOK keys (§Stash), unified reasoning params, per-tenant budgets via `QuotaLimiter` (§8.4). **Any model, BYOK optional (the core requirement):** a request may target *any* provider/model; it uses the tenant's BYOK key when present (opaque `ProviderSecretId`, never raw keys) and otherwise falls back to a **managed default model** so a caller does *not have to* bring a key/model on hosted — OSS requires BYOK and returns a typed `NoKey` error in its absence (mirrors the §2 editions "managed routing vs optional BYOK" rows). **Robustness:** retry/backoff on 429/5xx, multi-key/provider failover, request-hash cache, per-tenant budget reservation + request timeout, and provider-key **redaction** (key material is never logged or returned). **The Beater twist:** every proxied call is *natively traced with zero SDK* and *online-scorable* (§20.6). **Opt-in and complementary to OTLP, never the primary instrumentation** — a proxy alone misses non-LLM agent steps (the §26.0 Helicone lesson) — and it carries its own hot-path availability SLO (§16) because an outage would hit the customer's app **[contract]** | Braintrust AI Proxy | XL | design |
+| 7.4 | **Failure discovery / clustering → named issues** | §13 "failure clustering" is one line; no pipeline | New `beater-insights` (**Medley**): embed failing traces → cluster (HDBSCAN/agglomerative) → auto-name each cluster (judge) → attach a §11 counterfactual root-cause to each exemplar → emit a `FailureIssue` (§5.1) with representative traces, **sampling-weighted** frequency (§9), est. cost impact, root-cause span, and one-click → promote-to-dataset / → generate online-evaluator / → `propose_change` (§21). The unsupervised *front-end* over Beater's already-rigorous back-end. `GET /v1/insights/clusters\|issues` **[contract]** | LangSmith Insights/Engine, Galileo Insights, Judgment Behavior Discovery, Patronus Percival | L | contract |
+| 7.5 | **Embedding-space drift + distribution monitoring** | Offbeat alerts on score signals only | Extend `beater-alerts` (+ Medley): production-vs-reference embedding-centroid drift, input-distribution drift (PSI/KL on key attrs), eval-score drift — each decided on the §13 **anytime-valid confidence sequence**, not a fixed-N peek, reported with §9 weighting/§10.3 uncertainty (never a bare distance). UMAP point-cloud is a §25 Soundstage screen. Reuses the embedding distance already computed for §21.4 OOD probes + the §10.4 embedding scorer — via the external embedding provider + existing columnar store, **no bundled vector DB** (§26.3) | Arize embeddings/drift | L | design |
+| 7.6 | **Named prompt/agent optimizer strategies** | RSI `propose_change` uses LLM-rewrite only; evolutionary/population search was deferred (§21) | Un-defer as *gated proposal strategies* behind `propose_change`: `OptimizerStrategy = { LlmRewrite, FewShotBayesian, MIPRO, Evolutionary, GEPA, ParamSearch }` (in **Beatboxing**/`beater-experiments`). All candidates flow through the SAME §10.3 stats + §21.4 anti-overfit guardrail + frozen-Test gate. **Differentiator:** to our knowledge no competitor optimizer documents a held-out + multiplicity-corrected acceptance gate (2026-06-27; re-verify per §26.0), so each is exposed to multiple-comparison overfitting; Beater's candidates run under FWER/FDR + held-out Test + the §21.4 Goodhart guardrail | Opik Optimizer (MIPRO/GEPA/evolutionary/Bayesian), DSPy, LangSmith Polly | L | none |
+| 7.7 | **AutoRubric + G-Eval generation** | `suggest_scorers` is advisory only (§21.1) | Make it generative: from a §7.4 failure cluster + a few human labels, auto-generate a structured `JudgeRubric` (§20.5 #3.2) and G-Eval-style evaluation steps from a task description — **gated**: a generated rubric cannot enter a production gate until it clears the §10.1.1 kappa + §10.5 ECE bar on held-out labels (what makes Beater's auto-rubric trustworthy where competitors' are vibes). `POST /v1/scorers/generate` **[contract]** | Judgment AutoRubrics, Opik G-Eval, Braintrust autoevals | M | contract |
+| 7.8 | **Conversation- & agent-trajectory named scorers** | catalog is single-turn-shaped | Add to `EVALUATOR_CATALOG`/§10.4: conversation-level (Coherence, Session-Completeness, User-Frustration) over §20.3 session/thread groups, and agent-trajectory (Tool-Selection-Quality, Tool-Error-Rate, Action-Advancement/Completion, Agent-Flow; RAG Context-Adherence, Chunk-Attribution/Utilization). Each pinned with §10.4 assumptions + CI; trajectory scorers use the §10.4 clustered process-reward aggregation, never per-step means **[contract]** | Opik &amp; Galileo agentic/conversation metrics | M | contract |
+| 7.9 | **User-simulator harness (multi-turn)** | harness has `simulation` replay (§11) but no user-simulator | Extend §12 harness with an **Understudy** user-simulator (persona + goal) + tool-simulator: drive a target agent through multi-turn scenarios, score the full trajectory with §7.8 scorers under §10.3 clustered stats. Enables agent leaderboards/benchmarks. `ScenarioRunner` gains a `Simulator` role | Galileo Agent Leaderboard sim engine, Judgment harness | L | design |
+| 7.10 | **End-user feedback ingest + preference mining** | human review exists; no app-side feedback API | `POST /v1/feedback` **[contract]** for app thumbs/edits/ratings on a trace/span/session (`Annotation.source = EndUser`); a preference-mining job converts approvals/edits/comparisons into preference pairs feeding §7.2 distilled-judge training and the §7 SFT/RL export — Judgment's "post-building flywheel" with Beater's held-out/calibration discipline | all (scores/feedback API), Judgment preference mining | M | contract |
+| 7.11 | **Typed trace query language (GQL) — CONDITIONAL, defers to §26.3** | strong filters + BM25, no expression language | §26.3 **deliberately declines** a BTQL-style DSL ("surface area without a sourced user pull"); the v1 answer stays §13 structured filters + Tantivy BM25. This row is the **escalation trigger, not a commitment**: *if* online-eval targeting (§20.6) or alert conditions (§13) hit a **measured** expressiveness limit, build a small typed **Groove Query Language** over canonical fields + attrs + scores, tenant-scoped + **weighted-by-default** (§9) — the honesty property Braintrust BTQL lacks. Until that limit is measured, NOT built | Braintrust BTQL | L | evidence |
+| 7.12 | **BYOC data-plane / control-plane split + Terraform** | §3.2 hosted cells, no formal BYOC topology | Formalize: customer-hosted **data plane** (ingest + stores + workers + judge/gateway, all payloads) vs Beater-hosted **control plane** (dashboard/auth/metadata only, no payloads); Terraform modules (AWS/GCP/Azure); documented residency boundary. Extends §20.7 #5.4/#5.6 | Braintrust hybrid, LangSmith BYOC | XL | design |
+| 7.13 | **Auto-instrumentation breadth parity** | §20.8 #6.3 covers the major frameworks | Extend the §20.8 #6.3 list (examples + token-usage extraction + 3-level span-tree tests): Mastra, Agno, AgentScope, LiveKit Agents, Strands, Google ADK, Instructor, LiteLLM, Smolagents + providers Bedrock/Mistral/Groq/Gemini — matching Braintrust's ~30 / Opik's 60+ breadth | Braintrust, Comet Opik integration breadth | M | evidence |
+
+Acceptance: a prompt-injection attempt is **blocked at runtime in < 200 ms** and shows
+as a `guardrail.check` span; a **distilled house-judge** gates a CI run only after
+clearing the calibration bar; the **gateway** proxies an OpenAI-compatible call, caches
+it, traces it, and online-scores it with no app SDK; failing production traces
+**auto-cluster into named issues**, each with a counterfactual root cause and one-click
+promote/guardrail/propose; an **embedding-drift** alert fires on a confidence sequence;
+an **evolutionary/MIPRO** proposal is *rejected* by the §21.4 guardrail for overfitting;
+an **auto-generated rubric** is refused at the gate until it clears kappa/ECE; a
+**simulated multi-turn user** drives an agent-leaderboard run; **end-user feedback**
+mines a preference pair into the post-training export. When these acceptance tests are
+green, "anything they can do, Beater can do — and gates it correctly" becomes an
+*auditable* claim (each row → a §22 test), not a slogan (§26.4). Until then it is a
+plan, marked `[planned]` throughout.
 
 ## 21. Planned: Recursive Self-Improvement (folded into `beater-mcp`)
 
@@ -2520,10 +2665,23 @@ Core tools:
   prompts rewritten, labels challenged) so the loop can see its own trajectory.
 - `challenge_labels` — flag dataset labels the evidence contradicts; route to the
   human grader (§21.6).
-- `suggest_scorers` — **advisory**: given the indexed agent + its traces, suggest
-  an archetype ("RAG agent", "tool-using planner", "browser agent") and a starter
-  set of §10.4 scorers/dimensions (§6.3) to measure it. Outcome-shaped advice, not
-  an API call the user must assemble.
+- `suggest_scorers` — **advisory + generative**: given the indexed agent + its
+  traces, suggest an archetype ("RAG agent", "tool-using planner", "browser agent")
+  and a starter set of §10.4 scorers/dimensions (§6.3) to measure it; and (Phase 7,
+  §20.10 #7.7) **generate** a structured `JudgeRubric` / G-Eval steps from a §20.10
+  #7.4 failure cluster — *gated*, so a generated rubric cannot reach a production gate
+  until it clears the §10.1.1 kappa + §10.5 ECE bar on held-out labels. Outcome-shaped
+  advice, not an API call the user must assemble.
+
+**Proposal strategies (Phase 7, §20.10 #7.6).** `propose_change` is not limited to
+LLM-rewrite: it dispatches over a pluggable `OptimizerStrategy = { LlmRewrite,
+FewShotBayesian, MIPRO, Evolutionary, GEPA, ParamSearch }` (the named prompt/agent
+optimizers Comet Opik / DSPy ship). Every strategy emits candidate `ChangeKind`s into
+the *same* `simulate` → frozen-Test gate → §21.4 anti-overfitting guardrail pipeline.
+This un-defers the evolutionary/population search §21 set aside — safely, because
+Beater's statistics (FWER/FDR, power, held-out Test) are exactly what stop an
+aggressive optimizer from manufacturing an overfit "win" — the multiple-comparison
+failure an un-gated optimizer cannot rule out.
 
 **Composite MCP tools (named recipes over operation-ids).** On top of the raw
 per-operation tools (§20), `beater-mcp` exposes a small set of **outcome-shaped
@@ -3387,6 +3545,7 @@ required gates are green.
 | --- | --- | --- |
 | **`backend`** | `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets -D warnings` (the workspace denies `unwrap`/`expect`, incl. tests); `cargo test --workspace`; the `sqlite_migrations` test (schema/migration drift, below) | `cargo fmt`, `cargo clippy …`, `cargo test --workspace` |
 | **`sdk-contract`** | the **whole contract chain has zero drift**: spec == served routes, spec == all **7** generated SDK clients (`regen-sdks.sh --check`), API-shape audit, semconv == all **5** semconv-carrying SDKs, and the additive-only `oasdiff` breaking-change check; MCP tools and the CLI resolve operations from the spec at runtime so they stay in sync automatically (drift coverage detailed below) | `scripts/check-contract-sync.sh` |
+| **`sdk-parity`** | **behavioral** parity across SDKs (§20.8 #6.5): all **7** generated SDK clients **plus native Rust** run one canonical scripted-agent program against a single recorder and must emit **byte-identical canonical OTLP envelopes** (modulo language/runtime-only fields), and each must match the declarative `surface-manifest.json` ergonomic API — the 4th (behavioral) drift surface that `sdk-contract`'s structural checks cannot see (drift coverage below) | `scripts/check-sdk-parity.sh` |
 | **`storage-backends`** | the `beater-store-conformance` trait suite runs against every backend (in-memory, SQLite today; Postgres/ClickHouse as wired, §20.2 #0.1), incl. tenant-isolation (A20) and the `#[ignore]`d container-backed store tests | `cargo test -p beater-store-conformance --workspace`; `cargo test -p beater-store-sql -- --ignored` |
 | **`frontend`** | dashboard build/lint/typecheck against the **generated** OpenAPI client, plus `check-openapi-drift.sh` so a UI change cannot silently diverge from the served spec | `scripts/check-openapi-drift.sh` |
 | **`browser`** | the `beater-browser*` family (Liveset) builds and its driver/capture tests pass | `cargo test` over the browser crates |
@@ -3443,6 +3602,18 @@ its single source without a gate going red.** The three drift surfaces of §1 #2
    reprojects the immutable raw envelopes (§1 #3) when the normalizer or canonical
    schema changes, so a schema change is always re-derivable rather than a
    destructive migration.
+
+A fourth, **behavioral** surface (§20.8 #6.5) closes what the three structural
+gates above cannot see. The three surfaces prove generated *code* and *constants*
+match their source, but the hand-authored ergonomic layer above each generated
+client — and the native Rust SDK (`sdks/rust`), which is not spec-generated at all
+(§3.3) — can still diverge while every structural gate stays green: two SDKs can
+each be spec- and semconv-conformant yet emit different wire bytes or expose a
+different method surface. The `sdk-parity` gate (`scripts/check-sdk-parity.sh`)
+runs one canonical scripted-agent program through all 7 generated SDKs plus native
+Rust against a single recorder, asserts **byte-identical canonical OTLP envelopes**
+(modulo language/runtime-only fields), and checks every SDK against a declarative
+`surface-manifest.json`, so behavioral drift — not just structural — is unmergeable.
 
 If any source changes without its generated artifact being regenerated and
 committed, the matching gate is red and the PR is unmergeable — drift cannot merge
@@ -3714,6 +3885,28 @@ to §18 milestones, §19 Bar-for-Done, §20/§21 phase items, and §22 tests.
 | Governance docs present | `LICENSE`, `GOVERNANCE.md`, `SECURITY.md`, `CONTRIBUTING.md` exist | §22.3 §20.7 #5.11 repo-presence check; `SECURITY.md` exists `[built]` | built (LICENSE + CONTRIBUTING + SECURITY + GOVERNANCE present); compliance docs `[planned]` |
 | Docs complete | quickstart + Claude-Code/Codex MCP setup + SDK & framework guides + API/MCP-tool reference exist and are verified by a new dev reaching first-scored-failure following **only** the docs (§15.1, §21.5b) | §22 docs-walkthrough check (a new dev hits first-scored-failure from docs alone) | partial (README/CONTRIBUTING/SECURITY/GOVERNANCE + `docs/` exist; user-facing guides + docs site `[planned]`) |
 | §19 Bar-for-Done all "yes" with evidence | every §19 question answerable **yes** with a green §22 verification | §22.4 traceability (milestone ⇒ §22 rows); §19 | planned (several answers still "no", §20.1) |
+
+### 24.4 Group D — Competitive-parity surfaces (Phase 7, §20.10 / §26.4 / R18)
+
+Post-MVP rows (they do **not** gate the OSS core loop in Group A). Each is **Done iff**
+its surface ships *with* its honesty gate — the held-out / calibrated / multiplicity-
+corrected discipline that makes the answer correct, not merely present. All **planned**
+today.
+
+| Capability | Binary done-criterion | Verified-by | Status |
+| --- | --- | --- | --- |
+| Runtime guardrails enforce | a prompt-injection attempt is **blocked in `p95 < 200ms`**, emits a `guardrail.check` span, and auto-builds a red-team dataset (R18.1) | §20.10 #7.1; `beater-guardrails` hook test + `POST /v1/guardrails/check` full-stack | planned |
+| Distilled judge is calibration-gated | a distilled house judge gates CI **only after** clearing the kappa + ECE bar vs the frozen frontier judge (R18.2) | §20.10 #7.2; gate-refusal test on an uncalibrated distilled judge | planned |
+| LLM gateway proxies + auto-traces | an OpenAI-compatible call is proxied, **cached, traced with zero SDK, and online-scored** (R18.3) | §20.10 #7.3; `POST /v1/gateway/chat/completions` integration test | planned |
+| Failure discovery → named issues | failing traces **auto-cluster into named issues**, each with a counterfactual root cause + weighted frequency (R18.4) | §20.10 #7.4; `beater-insights` clustering + `GET /v1/insights/issues` test | planned |
+| Embedding/distribution drift alert | a drift alert fires on an **anytime-valid confidence sequence** (not fixed-N), weighted by §9 (R18.5) | §20.10 #7.5; drift test on `beater-alerts` + mSPRT decision | planned |
+| Optimizer strategies are gate-bounded | a deliberately-overfit **MIPRO/evolutionary** candidate is **rejected** by the held-out + §21.4 guardrail (R18.6) | §20.10 #7.6; `OptimizerStrategy` overfit-reject test | planned |
+| Generated rubric is calibration-gated | an auto-generated rubric is **refused at the gate** until it clears kappa/ECE on held-out labels (R18.7) | §20.10 #7.7; `POST /v1/scorers/generate` + gate-refusal test | planned |
+| Conversation/trajectory scorers | named conversation + agent-trajectory scorers run with clustered process-reward aggregation (R18.8) | §20.10 #7.8; catalog tests (not per-step means) | planned |
+| User-simulator leaderboard | a **simulated multi-turn user** drives an agent run scored under clustered stats (R18.9) | §20.10 #7.9; harness `Simulator` scenario fixture | planned |
+| Feedback → preference pairs | end-user feedback is ingested and **mined into preference pairs** for the SFT/RL export (R18.10) | §20.10 #7.10; `POST /v1/feedback` + preference-mining job test | planned |
+| BYOC data/control-plane split | a customer **data plane holds all payloads**; control plane holds metadata only; Terraform applies (R18.11) | §20.10 #7.12; topology + residency-boundary conformance | planned |
+| Auto-instrumentation breadth | each named framework emits a correct 3-level span tree with token usage (R18.12) | §20.10 #7.13; per-framework span-tree integration tests | planned |
 
 **The project is shipped iff every row above is Done+Verified.** The unchecked
 rows — every row marked *partial* or *planned* — **ARE the remaining work**; the
@@ -4036,3 +4229,231 @@ contract (§25.3).
   **Soundstage**, and each screen carries its beat-box (Encore, Backbeat,
   Beatboxing, Setlist, Mixdown, Rewind, Crate Dig, Tempo/Heartbeat) crosswalk.
 
+## 26. Competitive Margins & Targeted Optimizations
+
+This section is the PM-level competitive audit: a teardown of what Arize Phoenix,
+Braintrust, LangSmith, Langfuse, Helicone, and Judgment (`judgeval`) actually ship
+(researched 2026-06-27; primary sources cited inline), the **structural margins
+Beater already holds**, and a **small, high-leverage set of targeted
+optimizations** that widen the gap *on the current §4.1 Rust stack* without
+over-engineering. The discipline is §1/§23's: prefer the boring, bounded,
+measurable win; add a mechanism only where it attacks a *named, sourced* incumbent
+weakness; and say plainly what we are **deliberately not building** (§26.3) so the
+document does not grow a feature it cannot justify. Every optimization names the
+**beat-box/crate** it extends and an honest **[built]/[partial]/[planned]/
+[deferred]** status; **none is a rewrite** — each is one additive impl behind an
+existing trait, gated by the existing §22 conformance/bench discipline.
+
+### 26.0 The convergent incumbent architecture (and the opening it leaves)
+
+Across the field, the scale answer converged on the same shape — a **4–6 process
+distributed system**: a columnar/OLAP trace store, a relational metadata DB, a
+queue, object storage, and one or more app/worker tiers. The columnar engine is
+either **proprietary** (Braintrust **Brainstore**, Arize **adb**) or an
+**ops-heavy cluster** (Langfuse and Helicone on **ClickHouse**). The one
+single-process exception, **Phoenix OSS**, pays for that simplicity with a
+**documented hard ceiling** — row-oriented JSON-in-Postgres goes "more or less
+non-functional" at **~200M spans / 2TB+**, the exact wall Arize reserves the paid
+`adb` product (Arrow + Parquet/Iceberg + Arrow Flight) to clear.
+
+| Incumbent | Trace store | Self-host shape | Sourced weakness Beater attacks |
+| --- | --- | --- | --- |
+| **Braintrust** | Brainstore (proprietary; object-storage WAL + Tantivy) | Enterprise-only | object-storage **latency floor** (cold query ≤500ms, write ~7s, async scoring), **per-GB "processed data" tax**, closed core, **no deterministic replay**, **no documented significance testing** |
+| **Arize Phoenix / AX** | OSS: SQLite/Postgres JSON row store; AX: `adb` (Arrow/Parquet/Iceberg) | OSS single Python container; scale → paid | OSS **~200M-span ceiling**, **ELv2** (not OSI-approved), Python hot path, "Span Replay" = single LLM-call only, **no CI merge-gate**, **LLM/token-only cost** |
+| **Langfuse** | ClickHouse (+ Postgres + Redis + S3) | full-featured but **5-service Helm** | heavy self-host ops, **eventual-consistency ingest lag** ("where's my trace?"), no replay, no first-class CI gate |
+| **LangSmith** | closed cloud | SaaS / BYOC (commercial) | closed, **per-seat + per-trace** cost at agent span volumes, LangChain lock-in |
+| **Helicone** | ClickHouse (+ Postgres + S3) | Apache-2.0, 5-service | **proxy on the hot path** (misses non-LLM agent steps); parts in maintenance mode |
+| **Judgment (`judgeval`)** | hosted only (`api.judgmentlabs.ai`) | OTLP shipper; **no local store** | **prompt-judge-only, zero statistical layer**, "replay" only re-scores judges (not the agent), hosted-dependent |
+
+The **whitespace no incumbent fills** — confirmed independently across all four
+teardowns — is the exact intersection Beater is built on: **Rust-first +
+local-first single binary + deterministic agent replay + framework-agnostic CI
+merge-gating + rigorous statistics + permissive (Apache-2.0) core.** §26.1 is what
+already delivers that intersection; §26.2 is how we widen it.
+
+### 26.1 Structural margins already in the design (do not rebuild)
+
+These are *already specified* in this document; named here only so the competitive
+map sits in one place. Each is a category an incumbent teardown showed is missing
+field-wide:
+
+- **Deterministic agent replay** (§11 Rewind) — cassettes for every nondeterministic
+  boundary + counterfactual earliest-flip attribution. *No incumbent has agent-run
+  replay*; Phoenix/Braintrust/Judgment "replay" only re-runs one LLM call or
+  re-scores a stored output.
+- **Framework-agnostic CI merge-gate on real statistics** (§10.3 Backbeat + §12 Cue)
+  — a powered, multiplicity-corrected, held-out gate. Braintrust's GitHub Action and
+  LangSmith's pytest are the only partial analogues, and both sit on weak/undocumented
+  stats; Judgment's gate sits on a single stochastic judge call.
+- **Statistical correctness as a product invariant** (§1 #9/#11, §10.3) —
+  Wilson/BCa-bootstrap/McNemar/Holm-BH/power/mSPRT. The teardowns found *no documented
+  significance testing* at Braintrust and *no statistical layer at all* in `judgeval`.
+- **One Apache-2.0 binary, no cloud dependency** (§1 #8, §2, §3.1) — vs Phoenix
+  **ELv2**, the closed Braintrust/LangSmith cores, and the 5-service Langfuse/Helicone
+  self-host.
+
+### 26.2 Targeted optimizations that widen the gap
+
+A tight set, ordered by leverage. Each attacks a §26.0 weakness, extends an existing
+crate, and is buildable on the §4.1 stack. Status is honest; the biggest get prose
+below the table.
+
+| # | Optimization | Incumbent weakness attacked | Where it lives | Status |
+| --- | --- | --- | --- | --- |
+| O1 | **Embedded columnar HOT tier** (DataFusion/Arrow over Parquet) as a first-class `TraceStore` backend, not cold-only | Brainstore/adb proprietary; Langfuse/Helicone need a ClickHouse cluster; Phoenix row-store 200M ceiling | Groove + Cold Storage (`beater-store-sql`/`beater-archive`) | [planned] |
+| O2 | **Synchronous, immediately-consistent ingest** as a stated guarantee (direct mode) | Langfuse/Braintrust async queue lag ("where's my trace?") | Upbeat (`beater-ingest`) + §16 SLO | [partial] (direct mode built; guarantee not codified) |
+| O3 | **Content-addressed (blake3 CAS) artifact/cassette store** with structural dedup of repeated prompts/tool-schemas/bodies | Braintrust per-GB tax on tens-of-MB spans; all incumbents store full bodies | Crate (`beater-store-obj`) | [planned] |
+| O4 | **Anytime-valid early-stop of eval/experiment runs** — stop once the gate is statistically decided at power | every incumbent runs **fixed-N** eval suites and bills every judge call | Backbeat (`beater-stats` mSPRT, reusing §10.3 #6) | [planned] |
+| O5 | **Verifier-first eval cascade** — cheap deterministic WASI scorers first, judge only on the unresolved/disputed remainder | Judgment/Phoenix/Braintrust route everything through the LLM judge | Backbeat (`beater-eval`/`beater-judge`) | [planned] |
+| O6 | **Cassette-backed, cached judge replay → ~zero-cost deterministic CI reruns** | incumbents re-call (and re-bill) the judge each CI run; judge stochasticity makes their gate flaky | Backbeat (judge cache §23.6 + Rewind §11) | [partial] (request-hash cache built; CI-rerun guarantee not codified) |
+| O7 | **blake3 on the hot hashing path** (payload/idempotency), SHA-256 only where an external contract requires it | n/a (pure micro-opt; resolves the §9 hash description) | Downbeat/Upbeat (`beater-core`/`beater-ingest`) | [planned] |
+| O8 | **Stock-OTel interop completeness** — the churn-prone new `gen_ai.*` names + the full OpenInference kind/attribute set (incl. `RERANKER`, `graph.node.*`, `llm.cost.*`) | adoption friction; "lights up any already-instrumented app with zero code" is the cheapest, highest-leverage interop win | Upbeat (`beater-otlp` normalizer, §7) | [partial] |
+
+**O1 — the headline macro-margin: an embedded columnar hot tier.** Today the doc
+positions the hot path as SQLite (default) → ClickHouse for scale (§8.2), with
+DataFusion/Arrow/Parquet confined to the **cold** archive (`beater-archive`). The
+teardowns show this leaves the single strongest structural margin on the table:
+**promote DataFusion-over-Parquet to a first-class *hot* analytical `TraceStore`
+backend** so the OSS **single binary** gets Brainstore/`adb`/ClickHouse-class trace
+analytics with **zero extra processes**. This is exactly Arize's proprietary `adb`
+(Arrow + Parquet/Iceberg + Arrow Flight) and Braintrust's Brainstore — except given
+away as Apache-2.0 in one binary, on deps Beater already vendors (`arrow`/`parquet`/
+`datafusion` in `beater-archive`). It collapses Langfuse's biggest complaint (the
+5-service ClickHouse Helm) and clears Phoenix's documented 200M-span row-store wall
+with no ops tier. It does **not** require beating ClickHouse on a 100-node cluster —
+that is still the §8.3 hosted answer; O1 is the *OSS-scale* answer the field lacks.
+Scope guard: O1 is one new `TraceStore` impl behind the existing §8.1 trait + §22
+conformance suite — additive, not a rewrite — and **no scale claim ships without the
+§20.2 #0.3 bench** (§1 honesty).
+
+**O3 — content-addressed dedup attacks the per-GB cost model structurally.** Agent
+traces are dominated by *repeated* bytes — the same system prompt and tool-schema on
+every span, the same retrieved document across a session (Braintrust itself cites
+tens-of-MB spans / tens-of-GB traces). A **blake3 content-addressed**
+`beater-store-obj` stores each distinct body **once** and references it everywhere
+(spans, traces, cassettes, exports), so storage scales with *distinct* content, not
+request count. Where Braintrust/Phoenix/Langfuse meter or strain on raw volume,
+Beater's footprint shrinks on the most repetitive workloads — a margin that compounds
+with O1 (smaller columnar payloads) and §11 cassettes (replay bodies dedup against
+trace bodies).
+
+**O4 — early-stopping evals is a cost margin no incumbent has.** Beater already
+mandates anytime-valid mSPRT/confidence sequences for the *online* path (§10.3 #6).
+The same e-process makes an *offline* eval/experiment batch **stop as soon as the
+gate verdict is statistically determined at the target power** — if 180 of 1,000
+cases already put the delta's confidence sequence cleanly past (or below) the bound,
+the remaining 820 judge calls are pure waste. Incumbents run the full fixed-N suite
+and bill every call; Beater returns the *same* error-controlled verdict for a fraction
+of the judge spend, and — because the stop is anytime-valid — without the peeking
+inflation a naive early-stop would cause (A7/A8). This reuses `beater-stats`; it is a
+scheduling policy over the existing gate, not new statistics.
+
+**O5 — the verifier-first cascade turns §21.2's philosophy into a cost mechanism.**
+§21.2 already weights the deterministic **verifier_gain** above the noisy
+**judge_gain**. O5 operationalizes that for cost: run the cheap, hermetic WASI scorers
+(§10.1 deterministic lane) **first**, and spend a judge call **only** on cases the
+deterministic lane cannot resolve or where a cheap signal disputes it. Judgment
+(prompt-judge-only) and Phoenix (every eval is an `llm_classify`) have no such
+cascade; the cascade is both cheaper and more reproducible because more verdicts come
+from the deterministic lane (A15/A16).
+
+### 26.3 Explicitly NOT building (anti-over-engineering guardrail)
+
+A PM audit is also the list of tempting things we are **declining**, each with the
+reason, so the document does not accrete them later by default:
+
+- **A proprietary columnar engine / a Brainstore-or-`adb` rewrite.** O1 *embeds*
+  `datafusion`; we do not hand-roll a columnar store. The margin is embedding the
+  boring engine, not building a clever one.
+- **A custom trace query language (à la Braintrust BTQL).** §13's structured filters +
+  Tantivy BM25 cover the need; a DSL is surface area without a sourced user pull.
+  Revisit only if filter expressiveness becomes a *measured* limit.
+- **A semantic (embedding-near) judge cache.** The exact request-hash cache (§23.6,
+  O6) is correctness-preserving; a fuzzy cache trades a cost win for silent eval
+  error — declined on §1 #9 honesty grounds.
+- **A bundled vector database (LanceDB/etc.).** Embedding similarity (§10.4) needs a
+  provider, not a new datastore; the deferred toolbelt (§21.6c) already houses managed
+  vector memory if it is ever productized.
+- **Multi-process by default.** §3.1/§23.9 stand: one binary until *measured*
+  pressure. O1 is what keeps that promise credible at scale, not a reason to break it.
+
+### 26.4 Product-surface parity — the features incumbents ship (closed by Phase 7, §20.10)
+
+§26.0–26.3 are the **infra / cost / replay / statistics** margins — the structural
+layer. But the incumbents also ship a layer of **named product surfaces** above the
+infra, and a complete "beat them in every field" claim has to answer those too. This
+subsection is that map (researched 2026-06-27 across Braintrust, Judgment, LangSmith,
+Langfuse, Arize, Comet Opik, Patronus, Galileo); the *engineering* that closes each is
+**Phase 7 (§20.10)**, and the *moat* is the same one §26.1 names: Beater's plan is to
+ship the surface AND **gate it with held-out statistics + calibration that no
+incumbent's version documents** (as of 2026-06-27, §26.0). A surface without a gate is
+a vibe; the gate is the product.
+
+> **Status (honest, per §4 convention): every "Beater's answer" below is `[planned]`
+> — none is built (see the §24.4 ledger), and most depend on Phases 0–6.** The claim is
+> "named, designed, and *gated by* the existing rigor," not "shipped." Competitor
+> capabilities are from the 2026-06-27 teardowns and marked **(GA)** / **(roadmap)** /
+> **(research-stage)** where the research could tell them apart; re-verify before any
+> external quote — incumbent internals move (§26.0).
+
+| Incumbent product surface | Who ships it (strongest) | Beater's answer *(all [planned], §24.4)* | The rigor edge (why ours is designed to be correct, not just present) |
+| --- | --- | --- | --- |
+| **Runtime guardrails / firewall** (block injection/PII/toxicity at the decision layer) | Galileo **Protect**, Opik Guardrails, Patronus, Arize/Guardrails-AI | **Bouncer** `beater-guardrails` (§20.10 #7.1) | every enforcement emits an observable `guardrail.check` span (§5.2) and is itself an eval; blocked attempts auto-build a red-team dataset — enforcement is *measured*, not a black box |
+| **Small/fast eval models** (cheap SLM judges) | Galileo **Luna-2** (multi-LoRA, single-token), Patronus **Lynx/Glider** | **Distilled house judge** `JudgeModelKind::Distilled` (§20.10 #7.2) | a distilled judge may gate **only after** clearing the §10.1.1 kappa + §10.5 ECE bar vs the frozen frontier judge — you *own* it and it is calibration-gated, not a trust-us SLM |
+| **LLM gateway / proxy** (cache, failover, 100+ models) | **Braintrust AI Proxy** (GA) | **Patchbay** `beater-gateway` (§20.10 #7.3) | **any model, BYOK optional** (managed default so you need not bring a key on hosted; OSS requires BYOK); every proxied call natively traced with **zero SDK** and online-scorable (§20.6); robust (retry/failover/cache/budget/timeout, key-redaction); **opt-in &amp; complementary to OTLP, never the sole instrumentation** (a proxy alone misses non-LLM steps — the §26.0 Helicone lesson) with its own hot-path availability SLO (§16) |
+| **Auto failure-discovery → named issues → root cause** | LangSmith **Insights/Engine** (GA), Galileo **Insights Engine** (GA), Judgment **Behavior Discovery** (roadmap), Patronus **Percival** (GA) | **Medley** `beater-insights` (§20.10 #7.4) | each named `FailureIssue` carries a §11 **counterfactual** earliest-flip root cause (not a heuristic guess) and sampling-weighted frequency (§9) — discovery on top of a *correct* attribution back-end |
+| **Auto-improvement loop** (auto-PRs / auto-optimize prompts from prod) | LangSmith **Engine**, Braintrust **Loop** (GA), Judgment harness (roadmap) | **§21 RSI** + optimizer strategies (§20.10 #7.6) | accepts a change **only** on the untouched Test split (§5.4) past FWER/FDR + power + the §21.4 Goodhart guardrail; repo writes OFF by default (§21.6). To our knowledge no incumbent loop documents a held-out + multiplicity-corrected acceptance gate (2026-06-27; re-verify) — so each is exposed to multiple-comparison overfitting |
+| **Named optimizers** (MIPRO/GEPA/evolutionary/Bayesian) | Comet **Opik Optimizer** (GA), DSPy, LangSmith **Polly** | `OptimizerStrategy` in `beater-experiments` (§20.10 #7.6) | the same optimizers, but every candidate flows through Beater's held-out + multiplicity-corrected gate — un-defers §21's evolutionary search *safely* |
+| **AutoRubric / G-Eval generation** | Judgment **AutoRubrics** (research-stage), Opik **G-Eval** (GA), Braintrust autoevals (GA) | generative `suggest_scorers` (§20.10 #7.7) | a generated rubric is **refused at the gate** until it clears kappa/ECE on held-out labels — auto-rubric you can trust in CI, not a generated guess |
+| **Conversation- & agent-trajectory metrics** | Comet Opik, Galileo (Tool-Selection, Action-Completion, Agent-Flow, …) | §10.4 catalog extension (§20.10 #7.8) | each pinned with its §10.4 assumptions + CI; trajectory scorers use clustered process-reward aggregation, never a per-step mean (A17) |
+| **Agent simulation / leaderboards** (user + tool simulator) | **Galileo Agent Leaderboard v2**, Judgment harness | **Understudy** simulator in the §12 harness (§20.10 #7.9) | built on the existing §11 `simulation` replay mode; trajectories scored under §10.3 clustered stats — a leaderboard with error bars |
+| **Embeddings / drift analysis** (UMAP, centroid/eval drift) | **Arize** (ML-observability heritage) | embedding-drift in `beater-alerts` + Medley (§20.10 #7.5) | drift decided on an **anytime-valid confidence sequence** (§10.3 #6), not a fixed-N peek; reported with §9 weighting, never a bare distance |
+| **Preference mining → reward / post-training** | **Judgment** ("post-building flywheel", largely roadmap) | feedback ingest + preference mining (§20.10 #7.10) → §7 SFT/RL export | preference pairs flow into the §7.2 calibration-gated judge and the held-out RSI loop — a flywheel with a brake |
+| **NL trace-analysis copilot** | LangSmith **Polly**, Arize **Alyx**, Opik **OpikAssist**, Braintrust **Loop**, Judgment Agent | **`beater-mcp` inside your coding agent** (§21.5b) | not a walled-garden chatbot — the *entire quantitative stack* (stats + calibration + held-out gate) attached to Claude Code / Codex / any MCP client, so the agent's self-improvement is statistically gated, not vibes |
+| **Prompt mgmt: runtime rollback + client caching** | **Langfuse**, LangSmith Prompt Hub | **Mixdown** `beater-prompts` (§20.6 #4.7) | already planned; add Langfuse's client-side cache + rollback-without-redeploy semantics as `PromptVersion` resolution properties |
+| **Auto-instrumentation breadth (~30–60 frameworks)** | Braintrust, Comet **Opik** | §20.8 #6.3 + §20.10 #7.13 | matches the breadth list (Mastra/Agno/AgentScope/LiveKit/Strands/ADK/…) on standards-first OTLP, no lock-in |
+| **BYOC data/control-plane split + Terraform** | Braintrust hybrid, LangSmith BYOC | §20.10 #7.12 (extends §20.7) | formal data-plane (all payloads on customer infra) / control-plane (metadata only) split with residency boundary |
+
+**Deliberately out of scope (stance, not a gap):** a **managed runtime for stateful
+agents** (LangSmith Deployment / LangGraph Platform) — Beater *observes, evaluates, and
+improves* agents; it does not host the customer's agent runtime. Hosting is a different
+product with a different failure surface; staying out of it keeps Beater framework- and
+runtime-agnostic (§1 #2). The §12 harness + §20.10 #7.9 simulator run agents *for
+evaluation*, which is not the same as being their production runtime.
+
+The net thesis: **for every product surface an incumbent is known for, Beater has a
+named, designed answer (this table), and that answer is gated by the held-out +
+calibrated + multiplicity-corrected statistics no incumbent's version documents** (as
+of 2026-06-27, §26.0). That is the intended difference between "we have the feature" and
+"the feature gives a *correct* answer" — and it is the only kind of lead that compounds:
+a competitor can copy a surface in a quarter, but not a platform where every number is
+error-controlled by construction (§1, §10.3). Phase 7 (§20.10) is the build order; this
+table is the scorecard; **none of it is shipped yet** (§24.4).
+
+### 26.5 Consistency check (this section vs the rest of the doc)
+
+- **O1/O2** extend §8 (storage planes, trait boundary) and are gated by §16 SLOs +
+  the §20.2 #0.3 bench — no scale claim without load evidence (§1 honesty).
+- **O3/O7** extend §5.3 (raw-envelope hashing) and §11 (cassettes), and resolve the §9
+  idempotency-key description to what `make_idempotency_key` actually computes
+  (corrected in §9).
+- **O4/O5/O6** extend §10.3 (`beater-stats`), §10.1 (lanes), §21.2 (typed reward), and
+  §23.6 (caches) — reuse, not new statistics.
+- **O8** extends §7 (normalizer) and §20.8 (ecosystem breadth); the new `gen_ai.*`
+  names and the `RERANKER`/`PROMPT` kinds are added to the §7 mapping note.
+- **§26.4 (product-surface parity)** maps 1:1 onto **Phase 7 (§20.10)**: each row's
+  "Beater's answer" is a §20.10 item, registered in §4 (new crates Bouncer/Patchbay/
+  Medley) and §5.1 (new entities `GuardrailPolicy`/`FailureIssue`/`FeedbackRecord`),
+  and folded into §10.4 (conversation/trajectory scorers), §12 (Understudy simulator),
+  §13 (failure discovery + embedding drift), and §21.1 (optimizer strategies +
+  generative `suggest_scorers`). The **GQL** item (#7.11) is held **conditional** so it
+  does not contradict §26.3's deliberate decline. It is also committed in
+  REQUIREMENTS.md **R18**, the §24.4 ledger, and milestone **v4** (§18). None of
+  Phase 7 weakens a §1 invariant — every new surface is gated by the existing §10.3
+  statistics + §10.1.1/§10.5 calibration + §5.4 held-out discipline.
+- Every optimization carries an honest [built]/[partial]/[planned]/[deferred] marker
+  (§4 convention) and a beat-box crosswalk; none is a rewrite. The competitive claims
+  trace to the 2026-06-27 teardowns (Braintrust Brainstore/benchmarks; Arize
+  Phoenix/`adb` + the ~200M-span community thread; Langfuse v3 ClickHouse stack;
+  Helicone gateway; `judgeval` source) and should be re-verified before any are quoted
+  externally — incumbent internals move.
