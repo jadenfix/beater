@@ -499,7 +499,13 @@ where
     }
 
     let mut sorted_spans = spans.to_vec();
-    sorted_spans.sort_by_key(|span| span.seq);
+    // Order by seq, breaking ties on span_id so attribution is deterministic even
+    // when two spans share a seq and the caller passes them in arbitrary order.
+    sorted_spans.sort_by(|a, b| {
+        a.seq
+            .cmp(&b.seq)
+            .then_with(|| a.span_id.as_str().cmp(b.span_id.as_str()))
+    });
 
     let mut probes = Vec::new();
     for span in sorted_spans.iter().take(fork_budget) {
@@ -574,17 +580,24 @@ const EVIDENCE_CONFIDENCE: f64 = 0.65;
 /// on to fail for an unrelated reason later. Here a failure followed by a later
 /// good span is treated as recovered and skipped.
 ///
-/// This is a deterministic analysis of the **recorded** trace. It does not
-/// re-execute the agent: *confirming* a flip by forking the replay and running
-/// the counterfactual suffix (true forked replay) requires the agent harness
-/// (§12) and is intentionally out of scope here.
+/// This is a deterministic, static analysis of the **recorded** trace — it does
+/// not re-execute anything. For *counterfactual* attribution that confirms a flip
+/// by fork-replaying each candidate span, see [`find_earliest_outcome_flip`],
+/// which takes an injected evaluator; the two are complementary (a cheap static
+/// hint vs. a verified dynamic search).
 pub fn attribute_failure(
     trace_id: TraceId,
     spans: &[CanonicalSpan],
     evidence: &[SpanEvidence],
 ) -> FailureAttribution {
     let mut sorted_spans = spans.to_vec();
-    sorted_spans.sort_by_key(|span| span.seq);
+    // Order by seq, breaking ties on span_id so attribution is deterministic even
+    // when two spans share a seq and the caller passes them in arbitrary order.
+    sorted_spans.sort_by(|a, b| {
+        a.seq
+            .cmp(&b.seq)
+            .then_with(|| a.span_id.as_str().cmp(b.span_id.as_str()))
+    });
 
     let evidence_score = |span: &CanonicalSpan| -> Option<f64> {
         evidence
@@ -845,6 +858,18 @@ mod tests {
         // The last span is healthy, so nothing is committed to failure.
         assert_eq!(attribution.root_cause_span_id, None);
         assert_eq!(attribution.confidence, 0.0);
+    }
+
+    #[test]
+    fn duplicate_seq_resolves_deterministically() {
+        let trace_id = TraceId::new("trace").unwrap_or_else(|err| panic!("{err}"));
+        // Two spans share seq=1 (one good, one error). The span_id tiebreaker makes
+        // the attribution identical regardless of caller input order.
+        let good = fixture_span("aaa-good", 1, SpanStatus::Ok);
+        let bad = fixture_span("bbb-bad", 1, SpanStatus::Error);
+        let forward = attribute_failure(trace_id.clone(), &[good.clone(), bad.clone()], &[]);
+        let reversed = attribute_failure(trace_id, &[bad, good], &[]);
+        assert_eq!(forward.root_cause_span_id, reversed.root_cause_span_id);
     }
 
     #[test]
