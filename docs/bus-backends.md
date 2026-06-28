@@ -91,7 +91,7 @@ Both are validated by the generic `trait_round_trip` helper in
 
 | `DurableBus` operation | NATS JetStream primitive |
 |---|---|
-| `publish` | `js.publish(subject, payload)` with `Nats-Msg-Id` header set to the idempotency key for server-side dedup (JetStream dedup window). |
+| `publish` | `js.publish(subject, payload)` with `Nats-Msg-Id` header set to the idempotency key for server-side dedup via the JetStream dedup window. **Limitation:** the JetStream dedup window is time-bounded (configurable, default 2 minutes); it does NOT provide permanent idempotency. Messages published beyond the dedup window with the same `Nats-Msg-Id` will be accepted again. The adapter must either use a sufficiently long dedup window or maintain its own persistent idempotency table keyed on `(tenant_id, project_id, kind, idempotency_key)` to satisfy Beater's application-level contract. |
 | `consume_batch` | `Consumer::fetch(limit)` from a durable pull consumer on the stream. |
 | `consume_kind_batch` | A per-kind subject filter; one consumer per kind subject prefix. |
 | `consume_scoped_kind_batch` | Subject hierarchy `bus.{tenant}.{project}.{kind}` with a per-tenant-project consumer. |
@@ -109,10 +109,29 @@ automatically re-delivered by JetStream after the consumer's `ack_wait` expires.
 only when wiring begins; do not add it to `beater-bus` (keeps the core crate
 dependency-free of network clients).
 
+**NATS JetStream idempotency note (important):**
+
+JetStream's `Nats-Msg-Id` dedup window is time-bounded (configurable via
+`stream.Duplicates`, default 2 minutes).  Messages published with the same
+`Nats-Msg-Id` beyond that window will be accepted as new messages.  This means
+JetStream server-side dedup alone does NOT satisfy Beater's permanent
+application-level idempotency contract.
+
+The `NatsJetStreamBus` adapter must either:
+
+- Set the dedup window to a value longer than any plausible producer retry window
+  (e.g. 24 h for a bounded guarantee), accepting the memory cost on the JetStream
+  server, OR
+- Maintain a persistent idempotency table keyed on
+  `(tenant_id, project_id, kind, idempotency_key)` and consult it before
+  publishing — equivalent to the consumer-side or producer-side dedup strategies
+  described for Kafka above.
+
 **Acceptance criteria:**
 
-1. `NatsJetStreamBus` passes the `trait_round_trip` helper (copy to a
+1. `NatsJetStreamBus` passes the `bus_conformance_suite` helper (copy to a
    conformance module or re-export and call from `beater-bus-nats/tests/`).
+   The idempotent-publish section must pass with the dedup strategy chosen.
 2. A container test (`testcontainers-modules::nats`) runs the full round-trip
    including crash recovery (kill consumer, restart, re-deliver inflight).
 3. `depth` matches `stream.info().state.num_pending + num_pending_pull_consumers`
@@ -129,7 +148,7 @@ dependency-free of network clients).
 
 | `DurableBus` operation | Kafka primitive |
 |---|---|
-| `publish` | Transactional `producer.send(record)` with idempotent producer enabled; idempotency key in header; dedup by Kafka's idempotent-producer sequence numbers per partition. |
+| `publish` | `producer.send(record)` with the idempotency key stored in a record header. **Important:** Kafka's `enable.idempotence=true` setting only deduplicates producer retries within a single producer session on a single partition (it prevents duplicate records from network retries). It does NOT provide application-level idempotency-key dedup. The adapter must implement Beater's `(tenant_id, project_id, kind, idempotency_key)` dedup contract itself — for example: a log-compacted keyed topic where the idempotency key is the Kafka message key (last-write-wins compaction), a consumer-side idempotency table (e.g. Redis/Postgres lookup before processing), or a dedup-store checked before producing. |
 | `consume_batch` | `consumer.poll(timeout)` up to `limit` records from a consumer group. Store offset advance only after ack. |
 | `consume_kind_batch` | Each `kind` is a dedicated topic; assign only the matching topic partition. |
 | `consume_scoped_kind_batch` | Topic-per-kind with a partition key of `{tenant_id}/{project_id}`; consumer group per-tenant if strict isolation needed. |
@@ -146,9 +165,32 @@ reassign partitions mid-batch.
 **No client deps yet:** add `rdkafka` or `rskafka` to `beater-bus-kafka/Cargo.toml`
 only when wiring begins; keep out of `beater-bus` core.
 
+**Kafka idempotency note (important):**
+
+Kafka's `enable.idempotence=true` at the producer level only prevents duplicate
+records caused by *producer retries within a session* (sequence-number-based
+dedup per partition-producer pair).  It does NOT deduplicate records based on
+Beater's `(tenant_id, project_id, kind, idempotency_key)` tuple across
+independent producer calls or across producer restarts.
+
+The `KafkaBus` adapter must implement Beater's application-level idempotency
+contract independently.  Recommended approaches (choose one):
+
+- **Log-compacted keyed topic:** use the idempotency key as the Kafka message
+  key; compaction ensures only the latest record per key survives.  Works for
+  publish dedup but introduces a compaction lag window during which duplicates
+  may be consumed.
+- **Consumer-side idempotency table:** before processing a message, check a
+  fast store (Redis, Postgres) for the idempotency key; skip if already seen.
+  Simpler operationally but moves the dedup responsibility to the consumer.
+- **Producer-side dedup store:** before calling `producer.send`, check a shared
+  store for the idempotency key; on hit, return `PublishAck::duplicate()` without
+  producing.  Keeps the bus contract intact but adds a synchronous round-trip.
+
 **Acceptance criteria:**
 
-1. `KafkaBus` passes the `trait_round_trip` helper.
+1. `KafkaBus` passes the `bus_conformance_suite` helper (including idempotent
+   publish assertions) with whichever dedup strategy is chosen.
 2. A container test (`testcontainers-modules::kafka` / Redpanda) runs round-trip
    including DLQ and replay paths.
 3. `depth` is computed from consumer lag, not from a broker-side count, so it
@@ -201,8 +243,12 @@ only when wiring begins; keep out of `beater-bus` core.
    `beater-bus = { path = "../beater-bus" }` and your broker client crate.
    Do **not** add broker deps to `beater-bus` itself.
 2. Implement `DurableBus` for your type.
-3. Call the shared `trait_round_trip` helper (or replicate it in an integration
-   test) to prove the seam.
+3. Call the shared `bus_conformance_suite` helper (re-export from `beater-bus`
+   tests or replicate it in an integration test) to prove the full contract:
+   idempotent publish, tenant-scoped consumption, retry/DLQ routing, depth
+   accounting, and backpressure.  Pass only after reading §4.1/4.2 idempotency
+   notes — the conformance helper will fail if your idempotency implementation is
+   absent or time-bounded without a sufficiently long window.
 4. Add a crash-recovery test (kill and restart your backend mid-inflight; verify
    unacked messages re-deliver).
 5. Wire via `Arc<dyn DurableBus>` in `beaterd`'s startup block behind an env
