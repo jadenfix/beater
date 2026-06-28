@@ -1136,6 +1136,53 @@ impl Default for IngestPolicy {
     }
 }
 
+impl IngestPolicy {
+    /// Validate that the configured limits form a coherent set, returning a
+    /// descriptive error for any impossible combination (e.g. an inline-artifact
+    /// cutoff larger than the raw payload limit, or zero/absurd timeouts). This is
+    /// intended to run at process startup so an operator gets a clear message
+    /// instead of a runtime panic or silent misbehavior.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_raw_payload_bytes == 0 {
+            return Err("max_raw_payload_bytes must be greater than 0".to_string());
+        }
+        if self.inline_payload_bytes > self.max_raw_payload_bytes {
+            return Err(format!(
+                "inline_payload_bytes ({}) must not exceed max_raw_payload_bytes ({}): \
+                 an inline cutoff larger than the raw payload limit can never trigger",
+                self.inline_payload_bytes, self.max_raw_payload_bytes
+            ));
+        }
+        if self.max_attributes == 0 {
+            return Err(
+                "max_attributes must be greater than 0 (a zero cap rejects every span)".to_string(),
+            );
+        }
+        if self.quota_window_seconds <= 0 {
+            return Err(format!(
+                "quota_window_seconds ({}) must be greater than 0",
+                self.quota_window_seconds
+            ));
+        }
+        if self.trace_write_max_attempts == 0 {
+            return Err("trace_write_max_attempts must be greater than 0".to_string());
+        }
+        if self.trace_completion.idle_timeout <= Duration::zero() {
+            return Err(format!(
+                "trace_completion.idle_timeout ({} ms) must be greater than 0",
+                self.trace_completion.idle_timeout.num_milliseconds()
+            ));
+        }
+        if self.trace_completion.late_window < Duration::zero() {
+            return Err(format!(
+                "trace_completion.late_window ({} ms) must not be negative",
+                self.trace_completion.late_window.num_milliseconds()
+            ));
+        }
+        Ok(())
+    }
+}
+
 fn default_denied_attributes() -> BTreeSet<String> {
     [
         "authorization",
@@ -3007,6 +3054,93 @@ mod tests {
             .await
             .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(trace.spans.len(), 0);
+    }
+
+    /// A custom (non-default) `max_raw_payload_bytes` actually changes ingest
+    /// behavior: a native request whose serialized form is just over the lowered
+    /// cap is rejected with `PayloadTooLarge`, and nothing is written or queued.
+    #[tokio::test]
+    async fn custom_max_raw_payload_bytes_rejects_oversized_request() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        let request = fixture_request();
+        // Size the cap one byte under the serialized request so it trips, proving
+        // the configured (non-default) limit is what governs acceptance.
+        let serialized_len = serde_json::to_vec(&request)
+            .unwrap_or_else(|err| panic!("{err}"))
+            .len();
+        let custom_cap = serialized_len - 1;
+        let service = IngestService::new(
+            artifacts,
+            traces.clone(),
+            bus.clone(),
+            IngestPolicy {
+                max_raw_payload_bytes: custom_cap,
+                ..IngestPolicy::default()
+            },
+        );
+
+        let error = service
+            .ingest_native(request.clone())
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("oversized request should be rejected"));
+        assert!(matches!(
+            error,
+            IngestError::PayloadTooLarge { limit_bytes, .. } if limit_bytes == custom_cap
+        ));
+        assert_eq!(bus.depth().await, Ok(0));
+        let trace = traces
+            .get_trace(request.scope.tenant_id, request.trace_id)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(trace.spans.len(), 0);
+    }
+
+    #[test]
+    fn ingest_policy_validate_accepts_defaults_and_rejects_impossible_combinations() {
+        // The shipped defaults are coherent.
+        IngestPolicy::default()
+            .validate()
+            .unwrap_or_else(|err| panic!("defaults should validate: {err}"));
+
+        // Inline cutoff larger than the raw payload limit can never trigger.
+        let inline_too_big = IngestPolicy {
+            max_raw_payload_bytes: 1024,
+            inline_payload_bytes: 2048,
+            ..IngestPolicy::default()
+        };
+        assert!(inline_too_big.validate().is_err());
+
+        // Zero attribute cap rejects every span.
+        let zero_attrs = IngestPolicy {
+            max_attributes: 0,
+            ..IngestPolicy::default()
+        };
+        assert!(zero_attrs.validate().is_err());
+
+        // Non-positive idle timeout is nonsensical.
+        let zero_idle = IngestPolicy {
+            trace_completion: TraceCompletionConfig {
+                idle_timeout: Duration::zero(),
+                ..TraceCompletionConfig::default()
+            },
+            ..IngestPolicy::default()
+        };
+        assert!(zero_idle.validate().is_err());
+
+        // Zero raw payload limit rejects everything.
+        let zero_raw = IngestPolicy {
+            max_raw_payload_bytes: 0,
+            inline_payload_bytes: 0,
+            ..IngestPolicy::default()
+        };
+        assert!(zero_raw.validate().is_err());
     }
 
     /// R4.5: an allow-list keeps only listed attribute keys and records the rest

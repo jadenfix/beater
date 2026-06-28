@@ -16,7 +16,7 @@ use beater_gates::SqliteGateStore;
 use beater_human::SqliteHumanReviewStore;
 use beater_ingest::{
     ImportError, IngestPolicy, IngestService, RawTraceIngestRequest, SourceImporter,
-    TRACE_INGESTED_KIND, TRACE_WRITE_BATCH_KIND,
+    TraceCompletionConfig, TRACE_INGESTED_KIND, TRACE_WRITE_BATCH_KIND,
 };
 use beater_judge::{
     HttpRoutingJudgeProvider, JudgeBrokerService, JudgeProvider, KeywordJudgeProvider,
@@ -95,6 +95,35 @@ struct Args {
     quota_window_seconds: i64,
     #[arg(long, env = "BEATER_QUOTA_DB_PATH")]
     quota_db_path: Option<PathBuf>,
+    /// Maximum serialized bytes accepted for a single ingest request; larger
+    /// payloads are rejected with PayloadTooLarge before any write.
+    #[arg(
+        long,
+        env = "BEATER_MAX_RAW_PAYLOAD_BYTES",
+        default_value_t = 1024 * 1024
+    )]
+    max_raw_payload_bytes: usize,
+    /// Inline-vs-artifact cutoff: span input/output payloads at or below this many
+    /// bytes are stored inline; larger ones are written to the artifact store and
+    /// referenced. Must not exceed --max-raw-payload-bytes.
+    #[arg(
+        long,
+        env = "BEATER_INLINE_PAYLOAD_BYTES",
+        default_value_t = 16 * 1024
+    )]
+    inline_payload_bytes: usize,
+    /// Maximum number of attributes accepted on a single span; spans carrying more
+    /// are rejected with TooManyAttributes before assembly.
+    #[arg(long, env = "BEATER_MAX_ATTRIBUTES", default_value_t = 128)]
+    max_attributes: usize,
+    /// Idle gap (seconds) after the last observed span end before an open trace is
+    /// treated as idle-complete during assembly.
+    #[arg(long, env = "BEATER_TRACE_IDLE_TIMEOUT_SECONDS", default_value_t = 60)]
+    trace_idle_timeout_seconds: i64,
+    /// How long (seconds) after the root span ends a trace stays open for
+    /// late-arriving child spans before it is treated as complete.
+    #[arg(long, env = "BEATER_TRACE_LATE_WINDOW_SECONDS", default_value_t = 10)]
+    trace_late_window_seconds: i64,
     #[arg(long, value_enum, default_value_t = AuthModeArg::Required)]
     auth_mode: AuthModeArg,
     #[arg(long, env = "BEATER_PROVIDER_SECRET_KEY")]
@@ -297,12 +326,26 @@ async fn main() -> anyhow::Result<()> {
         ),
         BusBackendArg::Memory => Arc::new(InMemoryBus::new(args.bus_capacity)),
     };
-    let ingest_policy = IngestPolicy {
-        per_project_event_quota: args.per_project_event_quota,
-        quota_window_seconds: args.quota_window_seconds,
-        trace_write_max_attempts: args.trace_write_max_attempts,
-        ..IngestPolicy::default()
-    };
+    // Fail fast with a descriptive error (not a panic) for impossible limit
+    // combinations — e.g. an inline cutoff larger than the raw payload limit, or
+    // zero/absurd timeouts — before any subsystem starts accepting traffic.
+    let ingest_policy = build_ingest_policy(&args)?;
+    // Operator-readable diagnostic of the resolved ingest limits, so the effective
+    // (possibly overridden) policy is visible at startup alongside the other
+    // config banners.
+    eprintln!(
+        "ingest policy: max_raw_payload_bytes={} inline_payload_bytes={} max_attributes={} \
+         per_project_event_quota={:?} quota_window_seconds={} trace_write_max_attempts={} \
+         trace_idle_timeout_seconds={} trace_late_window_seconds={}",
+        ingest_policy.max_raw_payload_bytes,
+        ingest_policy.inline_payload_bytes,
+        ingest_policy.max_attributes,
+        ingest_policy.per_project_event_quota,
+        ingest_policy.quota_window_seconds,
+        ingest_policy.trace_write_max_attempts,
+        args.trace_idle_timeout_seconds,
+        args.trace_late_window_seconds,
+    );
     // Keep a handle to the global, unfiltered bus so the queue-stats sampler can
     // observe DLQ depth/age across ALL tenants (R13.4/R13.6/R13.8), not just the
     // default scope.
@@ -455,6 +498,29 @@ async fn main() -> anyhow::Result<()> {
     };
     tokio::try_join!(http_server, grpc_server)?;
     Ok(())
+}
+
+/// Resolve the runtime [`IngestPolicy`] from parsed CLI/env args and validate it.
+/// Returns a descriptive error (never panics) for impossible limit combinations
+/// so an operator gets a clear startup failure.
+fn build_ingest_policy(args: &Args) -> anyhow::Result<IngestPolicy> {
+    let policy = IngestPolicy {
+        max_raw_payload_bytes: args.max_raw_payload_bytes,
+        inline_payload_bytes: args.inline_payload_bytes,
+        max_attributes: args.max_attributes,
+        per_project_event_quota: args.per_project_event_quota,
+        quota_window_seconds: args.quota_window_seconds,
+        trace_write_max_attempts: args.trace_write_max_attempts,
+        trace_completion: TraceCompletionConfig {
+            idle_timeout: chrono::Duration::seconds(args.trace_idle_timeout_seconds),
+            late_window: chrono::Duration::seconds(args.trace_late_window_seconds),
+        },
+        ..IngestPolicy::default()
+    };
+    policy
+        .validate()
+        .map_err(|reason| anyhow::anyhow!("invalid ingest policy configuration: {reason}"))?;
+    Ok(policy)
 }
 
 fn migrate_local_sqlite_stores(paths: &[PathBuf]) -> anyhow::Result<()> {
@@ -1234,5 +1300,88 @@ mod auth_default_tests {
     fn auth_mode_required_parses() {
         let args = Args::parse_from(["beaterd", "--auth-mode", "required"]);
         assert_eq!(args.auth_mode, AuthModeArg::Required);
+    }
+}
+
+#[cfg(test)]
+mod ingest_policy_arg_tests {
+    use super::*;
+
+    // #248: with no ingest flags the resolved policy matches the library defaults
+    // and validates cleanly.
+    #[test]
+    fn ingest_policy_defaults_match_library_defaults() {
+        let args = Args::parse_from(["beaterd"]);
+        let policy = build_ingest_policy(&args).unwrap_or_else(|err| panic!("{err}"));
+        let defaults = IngestPolicy::default();
+        assert_eq!(policy.max_raw_payload_bytes, defaults.max_raw_payload_bytes);
+        assert_eq!(policy.inline_payload_bytes, defaults.inline_payload_bytes);
+        assert_eq!(policy.max_attributes, defaults.max_attributes);
+        assert_eq!(
+            policy.trace_completion.idle_timeout,
+            defaults.trace_completion.idle_timeout
+        );
+        assert_eq!(
+            policy.trace_completion.late_window,
+            defaults.trace_completion.late_window
+        );
+    }
+
+    // #248: each knob flows from CLI flag into the resolved policy.
+    #[test]
+    fn ingest_policy_overrides_flow_from_flags() {
+        let args = Args::parse_from([
+            "beaterd",
+            "--max-raw-payload-bytes",
+            "2048",
+            "--inline-payload-bytes",
+            "512",
+            "--max-attributes",
+            "32",
+            "--trace-idle-timeout-seconds",
+            "120",
+            "--trace-late-window-seconds",
+            "5",
+        ]);
+        let policy = build_ingest_policy(&args).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(policy.max_raw_payload_bytes, 2048);
+        assert_eq!(policy.inline_payload_bytes, 512);
+        assert_eq!(policy.max_attributes, 32);
+        assert_eq!(
+            policy.trace_completion.idle_timeout,
+            chrono::Duration::seconds(120)
+        );
+        assert_eq!(
+            policy.trace_completion.late_window,
+            chrono::Duration::seconds(5)
+        );
+    }
+
+    // #248: an inline cutoff larger than the raw payload limit is an impossible
+    // combination and must fail at startup with a descriptive error, not a panic.
+    #[test]
+    fn ingest_policy_rejects_inline_cutoff_over_raw_limit() {
+        let args = Args::parse_from([
+            "beaterd",
+            "--max-raw-payload-bytes",
+            "1024",
+            "--inline-payload-bytes",
+            "4096",
+        ]);
+        let err = build_ingest_policy(&args)
+            .err()
+            .unwrap_or_else(|| panic!("oversized inline cutoff should be rejected"));
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("inline_payload_bytes") && msg.contains("max_raw_payload_bytes"),
+            "error should name the offending limits, got: {msg}"
+        );
+    }
+
+    // #248: a zero idle timeout is absurd and must be rejected.
+    #[test]
+    fn ingest_policy_rejects_zero_idle_timeout() {
+        let args = Args::parse_from(["beaterd", "--trace-idle-timeout-seconds", "0"]);
+        assert!(build_ingest_policy(&args).is_err());
     }
 }
