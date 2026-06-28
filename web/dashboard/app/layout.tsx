@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./beater-ui.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
