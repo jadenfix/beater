@@ -1315,6 +1315,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sqlite_scoped_kind_consumption_preserves_other_tenants() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let path = tempdir.path().join("bus.sqlite");
+        let bus = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let tenant_a = TenantId::new("tenant-a").unwrap_or_else(|err| panic!("{err}"));
+        let tenant_b = TenantId::new("tenant-b").unwrap_or_else(|err| panic!("{err}"));
+        let project = ProjectId::new("project").unwrap_or_else(|err| panic!("{err}"));
+        let a_message = scoped_fixture_message(&tenant_a, &project, "trace.write_batch", "a");
+        let b_message = scoped_fixture_message(&tenant_b, &project, "trace.write_batch", "b");
+
+        bus.publish(a_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        bus.publish(b_message.clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let consumed = bus
+            .consume_scoped_kind_batch(&tenant_a, &project, "trace.write_batch", 10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(consumed, vec![a_message]);
+        bus.ack(consumed[0].clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(bus.depth_for_kind("trace.write_batch").await, Ok(1));
+        drop(bus);
+
+        let reopened = SqliteDurableBus::open(&path, 8).unwrap_or_else(|err| panic!("{err}"));
+        let remaining = reopened
+            .consume_batch(10)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(remaining, vec![b_message]);
+        reopened
+            .ack(remaining[0].clone())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+    }
+
+    #[tokio::test]
     async fn sqlite_bus_persists_retry_attempts_and_dlq_across_reopen() {
         let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
         let path = tempdir.path().join("bus.sqlite");
