@@ -734,7 +734,11 @@ dependencies = [
 name = "beater-bench"
 version = "0.1.0"
 dependencies = [
+ "beater-core",
+ "beater-schema",
+ "chrono",
  "criterion",
+ "serde_json",
 ]
 
 [[package]]
