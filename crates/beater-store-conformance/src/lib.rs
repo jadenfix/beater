@@ -379,12 +379,21 @@ where
         )
         .await
         .unwrap_or_else(|err| panic!("{err}"));
-    assert_eq!(zero_limit_span_page.items.len(), 1);
+    assert_eq!(
+        zero_limit_span_page.items.len(),
+        1,
+        "limit: 0 must normalize to a single-item page rather than returning nothing"
+    );
     assert_eq!(
         span_ids(&zero_limit_span_page.items),
         vec!["pagination-span-3"]
     );
-    assert_eq!(zero_limit_span_page.next_cursor, Some("1".to_string()));
+    // The cursor is opaque (in-memory offset vs. SQLite keyset seek key); only
+    // assert that a further page is advertised, never its literal encoding.
+    assert!(
+        zero_limit_span_page.next_cursor.is_some(),
+        "a normalized limit: 0 page over 3 spans must advertise a next cursor"
+    );
 
     let first_run_page = store
         .query_runs(
