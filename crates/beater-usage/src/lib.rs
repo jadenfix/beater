@@ -152,6 +152,14 @@ pub trait UsageLedgerStore: Send + Sync {
     ) -> StoreResult<UsageSummary>;
 }
 
+/// Maximum number of usage rows read per page when folding a rollup.
+///
+/// [`SqliteUsageLedger::summarize_usage`] pages the ledger in batches of this
+/// size so its working set stays O(batch) instead of O(total rows). Picked to
+/// amortize per-statement overhead while keeping the in-flight row buffer small
+/// on a multi-million-row billing ledger.
+const SUMMARY_BATCH_SIZE: i64 = 10_000;
+
 #[derive(Clone)]
 pub struct SqliteUsageLedger {
     connection: Arc<Mutex<Connection>>,
@@ -374,51 +382,78 @@ impl UsageLedgerStore for SqliteUsageLedger {
         let connection = self.lock().into_store()?;
         // Fold the per-row quantities in Rust with checked arithmetic. SQLite's
         // `SUM` silently promotes to a float on i64 overflow (corrupting money),
-        // so we never let the database do the summation. Rows are read raw
-        // (no GROUP BY) so a per-meter unit/currency mismatch surfaces as a
-        // typed error instead of silently overwriting a bucket.
+        // so we never let the database do the summation, and we never `GROUP BY`
+        // (a collapsed bucket would hide a per-meter unit/currency mismatch).
+        //
+        // To keep memory O(batch) rather than O(total rows) on a large billing
+        // ledger, rows are paged in bounded, rowid-ordered batches instead of
+        // materializing the whole result set. Each batch is folded into the
+        // running totals with `checked_add` and then dropped, so the working set
+        // never scales with the tenant/project's lifetime row count.
         let mut statement = connection
             .prepare(
                 r#"
-                SELECT meter, unit, quantity
+                SELECT rowid, meter, unit, quantity
                 FROM usage_records
                 WHERE tenant_id = ?1 AND project_id = ?2
-                ORDER BY meter ASC, unit ASC
+                  AND rowid > ?3
+                ORDER BY rowid ASC
+                LIMIT ?4
                 "#,
             )
             .context("prepare usage summary query")
             .into_store()?;
-        let rows = statement
-            .query_map(params![tenant_id.as_str(), project_id.as_str()], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
-            })
-            .context("query usage summary")
-            .into_store()?;
         let mut totals: BTreeMap<String, UsageTotal> = BTreeMap::new();
-        for row in rows {
-            let (meter, unit, quantity) = row.context("read usage summary row").into_store()?;
-            match totals.get_mut(&meter) {
-                None => {
-                    totals.insert(meter, UsageTotal { quantity, unit });
-                }
-                Some(total) => {
-                    if total.unit != unit {
-                        return Err(StoreError::Integrity(format!(
-                            "usage rollup unit mismatch for meter {meter}: \
-                             cannot sum {} and {}",
-                            total.unit, unit
-                        )));
-                    }
-                    total.quantity = total.quantity.checked_add(quantity).ok_or_else(|| {
-                        StoreError::Integrity(format!(
-                            "usage rollup overflow summing quantities for meter {meter}"
+        let mut last_rowid: i64 = 0;
+        loop {
+            let mut batch_len: usize = 0;
+            let rows = statement
+                .query_map(
+                    params![
+                        tenant_id.as_str(),
+                        project_id.as_str(),
+                        last_rowid,
+                        SUMMARY_BATCH_SIZE
+                    ],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?,
                         ))
-                    })?;
+                    },
+                )
+                .context("query usage summary")
+                .into_store()?;
+            for row in rows {
+                let (rowid, meter, unit, quantity) =
+                    row.context("read usage summary row").into_store()?;
+                last_rowid = rowid;
+                batch_len += 1;
+                match totals.get_mut(&meter) {
+                    None => {
+                        totals.insert(meter, UsageTotal { quantity, unit });
+                    }
+                    Some(total) => {
+                        if total.unit != unit {
+                            return Err(StoreError::Integrity(format!(
+                                "usage rollup unit mismatch for meter {meter}: \
+                                 cannot sum {} and {}",
+                                total.unit, unit
+                            )));
+                        }
+                        total.quantity = total.quantity.checked_add(quantity).ok_or_else(|| {
+                            StoreError::Integrity(format!(
+                                "usage rollup overflow summing quantities for meter {meter}"
+                            ))
+                        })?;
+                    }
                 }
+            }
+            // A short (or empty) page means we've drained the ledger.
+            if batch_len < SUMMARY_BATCH_SIZE as usize {
+                break;
             }
         }
         Ok(UsageSummary {
@@ -1006,6 +1041,79 @@ mod tests {
             error,
             StoreError::Integrity(message) if message.contains("unit mismatch")
         ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rollup_pages_across_multiple_batches() -> anyhow::Result<()> {
+        // More rows than one page proves the chunked fold accumulates correctly
+        // across batch boundaries rather than only summing the first page.
+        let store = SqliteUsageLedger::in_memory()?;
+        let rows = SUMMARY_BATCH_SIZE + 137;
+        for index in 0..rows {
+            store
+                .record_usage(charge(&format!("call-{index}"), 1)?)
+                .await?;
+        }
+
+        let summary = store
+            .summarize_usage(TenantId::new("tenant")?, ProjectId::new("project")?)
+            .await?;
+        // Each of `rows` distinct rows contributes quantity 1.
+        assert_eq!(summary_quantity(&summary), Some(rows));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rollup_matches_manual_fold_semantics() -> anyhow::Result<()> {
+        // The paged rollup must equal a straightforward checked fold over every
+        // recorded quantity (the previous in-memory fold semantics from #174),
+        // including across a batch boundary.
+        let store = SqliteUsageLedger::in_memory()?;
+        let mut expected: i64 = 0;
+        let count = SUMMARY_BATCH_SIZE + 50;
+        for index in 0..count {
+            let quantity = (index % 17) + 1;
+            store
+                .record_usage(charge(&format!("call-{index}"), quantity)?)
+                .await?;
+            expected = expected
+                .checked_add(quantity)
+                .ok_or_else(|| anyhow!("test fold overflow"))?;
+        }
+
+        let summary = store
+            .summarize_usage(TenantId::new("tenant")?, ProjectId::new("project")?)
+            .await?;
+        assert_eq!(summary_quantity(&summary), Some(expected));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rollup_large_quantities_fold_without_precision_loss() -> anyhow::Result<()> {
+        // Two near-i64::MAX values whose exact sum is not representable as an
+        // f64 without rounding. A SQLite `SUM` would promote to float and lose
+        // precision; the checked Rust fold keeps the exact integer total.
+        let store = SqliteUsageLedger::in_memory()?;
+        let a: i64 = i64::MAX / 2;
+        let b: i64 = (i64::MAX / 2) - 1;
+        store.record_usage(charge("big-a", a)?).await?;
+        store.record_usage(charge("big-b", b)?).await?;
+
+        let summary = store
+            .summarize_usage(TenantId::new("tenant")?, ProjectId::new("project")?)
+            .await?;
+        let expected = a
+            .checked_add(b)
+            .ok_or_else(|| anyhow!("test setup overflow"))?;
+        assert_eq!(summary_quantity(&summary), Some(expected));
+        // Sanity: the exact integer total differs from the f64 round-trip,
+        // proving we did not go through a float `SUM`.
+        let via_float = (a as f64 + b as f64) as i64;
+        assert_ne!(
+            expected, via_float,
+            "test fixture must exercise float precision loss"
+        );
         Ok(())
     }
 
