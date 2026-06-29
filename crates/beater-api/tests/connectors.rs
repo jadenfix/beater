@@ -5,6 +5,7 @@
 //! Beater wiring (router → auth → handler → connector trait → response) with no
 //! network. The live wire contract is covered by `beater-composio`'s
 //! `COMPOSIO_API_KEY`-gated tests.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use async_trait::async_trait;
 use axum::body::{to_bytes, Body};
