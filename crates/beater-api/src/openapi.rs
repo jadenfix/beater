@@ -26,6 +26,12 @@ use utoipa::OpenApi;
         crate::list_provider_secrets_route,
         crate::create_provider_secret_route,
         crate::revoke_provider_secret_route,
+        crate::list_connectors_route,
+        crate::list_connector_tools_route,
+        crate::connector_skills_route,
+        crate::connect_connector_route,
+        crate::connector_status_route,
+        crate::invoke_connector_tool_route,
         crate::run_judge_eval_route,
         crate::list_judge_ledger_route,
         crate::get_usage_summary_route,
@@ -79,7 +85,8 @@ use utoipa::OpenApi;
         (name = "usage", description = "Usage summaries"),
         (name = "audit", description = "Audit events"),
         (name = "apiKeys", description = "API key management"),
-        (name = "providerSecrets", description = "Provider secret management")
+        (name = "providerSecrets", description = "Provider secret management"),
+        (name = "connectors", description = "Composio-backed third-party tool connectors")
     )
 )]
 pub struct BeaterApi;

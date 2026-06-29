@@ -11,6 +11,7 @@ use beater_auth::SqliteApiKeyStore;
 use beater_billing::SqliteBillingStore;
 use beater_bus::{DeadLetter, DurableBus, InMemoryBus, SqliteDurableBus};
 use beater_calibration::SqliteCalibrationStore;
+use beater_composio::HttpComposioClient;
 use beater_core::{IdempotencyKey, Money, Page, PageRequest, ProjectId, TenantId, TraceId};
 use beater_datasets::SqliteDatasetStore;
 use beater_experiments::SqliteExperimentStore;
@@ -463,6 +464,12 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "billing")]
     {
         state = state.with_billing(billing, args.stripe_webhook_secret.clone().into_bytes());
+    }
+    // Composio-backed connectors are opt-in: only when `COMPOSIO_API_KEY` is set
+    // does the `/v1/connectors` surface come online. Unset → the endpoints report
+    // 501 and beaterd runs with zero third-party cloud dependency (OSS default).
+    if let Some(connectors) = HttpComposioClient::from_env() {
+        state = state.with_connectors(Arc::new(connectors));
     }
     // Build the API-key store once (strict auth only) and share it between the
     // `/v1` auth path and the session-authorized `/auth/api-keys` endpoints.

@@ -72,6 +72,11 @@ set(SRCS
     model/canonical_span.c
     model/case_experiment_score.c
     model/case_output_override_request.c
+    model/connect_connector_request.c
+    model/connection_link.c
+    model/connection_status.c
+    model/connector_skills_response.c
+    model/connector_tool.c
     model/create_api_key_http_request.c
     model/create_dataset_request.c
     model/create_dataset_version_request.c
@@ -116,6 +121,7 @@ set(SRCS
     model/inconclusive_policy.c
     model/ingest_outcome.c
     model/ingest_queue_status.c
+    model/invoke_connector_request.c
     model/judge_audit_record.c
     model/judge_broker_outcome.c
     model/maintenance_window.c
@@ -164,6 +170,8 @@ set(SRCS
     model/submit_review_annotation_http_request.c
     model/tenant_scope.c
     model/token_counts.c
+    model/tool_execution.c
+    model/toolkit.c
     model/trace_ingested_drain_report.c
     model/trace_ingested_reconcile_report.c
     model/trace_view.c
@@ -177,6 +185,7 @@ set(SRCS
     api/ArchiveAPI.c
     api/AuditAPI.c
     api/CalibrationsAPI.c
+    api/ConnectorsAPI.c
     api/DatasetsAPI.c
     api/EvalsAPI.c
     api/ExperimentsAPI.c
@@ -226,6 +235,11 @@ set(HDRS
     model/canonical_span.h
     model/case_experiment_score.h
     model/case_output_override_request.h
+    model/connect_connector_request.h
+    model/connection_link.h
+    model/connection_status.h
+    model/connector_skills_response.h
+    model/connector_tool.h
     model/create_api_key_http_request.h
     model/create_dataset_request.h
     model/create_dataset_version_request.h
@@ -270,6 +284,7 @@ set(HDRS
     model/inconclusive_policy.h
     model/ingest_outcome.h
     model/ingest_queue_status.h
+    model/invoke_connector_request.h
     model/judge_audit_record.h
     model/judge_broker_outcome.h
     model/maintenance_window.h
@@ -318,6 +333,8 @@ set(HDRS
     model/submit_review_annotation_http_request.h
     model/tenant_scope.h
     model/token_counts.h
+    model/tool_execution.h
+    model/toolkit.h
     model/trace_ingested_drain_report.h
     model/trace_ingested_reconcile_report.h
     model/trace_view.h
@@ -331,6 +348,7 @@ set(HDRS
     api/ArchiveAPI.h
     api/AuditAPI.h
     api/CalibrationsAPI.h
+    api/ConnectorsAPI.h
     api/DatasetsAPI.h
     api/EvalsAPI.h
     api/ExperimentsAPI.h
@@ -431,6 +449,7 @@ set(HDRS "")
 #    unit-tests/manual-ArchiveAPI.c
 #    unit-tests/manual-AuditAPI.c
 #    unit-tests/manual-CalibrationsAPI.c
+#    unit-tests/manual-ConnectorsAPI.c
 #    unit-tests/manual-DatasetsAPI.c
 #    unit-tests/manual-EvalsAPI.c
 #    unit-tests/manual-ExperimentsAPI.c

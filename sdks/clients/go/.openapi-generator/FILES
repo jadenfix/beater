@@ -8,6 +8,7 @@ api_api_keys.go
 api_archive.go
 api_audit.go
 api_calibrations.go
+api_connectors.go
 api_datasets.go
 api_evals.go
 api_experiments.go
@@ -53,6 +54,12 @@ docs/CalibrationsAPI.md
 docs/CanonicalSpan.md
 docs/CaseExperimentScore.md
 docs/CaseOutputOverrideRequest.md
+docs/ConnectConnectorRequest.md
+docs/ConnectionLink.md
+docs/ConnectionStatus.md
+docs/ConnectorSkillsResponse.md
+docs/ConnectorTool.md
+docs/ConnectorsAPI.md
 docs/CreateApiKeyHttpRequest.md
 docs/CreateDatasetRequest.md
 docs/CreateDatasetVersionRequest.md
@@ -103,6 +110,7 @@ docs/InconclusivePolicy.md
 docs/IngestAPI.md
 docs/IngestOutcome.md
 docs/IngestQueueStatus.md
+docs/InvokeConnectorRequest.md
 docs/JudgeAPI.md
 docs/JudgeAuditRecord.md
 docs/JudgeBrokerOutcome.md
@@ -157,6 +165,8 @@ docs/StatisticalTest.md
 docs/SubmitReviewAnnotationHttpRequest.md
 docs/TenantScope.md
 docs/TokenCounts.md
+docs/ToolExecution.md
+docs/Toolkit.md
 docs/TraceIngestedDrainReport.md
 docs/TraceIngestedReconcileReport.md
 docs/TraceView.md
@@ -194,6 +204,11 @@ model_calibration_report.go
 model_canonical_span.go
 model_case_experiment_score.go
 model_case_output_override_request.go
+model_connect_connector_request.go
+model_connection_link.go
+model_connection_status.go
+model_connector_skills_response.go
+model_connector_tool.go
 model_create_api_key_http_request.go
 model_create_dataset_request.go
 model_create_dataset_version_request.go
@@ -238,6 +253,7 @@ model_import_source_http_request.go
 model_inconclusive_policy.go
 model_ingest_outcome.go
 model_ingest_queue_status.go
+model_invoke_connector_request.go
 model_judge_audit_record.go
 model_judge_broker_outcome.go
 model_maintenance_window.go
@@ -286,6 +302,8 @@ model_statistical_test_.go
 model_submit_review_annotation_http_request.go
 model_tenant_scope.go
 model_token_counts.go
+model_tool_execution.go
+model_toolkit.go
 model_trace_ingested_drain_report.go
 model_trace_ingested_reconcile_report.go
 model_trace_view.go
@@ -300,6 +318,7 @@ test/api_api_keys_test.go
 test/api_archive_test.go
 test/api_audit_test.go
 test/api_calibrations_test.go
+test/api_connectors_test.go
 test/api_datasets_test.go
 test/api_evals_test.go
 test/api_experiments_test.go

@@ -21,6 +21,7 @@ members = [
   "crates/beater-oauth",
   "crates/beater-oauth-server",
   "crates/beater-secrets",
+  "crates/beater-composio",
   "crates/beater-judge",
   "crates/beater-sandbox",
   "crates/beater-browser",

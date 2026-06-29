@@ -128,6 +128,18 @@ Class | Method | HTTP request | Description
 *AuditApi* | [**listAuditEventsWithHttpInfo**](docs/AuditApi.md#listAuditEventsWithHttpInfo) | **GET** /v1/audit/{tenant_id}/{project_id} | 
 *CalibrationsApi* | [**runCalibration**](docs/CalibrationsApi.md#runCalibration) | **POST** /v1/calibrations/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id} | 
 *CalibrationsApi* | [**runCalibrationWithHttpInfo**](docs/CalibrationsApi.md#runCalibrationWithHttpInfo) | **POST** /v1/calibrations/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id} | 
+*ConnectorsApi* | [**connectConnector**](docs/ConnectorsApi.md#connectConnector) | **POST** /v1/connectors/{tenant_id}/{project_id}/connect | 
+*ConnectorsApi* | [**connectConnectorWithHttpInfo**](docs/ConnectorsApi.md#connectConnectorWithHttpInfo) | **POST** /v1/connectors/{tenant_id}/{project_id}/connect | 
+*ConnectorsApi* | [**connectorStatus**](docs/ConnectorsApi.md#connectorStatus) | **GET** /v1/connectors/{tenant_id}/{project_id}/status | 
+*ConnectorsApi* | [**connectorStatusWithHttpInfo**](docs/ConnectorsApi.md#connectorStatusWithHttpInfo) | **GET** /v1/connectors/{tenant_id}/{project_id}/status | 
+*ConnectorsApi* | [**getConnectorSkills**](docs/ConnectorsApi.md#getConnectorSkills) | **GET** /v1/connectors/{tenant_id}/{project_id}/skills | 
+*ConnectorsApi* | [**getConnectorSkillsWithHttpInfo**](docs/ConnectorsApi.md#getConnectorSkillsWithHttpInfo) | **GET** /v1/connectors/{tenant_id}/{project_id}/skills | 
+*ConnectorsApi* | [**invokeConnectorTool**](docs/ConnectorsApi.md#invokeConnectorTool) | **POST** /v1/connectors/{tenant_id}/{project_id}/invoke | 
+*ConnectorsApi* | [**invokeConnectorToolWithHttpInfo**](docs/ConnectorsApi.md#invokeConnectorToolWithHttpInfo) | **POST** /v1/connectors/{tenant_id}/{project_id}/invoke | 
+*ConnectorsApi* | [**listConnectorTools**](docs/ConnectorsApi.md#listConnectorTools) | **GET** /v1/connectors/{tenant_id}/{project_id}/tools | 
+*ConnectorsApi* | [**listConnectorToolsWithHttpInfo**](docs/ConnectorsApi.md#listConnectorToolsWithHttpInfo) | **GET** /v1/connectors/{tenant_id}/{project_id}/tools | 
+*ConnectorsApi* | [**listConnectors**](docs/ConnectorsApi.md#listConnectors) | **GET** /v1/connectors/{tenant_id}/{project_id} | 
+*ConnectorsApi* | [**listConnectorsWithHttpInfo**](docs/ConnectorsApi.md#listConnectorsWithHttpInfo) | **GET** /v1/connectors/{tenant_id}/{project_id} | 
 *DatasetsApi* | [**createDataset**](docs/DatasetsApi.md#createDataset) | **POST** /v1/datasets/{tenant_id}/{project_id} | 
 *DatasetsApi* | [**createDatasetWithHttpInfo**](docs/DatasetsApi.md#createDatasetWithHttpInfo) | **POST** /v1/datasets/{tenant_id}/{project_id} | 
 *DatasetsApi* | [**createDatasetVersion**](docs/DatasetsApi.md#createDatasetVersion) | **POST** /v1/datasets/{tenant_id}/{project_id}/{dataset_id}/versions | 
@@ -226,6 +238,11 @@ Class | Method | HTTP request | Description
  - [CanonicalSpan](docs/CanonicalSpan.md)
  - [CaseExperimentScore](docs/CaseExperimentScore.md)
  - [CaseOutputOverrideRequest](docs/CaseOutputOverrideRequest.md)
+ - [ConnectConnectorRequest](docs/ConnectConnectorRequest.md)
+ - [ConnectionLink](docs/ConnectionLink.md)
+ - [ConnectionStatus](docs/ConnectionStatus.md)
+ - [ConnectorSkillsResponse](docs/ConnectorSkillsResponse.md)
+ - [ConnectorTool](docs/ConnectorTool.md)
  - [CreateApiKeyHttpRequest](docs/CreateApiKeyHttpRequest.md)
  - [CreateDatasetRequest](docs/CreateDatasetRequest.md)
  - [CreateDatasetVersionRequest](docs/CreateDatasetVersionRequest.md)
@@ -270,6 +287,7 @@ Class | Method | HTTP request | Description
  - [InconclusivePolicy](docs/InconclusivePolicy.md)
  - [IngestOutcome](docs/IngestOutcome.md)
  - [IngestQueueStatus](docs/IngestQueueStatus.md)
+ - [InvokeConnectorRequest](docs/InvokeConnectorRequest.md)
  - [JudgeAuditRecord](docs/JudgeAuditRecord.md)
  - [JudgeBrokerOutcome](docs/JudgeBrokerOutcome.md)
  - [MaintenanceWindow](docs/MaintenanceWindow.md)
@@ -318,6 +336,8 @@ Class | Method | HTTP request | Description
  - [SubmitReviewAnnotationHttpRequest](docs/SubmitReviewAnnotationHttpRequest.md)
  - [TenantScope](docs/TenantScope.md)
  - [TokenCounts](docs/TokenCounts.md)
+ - [ToolExecution](docs/ToolExecution.md)
+ - [Toolkit](docs/Toolkit.md)
  - [TraceIngestedDrainReport](docs/TraceIngestedDrainReport.md)
  - [TraceIngestedReconcileReport](docs/TraceIngestedReconcileReport.md)
  - [TraceView](docs/TraceView.md)

@@ -13,6 +13,8 @@ api/AuditAPI.c
 api/AuditAPI.h
 api/CalibrationsAPI.c
 api/CalibrationsAPI.h
+api/ConnectorsAPI.c
+api/ConnectorsAPI.h
 api/DatasetsAPI.c
 api/DatasetsAPI.h
 api/EvalsAPI.c
@@ -46,6 +48,7 @@ docs/ApiKeysAPI.md
 docs/ArchiveAPI.md
 docs/AuditAPI.md
 docs/CalibrationsAPI.md
+docs/ConnectorsAPI.md
 docs/DatasetsAPI.md
 docs/EvalsAPI.md
 docs/ExperimentsAPI.md
@@ -84,6 +87,11 @@ docs/calibration_report.md
 docs/canonical_span.md
 docs/case_experiment_score.md
 docs/case_output_override_request.md
+docs/connect_connector_request.md
+docs/connection_link.md
+docs/connection_status.md
+docs/connector_skills_response.md
+docs/connector_tool.md
 docs/create_api_key_http_request.md
 docs/create_dataset_request.md
 docs/create_dataset_version_request.md
@@ -128,6 +136,7 @@ docs/import_source_http_request.md
 docs/inconclusive_policy.md
 docs/ingest_outcome.md
 docs/ingest_queue_status.md
+docs/invoke_connector_request.md
 docs/judge_audit_record.md
 docs/judge_broker_outcome.md
 docs/maintenance_window.md
@@ -176,6 +185,8 @@ docs/statistical_test.md
 docs/submit_review_annotation_http_request.md
 docs/tenant_scope.md
 docs/token_counts.md
+docs/tool_execution.md
+docs/toolkit.md
 docs/trace_ingested_drain_report.md
 docs/trace_ingested_reconcile_report.md
 docs/trace_view.md
@@ -241,6 +252,16 @@ model/case_experiment_score.c
 model/case_experiment_score.h
 model/case_output_override_request.c
 model/case_output_override_request.h
+model/connect_connector_request.c
+model/connect_connector_request.h
+model/connection_link.c
+model/connection_link.h
+model/connection_status.c
+model/connection_status.h
+model/connector_skills_response.c
+model/connector_skills_response.h
+model/connector_tool.c
+model/connector_tool.h
 model/create_api_key_http_request.c
 model/create_api_key_http_request.h
 model/create_dataset_request.c
@@ -329,6 +350,8 @@ model/ingest_outcome.c
 model/ingest_outcome.h
 model/ingest_queue_status.c
 model/ingest_queue_status.h
+model/invoke_connector_request.c
+model/invoke_connector_request.h
 model/judge_audit_record.c
 model/judge_audit_record.h
 model/judge_broker_outcome.c
@@ -427,6 +450,10 @@ model/tenant_scope.c
 model/tenant_scope.h
 model/token_counts.c
 model/token_counts.h
+model/tool_execution.c
+model/tool_execution.h
+model/toolkit.c
+model/toolkit.h
 model/trace_ingested_drain_report.c
 model/trace_ingested_drain_report.h
 model/trace_ingested_reconcile_report.c
@@ -472,6 +499,11 @@ unit-test/test_calibration_report.c
 unit-test/test_canonical_span.c
 unit-test/test_case_experiment_score.c
 unit-test/test_case_output_override_request.c
+unit-test/test_connect_connector_request.c
+unit-test/test_connection_link.c
+unit-test/test_connection_status.c
+unit-test/test_connector_skills_response.c
+unit-test/test_connector_tool.c
 unit-test/test_create_api_key_http_request.c
 unit-test/test_create_dataset_request.c
 unit-test/test_create_dataset_version_request.c
@@ -516,6 +548,7 @@ unit-test/test_import_source_http_request.c
 unit-test/test_inconclusive_policy.c
 unit-test/test_ingest_outcome.c
 unit-test/test_ingest_queue_status.c
+unit-test/test_invoke_connector_request.c
 unit-test/test_judge_audit_record.c
 unit-test/test_judge_broker_outcome.c
 unit-test/test_maintenance_window.c
@@ -564,6 +597,8 @@ unit-test/test_statistical_test.c
 unit-test/test_submit_review_annotation_http_request.c
 unit-test/test_tenant_scope.c
 unit-test/test_token_counts.c
+unit-test/test_tool_execution.c
+unit-test/test_toolkit.c
 unit-test/test_trace_ingested_drain_report.c
 unit-test/test_trace_ingested_reconcile_report.c
 unit-test/test_trace_view.c

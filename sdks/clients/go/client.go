@@ -59,6 +59,8 @@ type APIClient struct {
 
 	CalibrationsAPI *CalibrationsAPIService
 
+	ConnectorsAPI *ConnectorsAPIService
+
 	DatasetsAPI *DatasetsAPIService
 
 	EvalsAPI *EvalsAPIService
@@ -109,6 +111,7 @@ func NewAPIClient(cfg *Configuration) *APIClient {
 	c.ArchiveAPI = (*ArchiveAPIService)(&c.common)
 	c.AuditAPI = (*AuditAPIService)(&c.common)
 	c.CalibrationsAPI = (*CalibrationsAPIService)(&c.common)
+	c.ConnectorsAPI = (*ConnectorsAPIService)(&c.common)
 	c.DatasetsAPI = (*DatasetsAPIService)(&c.common)
 	c.EvalsAPI = (*EvalsAPIService)(&c.common)
 	c.ExperimentsAPI = (*ExperimentsAPIService)(&c.common)

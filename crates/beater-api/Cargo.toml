@@ -13,6 +13,7 @@ beater-audit = { path = "../beater-audit" }
 beater-auth = { path = "../beater-auth" }
 beater-billing = { path = "../beater-billing", optional = true }
 beater-calibration = { path = "../beater-calibration" }
+beater-composio = { path = "../beater-composio" }
 beater-core = { path = "../beater-core" }
 beater-datasets = { path = "../beater-datasets" }
 beater-eval = { path = "../beater-eval" }

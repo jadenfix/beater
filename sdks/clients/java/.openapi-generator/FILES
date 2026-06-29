@@ -35,6 +35,12 @@ docs/CalibrationsApi.md
 docs/CanonicalSpan.md
 docs/CaseExperimentScore.md
 docs/CaseOutputOverrideRequest.md
+docs/ConnectConnectorRequest.md
+docs/ConnectionLink.md
+docs/ConnectionStatus.md
+docs/ConnectorSkillsResponse.md
+docs/ConnectorTool.md
+docs/ConnectorsApi.md
 docs/CreateApiKeyHttpRequest.md
 docs/CreateDatasetRequest.md
 docs/CreateDatasetVersionRequest.md
@@ -85,6 +91,7 @@ docs/InconclusivePolicy.md
 docs/IngestApi.md
 docs/IngestOutcome.md
 docs/IngestQueueStatus.md
+docs/InvokeConnectorRequest.md
 docs/JudgeApi.md
 docs/JudgeAuditRecord.md
 docs/JudgeBrokerOutcome.md
@@ -139,6 +146,8 @@ docs/StatisticalTest.md
 docs/SubmitReviewAnnotationHttpRequest.md
 docs/TenantScope.md
 docs/TokenCounts.md
+docs/ToolExecution.md
+docs/Toolkit.md
 docs/TraceIngestedDrainReport.md
 docs/TraceIngestedReconcileReport.md
 docs/TraceView.md
@@ -172,6 +181,7 @@ src/main/java/ai/beater/client/api/ApiKeysApi.java
 src/main/java/ai/beater/client/api/ArchiveApi.java
 src/main/java/ai/beater/client/api/AuditApi.java
 src/main/java/ai/beater/client/api/CalibrationsApi.java
+src/main/java/ai/beater/client/api/ConnectorsApi.java
 src/main/java/ai/beater/client/api/DatasetsApi.java
 src/main/java/ai/beater/client/api/EvalsApi.java
 src/main/java/ai/beater/client/api/ExperimentsApi.java
@@ -211,6 +221,11 @@ src/main/java/ai/beater/client/model/CalibrationReport.java
 src/main/java/ai/beater/client/model/CanonicalSpan.java
 src/main/java/ai/beater/client/model/CaseExperimentScore.java
 src/main/java/ai/beater/client/model/CaseOutputOverrideRequest.java
+src/main/java/ai/beater/client/model/ConnectConnectorRequest.java
+src/main/java/ai/beater/client/model/ConnectionLink.java
+src/main/java/ai/beater/client/model/ConnectionStatus.java
+src/main/java/ai/beater/client/model/ConnectorSkillsResponse.java
+src/main/java/ai/beater/client/model/ConnectorTool.java
 src/main/java/ai/beater/client/model/CreateApiKeyHttpRequest.java
 src/main/java/ai/beater/client/model/CreateDatasetRequest.java
 src/main/java/ai/beater/client/model/CreateDatasetVersionRequest.java
@@ -255,6 +270,7 @@ src/main/java/ai/beater/client/model/ImportSourceHttpRequest.java
 src/main/java/ai/beater/client/model/InconclusivePolicy.java
 src/main/java/ai/beater/client/model/IngestOutcome.java
 src/main/java/ai/beater/client/model/IngestQueueStatus.java
+src/main/java/ai/beater/client/model/InvokeConnectorRequest.java
 src/main/java/ai/beater/client/model/JudgeAuditRecord.java
 src/main/java/ai/beater/client/model/JudgeBrokerOutcome.java
 src/main/java/ai/beater/client/model/MaintenanceWindow.java
@@ -303,6 +319,8 @@ src/main/java/ai/beater/client/model/StatisticalTest.java
 src/main/java/ai/beater/client/model/SubmitReviewAnnotationHttpRequest.java
 src/main/java/ai/beater/client/model/TenantScope.java
 src/main/java/ai/beater/client/model/TokenCounts.java
+src/main/java/ai/beater/client/model/ToolExecution.java
+src/main/java/ai/beater/client/model/Toolkit.java
 src/main/java/ai/beater/client/model/TraceIngestedDrainReport.java
 src/main/java/ai/beater/client/model/TraceIngestedReconcileReport.java
 src/main/java/ai/beater/client/model/TraceView.java
@@ -316,6 +334,7 @@ src/test/java/ai/beater/client/api/ApiKeysApiTest.java
 src/test/java/ai/beater/client/api/ArchiveApiTest.java
 src/test/java/ai/beater/client/api/AuditApiTest.java
 src/test/java/ai/beater/client/api/CalibrationsApiTest.java
+src/test/java/ai/beater/client/api/ConnectorsApiTest.java
 src/test/java/ai/beater/client/api/DatasetsApiTest.java
 src/test/java/ai/beater/client/api/EvalsApiTest.java
 src/test/java/ai/beater/client/api/ExperimentsApiTest.java
@@ -354,6 +373,11 @@ src/test/java/ai/beater/client/model/CalibrationReportTest.java
 src/test/java/ai/beater/client/model/CanonicalSpanTest.java
 src/test/java/ai/beater/client/model/CaseExperimentScoreTest.java
 src/test/java/ai/beater/client/model/CaseOutputOverrideRequestTest.java
+src/test/java/ai/beater/client/model/ConnectConnectorRequestTest.java
+src/test/java/ai/beater/client/model/ConnectionLinkTest.java
+src/test/java/ai/beater/client/model/ConnectionStatusTest.java
+src/test/java/ai/beater/client/model/ConnectorSkillsResponseTest.java
+src/test/java/ai/beater/client/model/ConnectorToolTest.java
 src/test/java/ai/beater/client/model/CreateApiKeyHttpRequestTest.java
 src/test/java/ai/beater/client/model/CreateDatasetRequestTest.java
 src/test/java/ai/beater/client/model/CreateDatasetVersionRequestTest.java
@@ -398,6 +422,7 @@ src/test/java/ai/beater/client/model/ImportSourceHttpRequestTest.java
 src/test/java/ai/beater/client/model/InconclusivePolicyTest.java
 src/test/java/ai/beater/client/model/IngestOutcomeTest.java
 src/test/java/ai/beater/client/model/IngestQueueStatusTest.java
+src/test/java/ai/beater/client/model/InvokeConnectorRequestTest.java
 src/test/java/ai/beater/client/model/JudgeAuditRecordTest.java
 src/test/java/ai/beater/client/model/JudgeBrokerOutcomeTest.java
 src/test/java/ai/beater/client/model/MaintenanceWindowTest.java
@@ -446,6 +471,8 @@ src/test/java/ai/beater/client/model/StatisticalTestTest.java
 src/test/java/ai/beater/client/model/SubmitReviewAnnotationHttpRequestTest.java
 src/test/java/ai/beater/client/model/TenantScopeTest.java
 src/test/java/ai/beater/client/model/TokenCountsTest.java
+src/test/java/ai/beater/client/model/ToolExecutionTest.java
+src/test/java/ai/beater/client/model/ToolkitTest.java
 src/test/java/ai/beater/client/model/TraceIngestedDrainReportTest.java
 src/test/java/ai/beater/client/model/TraceIngestedReconcileReportTest.java
 src/test/java/ai/beater/client/model/TraceViewTest.java

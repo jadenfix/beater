@@ -22,6 +22,7 @@ from beater_client.api.api_keys_api import ApiKeysApi
 from beater_client.api.archive_api import ArchiveApi
 from beater_client.api.audit_api import AuditApi
 from beater_client.api.calibrations_api import CalibrationsApi
+from beater_client.api.connectors_api import ConnectorsApi
 from beater_client.api.datasets_api import DatasetsApi
 from beater_client.api.evals_api import EvalsApi
 from beater_client.api.experiments_api import ExperimentsApi
@@ -73,6 +74,11 @@ from beater_client.models.calibration_report import CalibrationReport
 from beater_client.models.canonical_span import CanonicalSpan
 from beater_client.models.case_experiment_score import CaseExperimentScore
 from beater_client.models.case_output_override_request import CaseOutputOverrideRequest
+from beater_client.models.connect_connector_request import ConnectConnectorRequest
+from beater_client.models.connection_link import ConnectionLink
+from beater_client.models.connection_status import ConnectionStatus
+from beater_client.models.connector_skills_response import ConnectorSkillsResponse
+from beater_client.models.connector_tool import ConnectorTool
 from beater_client.models.create_api_key_http_request import CreateApiKeyHttpRequest
 from beater_client.models.create_dataset_request import CreateDatasetRequest
 from beater_client.models.create_dataset_version_request import CreateDatasetVersionRequest
@@ -117,6 +123,7 @@ from beater_client.models.import_source_http_request import ImportSourceHttpRequ
 from beater_client.models.inconclusive_policy import InconclusivePolicy
 from beater_client.models.ingest_outcome import IngestOutcome
 from beater_client.models.ingest_queue_status import IngestQueueStatus
+from beater_client.models.invoke_connector_request import InvokeConnectorRequest
 from beater_client.models.judge_audit_record import JudgeAuditRecord
 from beater_client.models.judge_broker_outcome import JudgeBrokerOutcome
 from beater_client.models.maintenance_window import MaintenanceWindow
@@ -165,6 +172,8 @@ from beater_client.models.statistical_test import StatisticalTest
 from beater_client.models.submit_review_annotation_http_request import SubmitReviewAnnotationHttpRequest
 from beater_client.models.tenant_scope import TenantScope
 from beater_client.models.token_counts import TokenCounts
+from beater_client.models.tool_execution import ToolExecution
+from beater_client.models.toolkit import Toolkit
 from beater_client.models.trace_ingested_drain_report import TraceIngestedDrainReport
 from beater_client.models.trace_ingested_reconcile_report import TraceIngestedReconcileReport
 from beater_client.models.trace_view import TraceView

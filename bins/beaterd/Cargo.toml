@@ -18,6 +18,7 @@ beater-oauth = { path = "../../crates/beater-oauth" }
 beater-oauth-server = { path = "../../crates/beater-oauth-server" }
 beater-bus = { path = "../../crates/beater-bus" }
 beater-calibration = { path = "../../crates/beater-calibration" }
+beater-composio = { path = "../../crates/beater-composio" }
 beater-datasets = { path = "../../crates/beater-datasets" }
 beater-experiments = { path = "../../crates/beater-experiments" }
 beater-gates = { path = "../../crates/beater-gates" }

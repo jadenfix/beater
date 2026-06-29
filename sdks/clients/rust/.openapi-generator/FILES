@@ -32,6 +32,12 @@ docs/CalibrationsApi.md
 docs/CanonicalSpan.md
 docs/CaseExperimentScore.md
 docs/CaseOutputOverrideRequest.md
+docs/ConnectConnectorRequest.md
+docs/ConnectionLink.md
+docs/ConnectionStatus.md
+docs/ConnectorSkillsResponse.md
+docs/ConnectorTool.md
+docs/ConnectorsApi.md
 docs/CreateApiKeyHttpRequest.md
 docs/CreateDatasetRequest.md
 docs/CreateDatasetVersionRequest.md
@@ -82,6 +88,7 @@ docs/InconclusivePolicy.md
 docs/IngestApi.md
 docs/IngestOutcome.md
 docs/IngestQueueStatus.md
+docs/InvokeConnectorRequest.md
 docs/JudgeApi.md
 docs/JudgeAuditRecord.md
 docs/JudgeBrokerOutcome.md
@@ -136,6 +143,8 @@ docs/StatisticalTest.md
 docs/SubmitReviewAnnotationHttpRequest.md
 docs/TenantScope.md
 docs/TokenCounts.md
+docs/ToolExecution.md
+docs/Toolkit.md
 docs/TraceIngestedDrainReport.md
 docs/TraceIngestedReconcileReport.md
 docs/TraceView.md
@@ -153,6 +162,7 @@ src/apis/archive_api.rs
 src/apis/audit_api.rs
 src/apis/calibrations_api.rs
 src/apis/configuration.rs
+src/apis/connectors_api.rs
 src/apis/datasets_api.rs
 src/apis/evals_api.rs
 src/apis/experiments_api.rs
@@ -193,6 +203,11 @@ src/models/calibration_report.rs
 src/models/canonical_span.rs
 src/models/case_experiment_score.rs
 src/models/case_output_override_request.rs
+src/models/connect_connector_request.rs
+src/models/connection_link.rs
+src/models/connection_status.rs
+src/models/connector_skills_response.rs
+src/models/connector_tool.rs
 src/models/create_api_key_http_request.rs
 src/models/create_dataset_request.rs
 src/models/create_dataset_version_request.rs
@@ -237,6 +252,7 @@ src/models/import_source_http_request.rs
 src/models/inconclusive_policy.rs
 src/models/ingest_outcome.rs
 src/models/ingest_queue_status.rs
+src/models/invoke_connector_request.rs
 src/models/judge_audit_record.rs
 src/models/judge_broker_outcome.rs
 src/models/maintenance_window.rs
@@ -286,6 +302,8 @@ src/models/statistical_test.rs
 src/models/submit_review_annotation_http_request.rs
 src/models/tenant_scope.rs
 src/models/token_counts.rs
+src/models/tool_execution.rs
+src/models/toolkit.rs
 src/models/trace_ingested_drain_report.rs
 src/models/trace_ingested_reconcile_report.rs
 src/models/trace_view.rs

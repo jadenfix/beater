@@ -72,6 +72,12 @@ Category | Method | HTTP request | Description
 *ArchiveAPI* | [**ArchiveAPI_queryArchiveSpans**](docs/ArchiveAPI.md#ArchiveAPI_queryArchiveSpans) | **GET** /v1/archive/{tenant_id}/{project_id}/spans | 
 *AuditAPI* | [**AuditAPI_listAuditEvents**](docs/AuditAPI.md#AuditAPI_listAuditEvents) | **GET** /v1/audit/{tenant_id}/{project_id} | 
 *CalibrationsAPI* | [**CalibrationsAPI_runCalibration**](docs/CalibrationsAPI.md#CalibrationsAPI_runCalibration) | **POST** /v1/calibrations/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id} | 
+*ConnectorsAPI* | [**ConnectorsAPI_connectConnector**](docs/ConnectorsAPI.md#ConnectorsAPI_connectConnector) | **POST** /v1/connectors/{tenant_id}/{project_id}/connect | 
+*ConnectorsAPI* | [**ConnectorsAPI_connectorStatus**](docs/ConnectorsAPI.md#ConnectorsAPI_connectorStatus) | **GET** /v1/connectors/{tenant_id}/{project_id}/status | 
+*ConnectorsAPI* | [**ConnectorsAPI_getConnectorSkills**](docs/ConnectorsAPI.md#ConnectorsAPI_getConnectorSkills) | **GET** /v1/connectors/{tenant_id}/{project_id}/skills | 
+*ConnectorsAPI* | [**ConnectorsAPI_invokeConnectorTool**](docs/ConnectorsAPI.md#ConnectorsAPI_invokeConnectorTool) | **POST** /v1/connectors/{tenant_id}/{project_id}/invoke | 
+*ConnectorsAPI* | [**ConnectorsAPI_listConnectorTools**](docs/ConnectorsAPI.md#ConnectorsAPI_listConnectorTools) | **GET** /v1/connectors/{tenant_id}/{project_id}/tools | 
+*ConnectorsAPI* | [**ConnectorsAPI_listConnectors**](docs/ConnectorsAPI.md#ConnectorsAPI_listConnectors) | **GET** /v1/connectors/{tenant_id}/{project_id} | 
 *DatasetsAPI* | [**DatasetsAPI_createDataset**](docs/DatasetsAPI.md#DatasetsAPI_createDataset) | **POST** /v1/datasets/{tenant_id}/{project_id} | 
 *DatasetsAPI* | [**DatasetsAPI_createDatasetVersion**](docs/DatasetsAPI.md#DatasetsAPI_createDatasetVersion) | **POST** /v1/datasets/{tenant_id}/{project_id}/{dataset_id}/versions | 
 *DatasetsAPI* | [**DatasetsAPI_promoteDatasetCaseFromTrace**](docs/DatasetsAPI.md#DatasetsAPI_promoteDatasetCaseFromTrace) | **POST** /v1/datasets/{tenant_id}/{project_id}/{dataset_id}/cases/from-trace | 
@@ -135,6 +141,11 @@ Category | Method | HTTP request | Description
  - [canonical_span_t](docs/canonical_span.md)
  - [case_experiment_score_t](docs/case_experiment_score.md)
  - [case_output_override_request_t](docs/case_output_override_request.md)
+ - [connect_connector_request_t](docs/connect_connector_request.md)
+ - [connection_link_t](docs/connection_link.md)
+ - [connection_status_t](docs/connection_status.md)
+ - [connector_skills_response_t](docs/connector_skills_response.md)
+ - [connector_tool_t](docs/connector_tool.md)
  - [create_api_key_http_request_t](docs/create_api_key_http_request.md)
  - [create_dataset_request_t](docs/create_dataset_request.md)
  - [create_dataset_version_request_t](docs/create_dataset_version_request.md)
@@ -179,6 +190,7 @@ Category | Method | HTTP request | Description
  - [inconclusive_policy_t](docs/inconclusive_policy.md)
  - [ingest_outcome_t](docs/ingest_outcome.md)
  - [ingest_queue_status_t](docs/ingest_queue_status.md)
+ - [invoke_connector_request_t](docs/invoke_connector_request.md)
  - [judge_audit_record_t](docs/judge_audit_record.md)
  - [judge_broker_outcome_t](docs/judge_broker_outcome.md)
  - [maintenance_window_t](docs/maintenance_window.md)
@@ -227,6 +239,8 @@ Category | Method | HTTP request | Description
  - [submit_review_annotation_http_request_t](docs/submit_review_annotation_http_request.md)
  - [tenant_scope_t](docs/tenant_scope.md)
  - [token_counts_t](docs/token_counts.md)
+ - [tool_execution_t](docs/tool_execution.md)
+ - [toolkit_t](docs/toolkit.md)
  - [trace_ingested_drain_report_t](docs/trace_ingested_drain_report.md)
  - [trace_ingested_reconcile_report_t](docs/trace_ingested_reconcile_report.md)
  - [trace_view_t](docs/trace_view.md)

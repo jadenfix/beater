@@ -33,6 +33,12 @@ Class | Method | HTTP request | Description
 *ArchiveApi* | [**query_archive_spans**](docs/ArchiveApi.md#query_archive_spans) | **GET** /v1/archive/{tenant_id}/{project_id}/spans | 
 *AuditApi* | [**list_audit_events**](docs/AuditApi.md#list_audit_events) | **GET** /v1/audit/{tenant_id}/{project_id} | 
 *CalibrationsApi* | [**run_calibration**](docs/CalibrationsApi.md#run_calibration) | **POST** /v1/calibrations/{tenant_id}/{project_id}/{dataset_id}/versions/{version_id} | 
+*ConnectorsApi* | [**connect_connector**](docs/ConnectorsApi.md#connect_connector) | **POST** /v1/connectors/{tenant_id}/{project_id}/connect | 
+*ConnectorsApi* | [**connector_status**](docs/ConnectorsApi.md#connector_status) | **GET** /v1/connectors/{tenant_id}/{project_id}/status | 
+*ConnectorsApi* | [**get_connector_skills**](docs/ConnectorsApi.md#get_connector_skills) | **GET** /v1/connectors/{tenant_id}/{project_id}/skills | 
+*ConnectorsApi* | [**invoke_connector_tool**](docs/ConnectorsApi.md#invoke_connector_tool) | **POST** /v1/connectors/{tenant_id}/{project_id}/invoke | 
+*ConnectorsApi* | [**list_connector_tools**](docs/ConnectorsApi.md#list_connector_tools) | **GET** /v1/connectors/{tenant_id}/{project_id}/tools | 
+*ConnectorsApi* | [**list_connectors**](docs/ConnectorsApi.md#list_connectors) | **GET** /v1/connectors/{tenant_id}/{project_id} | 
 *DatasetsApi* | [**create_dataset**](docs/DatasetsApi.md#create_dataset) | **POST** /v1/datasets/{tenant_id}/{project_id} | 
 *DatasetsApi* | [**create_dataset_version**](docs/DatasetsApi.md#create_dataset_version) | **POST** /v1/datasets/{tenant_id}/{project_id}/{dataset_id}/versions | 
 *DatasetsApi* | [**promote_dataset_case_from_trace**](docs/DatasetsApi.md#promote_dataset_case_from_trace) | **POST** /v1/datasets/{tenant_id}/{project_id}/{dataset_id}/cases/from-trace | 
@@ -96,6 +102,11 @@ Class | Method | HTTP request | Description
  - [CanonicalSpan](docs/CanonicalSpan.md)
  - [CaseExperimentScore](docs/CaseExperimentScore.md)
  - [CaseOutputOverrideRequest](docs/CaseOutputOverrideRequest.md)
+ - [ConnectConnectorRequest](docs/ConnectConnectorRequest.md)
+ - [ConnectionLink](docs/ConnectionLink.md)
+ - [ConnectionStatus](docs/ConnectionStatus.md)
+ - [ConnectorSkillsResponse](docs/ConnectorSkillsResponse.md)
+ - [ConnectorTool](docs/ConnectorTool.md)
  - [CreateApiKeyHttpRequest](docs/CreateApiKeyHttpRequest.md)
  - [CreateDatasetRequest](docs/CreateDatasetRequest.md)
  - [CreateDatasetVersionRequest](docs/CreateDatasetVersionRequest.md)
@@ -140,6 +151,7 @@ Class | Method | HTTP request | Description
  - [InconclusivePolicy](docs/InconclusivePolicy.md)
  - [IngestOutcome](docs/IngestOutcome.md)
  - [IngestQueueStatus](docs/IngestQueueStatus.md)
+ - [InvokeConnectorRequest](docs/InvokeConnectorRequest.md)
  - [JudgeAuditRecord](docs/JudgeAuditRecord.md)
  - [JudgeBrokerOutcome](docs/JudgeBrokerOutcome.md)
  - [MaintenanceWindow](docs/MaintenanceWindow.md)
@@ -188,6 +200,8 @@ Class | Method | HTTP request | Description
  - [SubmitReviewAnnotationHttpRequest](docs/SubmitReviewAnnotationHttpRequest.md)
  - [TenantScope](docs/TenantScope.md)
  - [TokenCounts](docs/TokenCounts.md)
+ - [ToolExecution](docs/ToolExecution.md)
+ - [Toolkit](docs/Toolkit.md)
  - [TraceIngestedDrainReport](docs/TraceIngestedDrainReport.md)
  - [TraceIngestedReconcileReport](docs/TraceIngestedReconcileReport.md)
  - [TraceView](docs/TraceView.md)
