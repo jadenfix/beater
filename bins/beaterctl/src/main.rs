@@ -27,9 +27,11 @@ use beater_eval::{
     GateDecision, GatePolicy, StatisticalTest,
 };
 use beater_experiments::{
-    run_agent_experiment, run_deterministic_experiment, run_judge_experiment, AgentExperimentSpec,
-    CaseOutputOverride, ExperimentRunReport, ExperimentRunSpec, ExperimentStore,
-    JudgeExperimentRunSpec, ReferenceAgentAdapter, SqliteExperimentStore, StaticAgentAdapter,
+    run_agent_experiment, run_deterministic_experiment, run_judge_experiment,
+    run_optimization_round, AgentExperimentSpec, CandidateChange, CandidateEvaluator,
+    CaseOutputOverride, CaseScore, ExperimentRunReport, ExperimentRunSpec, ExperimentStore,
+    FailureExample, JudgeExperimentRunSpec, OptimizationRoundConfig, OptimizerStrategy,
+    ReferenceAgentAdapter, Split, SqliteExperimentStore, StaticAgentAdapter,
 };
 use beater_gates::{run_gate, GateDefinition, GateStore, InconclusivePolicy, SqliteGateStore};
 use beater_human::{
@@ -41,8 +43,9 @@ use beater_ingest::{
     TRACE_WRITE_BATCH_KIND,
 };
 use beater_judge::{
-    JudgeBrokerRequest, JudgeBrokerService, JudgeLedgerStore, KeywordJudgeProvider,
-    SqliteJudgeLedger,
+    GenerationRequest, GenerationResponse, JudgeBrokerRequest, JudgeBrokerService,
+    JudgeLedgerStore, JudgeProviderResult, KeywordJudgeProvider, ProviderCredentials,
+    SqliteJudgeLedger, TextGenerator,
 };
 use beater_otlp::{encode_export_trace_request, export_to_raw_trace_ingest_request};
 use beater_replay::{
@@ -226,6 +229,22 @@ enum Command {
         #[arg(long, default_value = ".beater")]
         data_dir: PathBuf,
     },
+    /// Drive one recursive-self-improvement optimization round end-to-end with a
+    /// deterministic, network-free seeded fixture.
+    ///
+    /// This is the first production caller of
+    /// `beater_experiments::run_optimization_round`: it builds an
+    /// `OptimizationRoundConfig` from seeded failing examples + cases, proposes a
+    /// candidate via the `LlmRewrite` strategy backed by an in-process canned
+    /// `TextGenerator` (no LLM key, no network), scores it with a seeded
+    /// `FixtureCandidateEvaluator`, and routes the candidate through the existing
+    /// held-out **Test** gate + §21.4 anti-overfit guardrail. The seeded scenario
+    /// is a *generalizing* candidate, so the happy path shows acceptance with a
+    /// `Pass` gate decision; the overfit-rejection path is unit-tested in
+    /// beater-experiments. A live run against real providers + a real candidate
+    /// evaluator (executing the agent per case) is the next layer up — this
+    /// fixture only proves the proposal → gate loop end-to-end, deterministically.
+    RsiRoundFixture {},
     ReviewFixture {
         #[arg(long, default_value = ".beater")]
         data_dir: PathBuf,
@@ -1310,6 +1329,10 @@ async fn main() -> anyhow::Result<()> {
                     "gate_run": report
                 }))?
             );
+        }
+        Command::RsiRoundFixture {} => {
+            let output = run_rsi_round_fixture().await?;
+            println!("{}", serde_json::to_string_pretty(&output)?);
         }
         Command::ReviewFixture { data_dir } => {
             let artifacts = Arc::new(FsArtifactStore::new(data_dir.join("artifacts"))?);
@@ -2742,6 +2765,198 @@ fn gate_fixture_experiment(
         },
         created_at,
     })
+}
+
+/// A deterministic, network-free [`TextGenerator`] for the RSI fixture: it never
+/// calls a model and returns a single canned "improved" prompt regardless of the
+/// reflective brief it is handed. This keeps `rsi-round-fixture` reproducible and
+/// key-free while still exercising the real `LlmRewrite::propose_async` path,
+/// which turns the generated text into the candidate's rewritten prompt.
+struct CannedRewriteGenerator {
+    completion: String,
+}
+
+#[async_trait::async_trait]
+impl TextGenerator for CannedRewriteGenerator {
+    async fn generate(
+        &self,
+        _req: GenerationRequest,
+        _credentials: ProviderCredentials,
+    ) -> JudgeProviderResult<GenerationResponse> {
+        Ok(GenerationResponse {
+            text: self.completion.clone(),
+            model: Some("fixture-canned-generator".to_string()),
+        })
+    }
+}
+
+/// A deterministic [`CandidateEvaluator`] for the RSI fixture. It ignores the
+/// opaque case payloads and emits seeded, reproducible paired baseline-vs-candidate
+/// [`CaseScore`]s: a uniform lift (`baseline_score` → `candidate_score`) on every
+/// split, so the candidate generalizes — the same lift on the held-out **Test**
+/// split as on the optimization (Train/Val) split. That clears both the held-out
+/// gate (a real paired improvement) and the anti-overfit guardrail (no gap),
+/// demonstrating the loop accepting a generalizing candidate. The overfit-rejection
+/// path (good only on the optimization split) is unit-tested in beater-experiments.
+struct FixtureCandidateEvaluator {
+    /// Number of optimization-split (Train/Val) cases to score.
+    optimize_cases: usize,
+    /// Number of held-out Test cases to score.
+    test_cases: usize,
+    /// Baseline score applied to every case (the current policy).
+    baseline_score: f64,
+    /// Candidate score applied to every case (the proposed policy).
+    candidate_score: f64,
+}
+
+#[async_trait::async_trait]
+impl CandidateEvaluator for FixtureCandidateEvaluator {
+    async fn evaluate(
+        &self,
+        _candidate: &CandidateChange,
+        _cases: &[serde_json::Value],
+    ) -> Result<Vec<CaseScore>, String> {
+        let mut scores = Vec::with_capacity(self.optimize_cases + self.test_cases);
+        for i in 0..self.optimize_cases {
+            // Alternate Train/Val; both count as the optimization split for the
+            // generalization-gap assessment.
+            let split = if i % 2 == 0 { Split::Train } else { Split::Val };
+            scores.push(CaseScore {
+                split,
+                baseline_score: self.baseline_score,
+                candidate_score: self.candidate_score,
+            });
+        }
+        for _ in 0..self.test_cases {
+            scores.push(CaseScore {
+                split: Split::Test,
+                baseline_score: self.baseline_score,
+                candidate_score: self.candidate_score,
+            });
+        }
+        Ok(scores)
+    }
+}
+
+/// Drive one deterministic, seeded RSI optimization round and build the JSON
+/// report. Proves the propose → evaluate → held-out gate + anti-overfit loop
+/// end-to-end with no network and no LLM key.
+async fn run_rsi_round_fixture() -> anyhow::Result<serde_json::Value> {
+    // Seeded failing examples motivating the round (deterministic excerpts).
+    let failures = vec![
+        FailureExample::from_parts(
+            "Who wrote the novel '1984'?",
+            Some("George Orwell".to_string()),
+            "I am not certain, possibly Aldous Huxley.",
+            0.0,
+            None,
+        ),
+        FailureExample::from_parts(
+            "What is the capital of Australia?",
+            Some("Canberra".to_string()),
+            "Sydney.",
+            0.0,
+            None,
+        ),
+        FailureExample::from_parts(
+            "How many moons does Mars have?",
+            Some("Two".to_string()),
+            "I think it has one moon.",
+            0.0,
+            None,
+        ),
+    ];
+
+    // The injected, network-free proposer: a canned improved system prompt that
+    // the real `LlmRewrite::propose_async` path turns into the candidate.
+    let generator = CannedRewriteGenerator {
+        completion: "You are a meticulous factual assistant. Answer only when confident, cite \
+                     the specific source for each factual claim, and say 'I am not sure' when \
+                     you cannot verify an answer."
+            .to_string(),
+    };
+
+    // 6 optimization cases + 6 held-out Test cases.
+    let optimize_cases = 6usize;
+    let test_cases = 6usize;
+    let evaluator = FixtureCandidateEvaluator {
+        optimize_cases,
+        test_cases,
+        // Uniform 0.5 → 0.9 lift everywhere: a generalizing candidate.
+        baseline_score: 0.5,
+        candidate_score: 0.9,
+    };
+
+    let cfg = OptimizationRoundConfig::new(
+        "reduce hallucinations on factual lookups",
+        "You are a helpful assistant.",
+        failures,
+        // Opaque case payloads; the fixture evaluator ignores their contents.
+        (0..(optimize_cases + test_cases))
+            .map(|i| json!({ "case": i }))
+            .collect(),
+        OptimizerStrategy::LlmRewrite,
+        GatePolicy {
+            min_sample_size: 6,
+            max_regression: 0.0,
+            alpha: 0.05,
+            comparison_count: 1,
+        },
+    );
+
+    let outcome = run_optimization_round(
+        cfg,
+        &generator,
+        // No real key needed: the canned generator never reads credentials.
+        ProviderCredentials::new("fixture", "sk-fixture-no-network"),
+        &evaluator,
+    )
+    .await
+    .context("run rsi optimization round fixture")?;
+
+    let evaluated: Vec<serde_json::Value> = outcome
+        .evaluated
+        .iter()
+        .map(|evaluation| {
+            json!({
+                "candidate": {
+                    "kind": evaluation.candidate.kind,
+                    "target": evaluation.candidate.target,
+                    "description": evaluation.candidate.description,
+                    "proposed_by": evaluation.candidate.proposed_by,
+                },
+                "gate_decision": evaluation.gate.decision.name(),
+                "gate": {
+                    "sample_size": evaluation.gate.sample_size,
+                    "baseline_mean": evaluation.gate.baseline_mean,
+                    "candidate_mean": evaluation.gate.candidate_mean,
+                    "delta": evaluation.gate.delta,
+                    "ci_low": evaluation.gate.ci_low,
+                    "ci_high": evaluation.gate.ci_high,
+                    "p_value": evaluation.gate.p_value,
+                },
+                "overfit_flag": evaluation.overfit.overfit,
+                "overfit": {
+                    "optimize_lift": evaluation.overfit.optimize_lift,
+                    "holdout_lift": evaluation.overfit.holdout_lift,
+                    "gap": evaluation.overfit.gap,
+                    "gap_ci_low": evaluation.overfit.gap_ci_low,
+                    "gap_ci_high": evaluation.overfit.gap_ci_high,
+                },
+                "accepted": evaluation.accepted,
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "accepted_candidate": outcome.accepted.map(|candidate| json!({
+            "kind": candidate.kind,
+            "target": candidate.target,
+            "description": candidate.description,
+            "proposed_by": candidate.proposed_by,
+        })),
+        "evaluated": evaluated,
+    }))
 }
 
 fn calibration_fixture_cases(
