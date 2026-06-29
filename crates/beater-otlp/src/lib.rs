@@ -1619,7 +1619,8 @@ mod tests {
             }],
         };
 
-        let native = export_to_native_requests(scope, request).unwrap_or_else(|err| panic!("{err}"));
+        let native =
+            export_to_native_requests(scope, request).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(native.len(), 2);
         for span in &native {
             assert_eq!(
