@@ -8,6 +8,9 @@ name: sdk-contract
 
 on:
   pull_request:
+  # Re-run the zero-drift contract gate on the merged result of each queued PR so
+  # a contract change that only conflicts post-merge cannot reach main (#343).
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
