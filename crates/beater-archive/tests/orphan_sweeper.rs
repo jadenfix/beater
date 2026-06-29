@@ -40,7 +40,7 @@ async fn sweeps_orphaned_artifacts_against_live_spans() {
     let raw = raw_envelope(&tenant, &project, raw_ref.clone());
     let span = canonical_span(&tenant, &project, raw_ref.clone(), Some(output_ref.clone()));
     trace_store
-        .write_batch(CanonicalTraceBatch::one(raw, span))
+        .write_batch(Arc::new(CanonicalTraceBatch::one(raw, span)))
         .await
         .unwrap_or_else(|err| panic!("{err}"));
 

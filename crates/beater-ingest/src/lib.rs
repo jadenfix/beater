@@ -738,9 +738,13 @@ impl IngestService {
         &self,
         prepared: PreparedTraceBatch,
     ) -> Result<IngestOutcome, IngestError> {
+        // Share the batch with the store via an `Arc` handle (pointer bump),
+        // not a deep clone. Reference-iterating backends (Postgres/ClickHouse)
+        // never copy the payload at all; `prepared` keeps its handle so the rare
+        // publish fallback below can re-queue the same batch without a re-copy.
         let ack = self
             .traces
-            .write_batch(prepared.batch.clone())
+            .write_batch(Arc::clone(&prepared.batch))
             .await
             .map_err(IngestError::Store)?;
         let downstream_queued = match self
@@ -1171,7 +1175,7 @@ impl IngestService {
             project_id: request.scope.project_id,
             queue_key: idempotency_key,
             trace_ids,
-            batch: CanonicalTraceBatch::one(raw, span),
+            batch: Arc::new(CanonicalTraceBatch::one(raw, span)),
         })
     }
 
@@ -1295,10 +1299,10 @@ impl IngestService {
             project_id: scope.project_id,
             queue_key: raw_idempotency_key,
             trace_ids,
-            batch: CanonicalTraceBatch {
+            batch: Arc::new(CanonicalTraceBatch {
                 raw_envelopes: vec![raw],
                 spans,
-            },
+            }),
         })
     }
 
@@ -1334,8 +1338,11 @@ impl IngestService {
         &self,
         prepared: &PreparedTraceBatch,
     ) -> Result<PublishAck, IngestError> {
+        // The retry-queue payload owns its batch. This deep clone only happens on
+        // the cold publish path (initial-publish fallback and the explicit buffer
+        // APIs), never on the hot store-write path, which shares the `Arc`.
         let payload = serde_json::to_vec(&QueuedTraceWrite {
-            batch: prepared.batch.clone(),
+            batch: (*prepared.batch).clone(),
         })
         .map_err(anyhow::Error::from)?;
         let mut message = BusMessage::new(
@@ -1434,7 +1441,9 @@ impl IngestService {
         }
 
         let trace_ids = trace_ids_for_batch(&queued.batch);
-        let write_ack = match self.traces.write_batch(queued.batch.clone()).await {
+        // `queued` is owned here (the hook above received its own clone), so move
+        // the batch into the store via `Arc` rather than deep-cloning it again.
+        let write_ack = match self.traces.write_batch(Arc::new(queued.batch)).await {
             Ok(write_ack) => write_ack,
             Err(err) => {
                 report.failed_writes += 1;
@@ -1878,7 +1887,10 @@ struct PreparedTraceBatch {
     project_id: ProjectId,
     queue_key: IdempotencyKey,
     trace_ids: BTreeSet<TraceId>,
-    batch: CanonicalTraceBatch,
+    // `Arc` so the store write and the rare durable-retry fallback share one
+    // allocation instead of deep-cloning the full span/attribute payload on
+    // every ingest (see `write_batch_and_queue_downstream`).
+    batch: Arc<CanonicalTraceBatch>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -4297,7 +4309,7 @@ mod tests {
     impl TraceStore for NotFoundTraceStore {
         async fn write_batch(
             &self,
-            _batch: CanonicalTraceBatch,
+            _batch: Arc<CanonicalTraceBatch>,
         ) -> beater_store::StoreResult<WriteAck> {
             Err(StoreError::NotFound("trace".to_string()))
         }
@@ -4353,7 +4365,7 @@ mod tests {
     impl TraceStore for UnavailableTraceStore {
         async fn write_batch(
             &self,
-            _batch: CanonicalTraceBatch,
+            _batch: Arc<CanonicalTraceBatch>,
         ) -> beater_store::StoreResult<WriteAck> {
             Err(StoreError::Backend("trace store unavailable".to_string()))
         }

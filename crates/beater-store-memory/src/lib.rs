@@ -150,7 +150,11 @@ impl InMemoryQuotaLimiter {
 
 #[async_trait]
 impl TraceStore for InMemoryTraceStore {
-    async fn write_batch(&self, batch: CanonicalTraceBatch) -> StoreResult<WriteAck> {
+    async fn write_batch(&self, batch: Arc<CanonicalTraceBatch>) -> StoreResult<WriteAck> {
+        // Take ownership without a deep copy when we hold the only handle (the
+        // common ingest path); fall back to cloning the inner batch only when a
+        // retry handle is still alive.
+        let batch = Arc::try_unwrap(batch).unwrap_or_else(|shared| (*shared).clone());
         let mut state = self.lock()?;
         let mut accepted_raw = 0;
         let mut duplicate_raw = 0;

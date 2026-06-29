@@ -28,7 +28,7 @@ fn bench_in_memory_trace_store(c: &mut Criterion) {
                 let store = InMemoryTraceStore::new();
                 let accepted_spans = runtime.block_on(async {
                     store
-                        .write_batch(batch)
+                        .write_batch(batch.into())
                         .await
                         .unwrap_or_else(|err| panic!("{err}"))
                         .accepted_spans
@@ -42,7 +42,7 @@ fn bench_in_memory_trace_store(c: &mut Criterion) {
     let store = InMemoryTraceStore::new();
     runtime.block_on(async {
         store
-            .write_batch(canonical_trace_batch(&config))
+            .write_batch(canonical_trace_batch(&config).into())
             .await
             .unwrap_or_else(|err| panic!("{err}"));
     });

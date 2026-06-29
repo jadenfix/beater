@@ -803,7 +803,7 @@ impl SqliteTraceStore {
 
 #[async_trait]
 impl TraceStore for SqliteTraceStore {
-    async fn write_batch(&self, batch: CanonicalTraceBatch) -> StoreResult<WriteAck> {
+    async fn write_batch(&self, batch: Arc<CanonicalTraceBatch>) -> StoreResult<WriteAck> {
         let mut connection = self.lock()?;
         let tx = connection.transaction().map_err(StoreError::backend)?;
 
