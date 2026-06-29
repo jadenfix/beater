@@ -651,6 +651,7 @@ dependencies = [
  "beater-judge",
  "beater-oauth",
  "beater-otlp",
+ "beater-prompts",
  "beater-replay",
  "beater-sandbox",
  "beater-schema",
@@ -1293,6 +1294,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "beater-prompts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "beater-core",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "beater-receipts"
 version = "0.1.0"
 dependencies = [
@@ -1609,6 +1626,7 @@ dependencies = [
  "beater-oauth",
  "beater-oauth-server",
  "beater-otlp",
+ "beater-prompts",
  "beater-replay",
  "beater-schema",
  "beater-search",

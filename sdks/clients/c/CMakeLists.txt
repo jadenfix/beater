@@ -48,6 +48,7 @@ set(SRCS
     src/binary.c
     external/cJSON.c
     model/object.c
+    model/add_prompt_version_request.c
     model/alert_decision.c
     model/alert_input.c
     model/alert_links.c
@@ -81,8 +82,10 @@ set(SRCS
     model/create_dataset_request.c
     model/create_dataset_version_request.c
     model/create_gate_request.c
+    model/create_prompt_request.c
     model/create_provider_secret_http_request.c
     model/create_review_queue_http_request.c
+    model/created_prompt.c
     model/currency.c
     model/dataset.c
     model/dataset_case.c
@@ -90,6 +93,8 @@ set(SRCS
     model/dataset_version_snapshot.c
     model/dead_letter.c
     model/dead_letter_replay_report.c
+    model/diff_line.c
+    model/diff_line_kind.c
     model/enqueue_review_task_from_trace_http_request.c
     model/error_response.c
     model/eval_reproducibility.c
@@ -134,6 +139,14 @@ set(SRCS
     model/page_run_summary_items_inner.c
     model/promote_review_annotation_http_request.c
     model/promote_trace_case_request.c
+    model/prompt.c
+    model/prompt_list_response.c
+    model/prompt_template.c
+    model/prompt_variable.c
+    model/prompt_version.c
+    model/prompt_version_diff.c
+    model/prompt_version_list_response.c
+    model/prompt_version_metadata.c
     model/provider_secret_metadata.c
     model/publish_ack.c
     model/queued_trace_work.c
@@ -194,6 +207,7 @@ set(SRCS
     api/IngestAPI.c
     api/JudgeAPI.c
     api/OnlineAPI.c
+    api/PromptsAPI.c
     api/ProviderSecretsAPI.c
     api/ReviewsAPI.c
     api/SearchAPI.c
@@ -211,6 +225,7 @@ set(HDRS
     external/cJSON.h
     model/object.h
     model/any_type.h
+    model/add_prompt_version_request.h
     model/alert_decision.h
     model/alert_input.h
     model/alert_links.h
@@ -244,8 +259,10 @@ set(HDRS
     model/create_dataset_request.h
     model/create_dataset_version_request.h
     model/create_gate_request.h
+    model/create_prompt_request.h
     model/create_provider_secret_http_request.h
     model/create_review_queue_http_request.h
+    model/created_prompt.h
     model/currency.h
     model/dataset.h
     model/dataset_case.h
@@ -253,6 +270,8 @@ set(HDRS
     model/dataset_version_snapshot.h
     model/dead_letter.h
     model/dead_letter_replay_report.h
+    model/diff_line.h
+    model/diff_line_kind.h
     model/enqueue_review_task_from_trace_http_request.h
     model/error_response.h
     model/eval_reproducibility.h
@@ -297,6 +316,14 @@ set(HDRS
     model/page_run_summary_items_inner.h
     model/promote_review_annotation_http_request.h
     model/promote_trace_case_request.h
+    model/prompt.h
+    model/prompt_list_response.h
+    model/prompt_template.h
+    model/prompt_variable.h
+    model/prompt_version.h
+    model/prompt_version_diff.h
+    model/prompt_version_list_response.h
+    model/prompt_version_metadata.h
     model/provider_secret_metadata.h
     model/publish_ack.h
     model/queued_trace_work.h
@@ -357,6 +384,7 @@ set(HDRS
     api/IngestAPI.h
     api/JudgeAPI.h
     api/OnlineAPI.h
+    api/PromptsAPI.h
     api/ProviderSecretsAPI.h
     api/ReviewsAPI.h
     api/SearchAPI.h
@@ -458,6 +486,7 @@ set(HDRS "")
 #    unit-tests/manual-IngestAPI.c
 #    unit-tests/manual-JudgeAPI.c
 #    unit-tests/manual-OnlineAPI.c
+#    unit-tests/manual-PromptsAPI.c
 #    unit-tests/manual-ProviderSecretsAPI.c
 #    unit-tests/manual-ReviewsAPI.c
 #    unit-tests/manual-SearchAPI.c

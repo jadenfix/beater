@@ -24,6 +24,7 @@ beater-ingest = { path = "../beater-ingest" }
 beater-judge = { path = "../beater-judge" }
 beater-oauth = { path = "../beater-oauth" }
 beater-otlp = { path = "../beater-otlp" }
+beater-prompts = { path = "../beater-prompts" }
 beater-schema = { path = "../beater-schema" }
 beater-search = { path = "../beater-search" }
 beater-security = { path = "../beater-security" }

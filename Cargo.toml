@@ -36,6 +36,7 @@ members = [
   "crates/beater-experiments",
   "crates/beater-gates",
   "crates/beater-guardrails",
+  "crates/beater-prompts",
   "crates/beater-human",
   "crates/beater-calibration",
   "crates/beater-alerts",

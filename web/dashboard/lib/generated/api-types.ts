@@ -532,6 +532,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/prompts/{tenant_id}/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listPrompts"];
+        put?: never;
+        post: operations["createPrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getPrompt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["diffPromptVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listPromptVersions"];
+        put?: never;
+        post: operations["addPromptVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/provider-secrets/{tenant_id}/{project_id}": {
         parameters: {
             query?: never;
@@ -760,6 +824,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Request body for `addPromptVersion`: a new immutable template revision. */
+        AddPromptVersionRequest: {
+            created_by?: string | null;
+            message?: string | null;
+            template: components["schemas"]["PromptTemplate"];
+        };
         AgentReleaseId: string;
         /**
          * @description Canonical agent span kind such as agent.run or llm.call
@@ -1094,6 +1164,17 @@ export interface components {
             inconclusive_policy?: null | components["schemas"]["InconclusivePolicy"];
             name: string;
         };
+        /**
+         * @description Request body for `createPrompt`: the new prompt's metadata plus its initial
+         *     (version 1) template.
+         */
+        CreatePromptRequest: {
+            created_by?: string | null;
+            description?: string | null;
+            message?: string | null;
+            name: string;
+            template: components["schemas"]["PromptTemplate"];
+        };
         CreateProviderSecretHttpRequest: {
             display_name: string;
             provider: string;
@@ -1103,6 +1184,10 @@ export interface components {
             annotation_schema: unknown;
             name: string;
             queue_id?: string | null;
+        };
+        CreatedPrompt: {
+            prompt: components["schemas"]["Prompt"];
+            version: components["schemas"]["PromptVersion"];
         };
         /** @enum {string} */
         Currency: "USD";
@@ -1180,6 +1265,14 @@ export interface components {
             reset_attempts: boolean;
             tenant_id: components["schemas"]["TenantId"];
         };
+        DiffLine: {
+            kind: components["schemas"]["DiffLineKind"];
+            new_line?: number | null;
+            old_line?: number | null;
+            text: string;
+        };
+        /** @enum {string} */
+        DiffLineKind: "unchanged" | "added" | "removed";
         EnqueueReviewTaskFromTraceHttpRequest: {
             dataset_case_id?: string | null;
             dataset_id?: string | null;
@@ -1563,7 +1656,57 @@ export interface components {
             span_id?: string | null;
             trace_id: string;
         };
+        Prompt: {
+            /** Format: date-time */
+            created_at: string;
+            description?: string | null;
+            name: string;
+            project_id: components["schemas"]["ProjectId"];
+            prompt_id: components["schemas"]["PromptId"];
+            tenant_id: components["schemas"]["TenantId"];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PromptId: string;
+        PromptListResponse: {
+            prompts: components["schemas"]["Prompt"][];
+        };
+        PromptTemplate: {
+            body: string;
+            tags: string[];
+            variables: components["schemas"]["PromptVariable"][];
+        };
+        PromptVariable: {
+            default?: string | null;
+            description?: string | null;
+            name: string;
+            required: boolean;
+        };
+        PromptVersion: {
+            metadata: components["schemas"]["PromptVersionMetadata"];
+            project_id: components["schemas"]["ProjectId"];
+            prompt_id: components["schemas"]["PromptId"];
+            template: components["schemas"]["PromptTemplate"];
+            tenant_id: components["schemas"]["TenantId"];
+            version_id: components["schemas"]["PromptVersionId"];
+            /** Format: int32 */
+            version_number: number;
+        };
+        PromptVersionDiff: {
+            from_version_id: components["schemas"]["PromptVersionId"];
+            lines: components["schemas"]["DiffLine"][];
+            to_version_id: components["schemas"]["PromptVersionId"];
+        };
         PromptVersionId: string;
+        PromptVersionListResponse: {
+            versions: components["schemas"]["PromptVersion"][];
+        };
+        PromptVersionMetadata: {
+            /** Format: date-time */
+            created_at: string;
+            created_by?: string | null;
+            message?: string | null;
+        };
         ProviderSecretId: string;
         ProviderSecretMetadata: {
             active: boolean;
@@ -4243,6 +4386,426 @@ export interface operations {
             };
             /** @description Per-project quota exceeded or backpressure */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPrompts: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List prompts in a project */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptListResponse"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createPrompt: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromptRequest"];
+            };
+        };
+        responses: {
+            /** @description Create a prompt and its initial version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedPrompt"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPrompt: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description prompt_id */
+                prompt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Get a prompt's metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Prompt"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    diffPromptVersions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description prompt_id */
+                prompt_id: string;
+                from: string;
+                to: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Line diff between two prompt versions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptVersionDiff"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listPromptVersions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description prompt_id */
+                prompt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List a prompt's versions oldest-first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptVersionListResponse"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addPromptVersion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+                /** @description prompt_id */
+                prompt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPromptVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Append an immutable prompt version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptVersion"];
+                };
+            };
+            /** @description Invalid request, scope, or filter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Resource not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

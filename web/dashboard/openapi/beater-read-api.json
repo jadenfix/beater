@@ -4557,6 +4557,822 @@
         }
       }
     },
+    "/v1/prompts/{tenant_id}/{project_id}": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "operationId": "listPrompts",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "tenant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "description": "Bearer API token for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-api-key",
+            "in": "header",
+            "description": "API key alternative for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-project-id",
+            "in": "header",
+            "description": "Strict-auth project scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-environment-id",
+            "in": "header",
+            "description": "Strict-auth environment scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List prompts in a project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, scope, or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credentials lack the required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "prompts"
+        ],
+        "operationId": "createPrompt",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "tenant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "description": "Bearer API token for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-api-key",
+            "in": "header",
+            "description": "API key alternative for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-project-id",
+            "in": "header",
+            "description": "Strict-auth project scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-environment-id",
+            "in": "header",
+            "description": "Strict-auth environment scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Create a prompt and its initial version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedPrompt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, scope, or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credentials lack the required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "operationId": "getPrompt",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "tenant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "description": "prompt_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "description": "Bearer API token for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-api-key",
+            "in": "header",
+            "description": "API key alternative for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-project-id",
+            "in": "header",
+            "description": "Strict-auth project scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-environment-id",
+            "in": "header",
+            "description": "Strict-auth environment scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Get a prompt's metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Prompt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, scope, or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credentials lack the required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}/diff": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "operationId": "diffPromptVersions",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "tenant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "description": "prompt_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "description": "Bearer API token for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-api-key",
+            "in": "header",
+            "description": "API key alternative for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-project-id",
+            "in": "header",
+            "description": "Strict-auth project scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-environment-id",
+            "in": "header",
+            "description": "Strict-auth environment scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Line diff between two prompt versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersionDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, scope, or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credentials lack the required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "operationId": "listPromptVersions",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "tenant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "description": "prompt_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "description": "Bearer API token for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-api-key",
+            "in": "header",
+            "description": "API key alternative for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-project-id",
+            "in": "header",
+            "description": "Strict-auth project scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-environment-id",
+            "in": "header",
+            "description": "Strict-auth environment scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List a prompt's versions oldest-first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersionListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, scope, or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credentials lack the required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "prompts"
+        ],
+        "operationId": "addPromptVersion",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "tenant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "description": "prompt_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "description": "Bearer API token for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-api-key",
+            "in": "header",
+            "description": "API key alternative for strict auth",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-project-id",
+            "in": "header",
+            "description": "Strict-auth project scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-beater-environment-id",
+            "in": "header",
+            "description": "Strict-auth environment scope",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddPromptVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Append an immutable prompt version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, scope, or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Credentials lack the required scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/provider-secrets/{tenant_id}/{project_id}": {
       "get": {
         "tags": [
@@ -6820,6 +7636,30 @@
   },
   "components": {
     "schemas": {
+      "AddPromptVersionRequest": {
+        "type": "object",
+        "description": "Request body for `addPromptVersion`: a new immutable template revision.",
+        "required": [
+          "template"
+        ],
+        "properties": {
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "template": {
+            "$ref": "#/components/schemas/PromptTemplate"
+          }
+        }
+      },
       "AgentReleaseId": {
         "type": "string"
       },
@@ -8052,6 +8892,40 @@
           }
         }
       },
+      "CreatePromptRequest": {
+        "type": "object",
+        "description": "Request body for `createPrompt`: the new prompt's metadata plus its initial\n(version 1) template.",
+        "required": [
+          "name",
+          "template"
+        ],
+        "properties": {
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "template": {
+            "$ref": "#/components/schemas/PromptTemplate"
+          }
+        }
+      },
       "CreateProviderSecretHttpRequest": {
         "type": "object",
         "required": [
@@ -8087,6 +8961,21 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "CreatedPrompt": {
+        "type": "object",
+        "required": [
+          "prompt",
+          "version"
+        ],
+        "properties": {
+          "prompt": {
+            "$ref": "#/components/schemas/Prompt"
+          },
+          "version": {
+            "$ref": "#/components/schemas/PromptVersion"
           }
         }
       },
@@ -8336,6 +9225,43 @@
             "$ref": "#/components/schemas/TenantId"
           }
         }
+      },
+      "DiffLine": {
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DiffLineKind"
+          },
+          "new_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "old_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "DiffLineKind": {
+        "type": "string",
+        "enum": [
+          "unchanged",
+          "added",
+          "removed"
+        ]
       },
       "EnqueueReviewTaskFromTraceHttpRequest": {
         "type": "object",
@@ -9750,8 +10676,213 @@
           }
         }
       },
+      "Prompt": {
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "project_id",
+          "prompt_id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/ProjectId"
+          },
+          "prompt_id": {
+            "$ref": "#/components/schemas/PromptId"
+          },
+          "tenant_id": {
+            "$ref": "#/components/schemas/TenantId"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PromptId": {
+        "type": "string"
+      },
+      "PromptListResponse": {
+        "type": "object",
+        "required": [
+          "prompts"
+        ],
+        "properties": {
+          "prompts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Prompt"
+            }
+          }
+        }
+      },
+      "PromptTemplate": {
+        "type": "object",
+        "required": [
+          "body",
+          "variables",
+          "tags"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PromptVariable"
+            }
+          }
+        }
+      },
+      "PromptVariable": {
+        "type": "object",
+        "required": [
+          "name",
+          "required"
+        ],
+        "properties": {
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PromptVersion": {
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "project_id",
+          "prompt_id",
+          "version_id",
+          "version_number",
+          "template",
+          "metadata"
+        ],
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/PromptVersionMetadata"
+          },
+          "project_id": {
+            "$ref": "#/components/schemas/ProjectId"
+          },
+          "prompt_id": {
+            "$ref": "#/components/schemas/PromptId"
+          },
+          "template": {
+            "$ref": "#/components/schemas/PromptTemplate"
+          },
+          "tenant_id": {
+            "$ref": "#/components/schemas/TenantId"
+          },
+          "version_id": {
+            "$ref": "#/components/schemas/PromptVersionId"
+          },
+          "version_number": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "PromptVersionDiff": {
+        "type": "object",
+        "required": [
+          "from_version_id",
+          "to_version_id",
+          "lines"
+        ],
+        "properties": {
+          "from_version_id": {
+            "$ref": "#/components/schemas/PromptVersionId"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiffLine"
+            }
+          },
+          "to_version_id": {
+            "$ref": "#/components/schemas/PromptVersionId"
+          }
+        }
+      },
       "PromptVersionId": {
         "type": "string"
+      },
+      "PromptVersionListResponse": {
+        "type": "object",
+        "required": [
+          "versions"
+        ],
+        "properties": {
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PromptVersion"
+            }
+          }
+        }
+      },
+      "PromptVersionMetadata": {
+        "type": "object",
+        "required": [
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "ProviderSecretId": {
         "type": "string"
@@ -11111,6 +12242,10 @@
     {
       "name": "archive",
       "description": "Trace archival and archived-span queries"
+    },
+    {
+      "name": "prompts",
+      "description": "Prompt registry, versions, and diffs"
     },
     {
       "name": "datasets",
