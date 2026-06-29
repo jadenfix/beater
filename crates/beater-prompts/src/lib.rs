@@ -1,10 +1,14 @@
-//! `beater-prompts` - Mixdown prompt registry foundation.
+//! `beater-prompts` - Mixdown prompt registry (ARCHITECTURE.md §20.6 #4.7).
 //!
-//! This crate implements the lightweight prompt management core planned in
-//! ARCHITECTURE.md §20.6 #4.7: tenant/project-scoped prompt records, immutable
-//! prompt versions, variables, tags, and body diffs. API routes, migrations,
-//! playground execution, dashboard views, and generated contracts are
-//! deliberately deferred to follow-up work.
+//! Tenant/project-scoped prompt records, immutable prompt versions, variables,
+//! tags, and body diffs. The [`PromptRegistry`] trait has two implementations:
+//! [`InMemoryPromptRegistry`] (tests/embedding) and [`SqlitePromptRegistry`]
+//! (the persistent store wired into the running beaterd service). The `/v1`
+//! prompt endpoints in `beater-api` are the live consumer of this crate.
+
+mod sqlite;
+
+pub use sqlite::SqlitePromptRegistry;
 
 use beater_core::{Clock, ProjectId, PromptId, PromptVersionId, SystemClock, TenantId, Timestamp};
 use serde::{Deserialize, Serialize};
@@ -12,7 +16,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use uuid::Uuid;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PromptTemplate {
     pub body: String,
     pub variables: Vec<PromptVariable>,
@@ -30,7 +34,7 @@ impl PromptTemplate {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PromptVariable {
     pub name: String,
     pub description: Option<String>,
@@ -60,18 +64,20 @@ impl PromptVariable {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Prompt {
     pub tenant_id: TenantId,
     pub project_id: ProjectId,
     pub prompt_id: PromptId,
     pub name: String,
     pub description: Option<String>,
+    #[schema(value_type = String, format = DateTime)]
     pub created_at: Timestamp,
+    #[schema(value_type = String, format = DateTime)]
     pub updated_at: Timestamp,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PromptVersion {
     pub tenant_id: TenantId,
     pub project_id: ProjectId,
@@ -82,8 +88,9 @@ pub struct PromptVersion {
     pub metadata: PromptVersionMetadata,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PromptVersionMetadata {
+    #[schema(value_type = String, format = DateTime)]
     pub created_at: Timestamp,
     pub created_by: Option<String>,
     pub message: Option<String>,
@@ -110,20 +117,20 @@ pub struct AddPromptVersion {
     pub message: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CreatedPrompt {
     pub prompt: Prompt,
     pub version: PromptVersion,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PromptVersionDiff {
     pub from_version_id: PromptVersionId,
     pub to_version_id: PromptVersionId,
     pub lines: Vec<DiffLine>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct DiffLine {
     pub kind: DiffLineKind,
     pub old_line: Option<usize>,
@@ -131,7 +138,7 @@ pub struct DiffLine {
     pub text: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DiffLineKind {
     Unchanged,
@@ -152,6 +159,8 @@ pub enum PromptRegistryError {
     },
     #[error("prompt registry lock poisoned")]
     LockPoisoned,
+    #[error("prompt registry backend error: {0}")]
+    Backend(String),
 }
 
 pub type PromptRegistryResult<T> = Result<T, PromptRegistryError>;
@@ -159,6 +168,17 @@ pub type PromptRegistryResult<T> = Result<T, PromptRegistryError>;
 pub trait PromptRegistry: Send + Sync {
     fn create_prompt(&self, request: CreatePrompt) -> PromptRegistryResult<CreatedPrompt>;
     fn add_version(&self, request: AddPromptVersion) -> PromptRegistryResult<PromptVersion>;
+    fn list_prompts(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+    ) -> PromptRegistryResult<Vec<Prompt>>;
+    fn get_prompt(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        prompt_id: &PromptId,
+    ) -> PromptRegistryResult<Prompt>;
     fn list_versions(
         &self,
         tenant_id: &TenantId,
@@ -293,6 +313,37 @@ impl PromptRegistry for InMemoryPromptRegistry {
             prompt.updated_at = now;
         }
         Ok(version)
+    }
+
+    fn list_prompts(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+    ) -> PromptRegistryResult<Vec<Prompt>> {
+        let state = self.lock()?;
+        Ok(state
+            .prompts
+            .values()
+            .filter(|prompt| &prompt.tenant_id == tenant_id && &prompt.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    fn get_prompt(
+        &self,
+        tenant_id: &TenantId,
+        project_id: &ProjectId,
+        prompt_id: &PromptId,
+    ) -> PromptRegistryResult<Prompt> {
+        let key = PromptKey::new(tenant_id.clone(), project_id.clone(), prompt_id.clone());
+        let state = self.lock()?;
+        state
+            .prompts
+            .get(&key)
+            .cloned()
+            .ok_or_else(|| PromptRegistryError::PromptNotFound {
+                prompt_id: prompt_id.clone(),
+            })
     }
 
     fn list_versions(

@@ -33,8 +33,8 @@ use beater_core::OrganizationId;
 use beater_core::{
     AgentReleaseId, AnnotationId, ApiKeyId, ArtifactId, DatasetCaseId, DatasetId, DatasetVersionId,
     EnvironmentId, EvaluatorVersionId, ExperimentRunId, GateId, Page, PageRequest, ProjectId,
-    PromptVersionId, ProviderSecretId, ReviewQueueId, ReviewTaskId, Sha256Hash, SpanId, TenantId,
-    TenantScope, TraceId,
+    PromptId, PromptVersionId, ProviderSecretId, ReviewQueueId, ReviewTaskId, Sha256Hash, SpanId,
+    TenantId, TenantScope, TraceId,
 };
 use beater_datasets::{
     evaluate_dataset_version, evaluate_dataset_version_with_judge, promote_trace_span_to_case,
@@ -63,6 +63,10 @@ use beater_judge::{
 };
 use beater_oauth::OAuthStore;
 use beater_otlp::{decode_export_trace_request, export_to_raw_trace_ingest_request};
+use beater_prompts::{
+    AddPromptVersion, CreatePrompt, CreatedPrompt, Prompt, PromptRegistry, PromptRegistryError,
+    PromptTemplate, PromptVersion, PromptVersionDiff,
+};
 use beater_schema::{
     AgentSpanKind, ArtifactRef, AuthContext, CanonicalSpan, RedactionClass, RunFilter, RunSummary,
     SpanStatus, TraceView,
@@ -134,6 +138,7 @@ pub struct ApiState {
     /// (no `COMPOSIO_API_KEY`), those endpoints report 501 and the core runs with
     /// zero cloud dependency.
     connectors: Option<Arc<dyn ComposioClient>>,
+    prompts: Option<Arc<dyn PromptRegistry>>,
     /// OAuth 2.1 authorization-server store. When set, `authorize()` also
     /// accepts OAuth access tokens (`bao_...`) as bearer credentials, mapping
     /// the token's tenant scope + OAuth scopes onto the request.
@@ -173,6 +178,7 @@ impl ApiState {
             stripe_webhook_secret: None,
             audit: None,
             connectors: None,
+            prompts: None,
             oauth: None,
             oauth_metadata_url: None,
         }
@@ -321,6 +327,11 @@ impl ApiState {
         self
     }
 
+    pub fn with_prompts(mut self, prompts: Arc<dyn PromptRegistry>) -> Self {
+        self.prompts = Some(prompts);
+        self
+    }
+
     fn auth_required(&self) -> bool {
         self.auth_mode == AuthMode::Required
     }
@@ -335,9 +346,9 @@ impl ApiState {
 ///
 /// Billing/Stripe routes are hosted-only and compiled in only under the
 /// `billing` feature, so the count is feature-aware: the open-source default
-/// build registers 47 `/v1` routes (including the 6 always-on `/v1/connectors`
-/// routes); the hosted `billing` build adds 8.
-pub const V1_ROUTE_COUNT: usize = if cfg!(feature = "billing") { 55 } else { 47 };
+/// build registers 53 `/v1` routes (41 base + 6 always-on `/v1/connectors`
+/// routes + 6 `/v1/prompts` routes); the hosted `billing` build adds 8.
+pub const V1_ROUTE_COUNT: usize = if cfg!(feature = "billing") { 61 } else { 53 };
 
 /// See [`V1_ROUTE_COUNT`].
 pub fn v1_route_count() -> usize {
@@ -436,6 +447,22 @@ pub fn router(state: ApiState) -> Router {
         .route(
             "/v1/archive/:tenant_id/:project_id/spans",
             get(query_archive_spans),
+        )
+        .route(
+            "/v1/prompts/:tenant_id/:project_id",
+            get(list_prompts_route).post(create_prompt_route),
+        )
+        .route(
+            "/v1/prompts/:tenant_id/:project_id/:prompt_id",
+            get(get_prompt_route),
+        )
+        .route(
+            "/v1/prompts/:tenant_id/:project_id/:prompt_id/versions",
+            get(list_prompt_versions_route).post(add_prompt_version_route),
+        )
+        .route(
+            "/v1/prompts/:tenant_id/:project_id/:prompt_id/diff",
+            get(diff_prompt_versions_route),
         )
         .route("/v1/datasets/:tenant_id/:project_id", post(create_dataset))
         .route(
@@ -2491,6 +2518,328 @@ async fn query_archive_spans(
     Ok(Json(ArchiveQueryResponse { rows }))
 }
 
+/// Request body for `createPrompt`: the new prompt's metadata plus its initial
+/// (version 1) template.
+#[derive(Clone, Debug, Deserialize, ToSchema)]
+struct CreatePromptRequest {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    template: PromptTemplate,
+    #[serde(default)]
+    created_by: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+/// Request body for `addPromptVersion`: a new immutable template revision.
+#[derive(Clone, Debug, Deserialize, ToSchema)]
+struct AddPromptVersionRequest {
+    template: PromptTemplate,
+    #[serde(default)]
+    created_by: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+struct PromptListResponse {
+    prompts: Vec<Prompt>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+struct PromptVersionListResponse {
+    versions: Vec<PromptVersion>,
+}
+
+/// Query parameters for `diffPromptVersions`: the two version ids to compare.
+#[derive(Clone, Debug, Deserialize, IntoParams)]
+struct DiffPromptVersionsQuery {
+    from: String,
+    to: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/prompts/{tenant_id}/{project_id}",
+    tag = "prompts",
+    operation_id = "createPrompt",
+    params(
+        ("tenant_id" = String, Path, description = "tenant_id"),
+        ("project_id" = String, Path, description = "project_id"),
+        ("authorization" = Option<String>, Header, description = "Bearer API token for strict auth"),
+        ("x-beater-api-key" = Option<String>, Header, description = "API key alternative for strict auth"),
+        ("x-beater-project-id" = Option<String>, Header, description = "Strict-auth project scope"),
+        ("x-beater-environment-id" = Option<String>, Header, description = "Strict-auth environment scope"),
+    ),
+    request_body = CreatePromptRequest,
+    responses(
+        (status = 200, description = "Create a prompt and its initial version", body = CreatedPrompt),
+        (status = 400, description = "Invalid request, scope, or filter", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Credentials lack the required scope", body = ErrorResponse),
+    )
+)]
+async fn create_prompt_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id)): Path<(String, String)>,
+    Json(request): Json<CreatePromptRequest>,
+) -> Result<Json<CreatedPrompt>, ApiError> {
+    let prompts = prompt_registry(&state)?;
+    let tenant_id = TenantId::new(tenant_id)?;
+    let project_id = ProjectId::new(project_id)?;
+    authorize_project_route(
+        &state,
+        &headers,
+        &tenant_id,
+        &project_id,
+        ApiScope::DatasetWrite,
+    )
+    .await?;
+    let created = prompts.create_prompt(CreatePrompt {
+        tenant_id,
+        project_id,
+        name: request.name,
+        description: request.description,
+        template: request.template,
+        created_by: request.created_by,
+        message: request.message,
+    })?;
+    Ok(Json(created))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/prompts/{tenant_id}/{project_id}",
+    tag = "prompts",
+    operation_id = "listPrompts",
+    params(
+        ("tenant_id" = String, Path, description = "tenant_id"),
+        ("project_id" = String, Path, description = "project_id"),
+        ("authorization" = Option<String>, Header, description = "Bearer API token for strict auth"),
+        ("x-beater-api-key" = Option<String>, Header, description = "API key alternative for strict auth"),
+        ("x-beater-project-id" = Option<String>, Header, description = "Strict-auth project scope"),
+        ("x-beater-environment-id" = Option<String>, Header, description = "Strict-auth environment scope"),
+    ),
+    responses(
+        (status = 200, description = "List prompts in a project", body = PromptListResponse),
+        (status = 400, description = "Invalid request, scope, or filter", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Credentials lack the required scope", body = ErrorResponse),
+    )
+)]
+async fn list_prompts_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id)): Path<(String, String)>,
+) -> Result<Json<PromptListResponse>, ApiError> {
+    let prompts = prompt_registry(&state)?;
+    let tenant_id = TenantId::new(tenant_id)?;
+    let project_id = ProjectId::new(project_id)?;
+    authorize_project_route(
+        &state,
+        &headers,
+        &tenant_id,
+        &project_id,
+        ApiScope::TraceRead,
+    )
+    .await?;
+    let prompts = prompts.list_prompts(&tenant_id, &project_id)?;
+    Ok(Json(PromptListResponse { prompts }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}",
+    tag = "prompts",
+    operation_id = "getPrompt",
+    params(
+        ("tenant_id" = String, Path, description = "tenant_id"),
+        ("project_id" = String, Path, description = "project_id"),
+        ("prompt_id" = String, Path, description = "prompt_id"),
+        ("authorization" = Option<String>, Header, description = "Bearer API token for strict auth"),
+        ("x-beater-api-key" = Option<String>, Header, description = "API key alternative for strict auth"),
+        ("x-beater-project-id" = Option<String>, Header, description = "Strict-auth project scope"),
+        ("x-beater-environment-id" = Option<String>, Header, description = "Strict-auth environment scope"),
+    ),
+    responses(
+        (status = 200, description = "Get a prompt's metadata", body = Prompt),
+        (status = 400, description = "Invalid request, scope, or filter", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Credentials lack the required scope", body = ErrorResponse),
+        (status = 404, description = "Resource not found", body = ErrorResponse),
+    )
+)]
+async fn get_prompt_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id, prompt_id)): Path<(String, String, String)>,
+) -> Result<Json<Prompt>, ApiError> {
+    let prompts = prompt_registry(&state)?;
+    let tenant_id = TenantId::new(tenant_id)?;
+    let project_id = ProjectId::new(project_id)?;
+    let prompt_id = PromptId::new(prompt_id)?;
+    authorize_project_route(
+        &state,
+        &headers,
+        &tenant_id,
+        &project_id,
+        ApiScope::TraceRead,
+    )
+    .await?;
+    let prompt = prompts.get_prompt(&tenant_id, &project_id, &prompt_id)?;
+    Ok(Json(prompt))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions",
+    tag = "prompts",
+    operation_id = "addPromptVersion",
+    params(
+        ("tenant_id" = String, Path, description = "tenant_id"),
+        ("project_id" = String, Path, description = "project_id"),
+        ("prompt_id" = String, Path, description = "prompt_id"),
+        ("authorization" = Option<String>, Header, description = "Bearer API token for strict auth"),
+        ("x-beater-api-key" = Option<String>, Header, description = "API key alternative for strict auth"),
+        ("x-beater-project-id" = Option<String>, Header, description = "Strict-auth project scope"),
+        ("x-beater-environment-id" = Option<String>, Header, description = "Strict-auth environment scope"),
+    ),
+    request_body = AddPromptVersionRequest,
+    responses(
+        (status = 200, description = "Append an immutable prompt version", body = PromptVersion),
+        (status = 400, description = "Invalid request, scope, or filter", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Credentials lack the required scope", body = ErrorResponse),
+        (status = 404, description = "Resource not found", body = ErrorResponse),
+    )
+)]
+async fn add_prompt_version_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id, prompt_id)): Path<(String, String, String)>,
+    Json(request): Json<AddPromptVersionRequest>,
+) -> Result<Json<PromptVersion>, ApiError> {
+    let prompts = prompt_registry(&state)?;
+    let tenant_id = TenantId::new(tenant_id)?;
+    let project_id = ProjectId::new(project_id)?;
+    let prompt_id = PromptId::new(prompt_id)?;
+    authorize_project_route(
+        &state,
+        &headers,
+        &tenant_id,
+        &project_id,
+        ApiScope::DatasetWrite,
+    )
+    .await?;
+    let version = prompts.add_version(AddPromptVersion {
+        tenant_id,
+        project_id,
+        prompt_id,
+        template: request.template,
+        created_by: request.created_by,
+        message: request.message,
+    })?;
+    Ok(Json(version))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions",
+    tag = "prompts",
+    operation_id = "listPromptVersions",
+    params(
+        ("tenant_id" = String, Path, description = "tenant_id"),
+        ("project_id" = String, Path, description = "project_id"),
+        ("prompt_id" = String, Path, description = "prompt_id"),
+        ("authorization" = Option<String>, Header, description = "Bearer API token for strict auth"),
+        ("x-beater-api-key" = Option<String>, Header, description = "API key alternative for strict auth"),
+        ("x-beater-project-id" = Option<String>, Header, description = "Strict-auth project scope"),
+        ("x-beater-environment-id" = Option<String>, Header, description = "Strict-auth environment scope"),
+    ),
+    responses(
+        (status = 200, description = "List a prompt's versions oldest-first", body = PromptVersionListResponse),
+        (status = 400, description = "Invalid request, scope, or filter", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Credentials lack the required scope", body = ErrorResponse),
+        (status = 404, description = "Resource not found", body = ErrorResponse),
+    )
+)]
+async fn list_prompt_versions_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id, prompt_id)): Path<(String, String, String)>,
+) -> Result<Json<PromptVersionListResponse>, ApiError> {
+    let prompts = prompt_registry(&state)?;
+    let tenant_id = TenantId::new(tenant_id)?;
+    let project_id = ProjectId::new(project_id)?;
+    let prompt_id = PromptId::new(prompt_id)?;
+    authorize_project_route(
+        &state,
+        &headers,
+        &tenant_id,
+        &project_id,
+        ApiScope::TraceRead,
+    )
+    .await?;
+    let versions = prompts.list_versions(&tenant_id, &project_id, &prompt_id)?;
+    Ok(Json(PromptVersionListResponse { versions }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/prompts/{tenant_id}/{project_id}/{prompt_id}/diff",
+    tag = "prompts",
+    operation_id = "diffPromptVersions",
+    params(
+        ("tenant_id" = String, Path, description = "tenant_id"),
+        ("project_id" = String, Path, description = "project_id"),
+        ("prompt_id" = String, Path, description = "prompt_id"),
+        DiffPromptVersionsQuery,
+        ("authorization" = Option<String>, Header, description = "Bearer API token for strict auth"),
+        ("x-beater-api-key" = Option<String>, Header, description = "API key alternative for strict auth"),
+        ("x-beater-project-id" = Option<String>, Header, description = "Strict-auth project scope"),
+        ("x-beater-environment-id" = Option<String>, Header, description = "Strict-auth environment scope"),
+    ),
+    responses(
+        (status = 200, description = "Line diff between two prompt versions", body = PromptVersionDiff),
+        (status = 400, description = "Invalid request, scope, or filter", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Credentials lack the required scope", body = ErrorResponse),
+        (status = 404, description = "Resource not found", body = ErrorResponse),
+    )
+)]
+async fn diff_prompt_versions_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id, prompt_id)): Path<(String, String, String)>,
+    Query(query): Query<DiffPromptVersionsQuery>,
+) -> Result<Json<PromptVersionDiff>, ApiError> {
+    let prompts = prompt_registry(&state)?;
+    let tenant_id = TenantId::new(tenant_id)?;
+    let project_id = ProjectId::new(project_id)?;
+    let prompt_id = PromptId::new(prompt_id)?;
+    authorize_project_route(
+        &state,
+        &headers,
+        &tenant_id,
+        &project_id,
+        ApiScope::TraceRead,
+    )
+    .await?;
+    let from_version_id = PromptVersionId::new(query.from)?;
+    let to_version_id = PromptVersionId::new(query.to)?;
+    let diff = prompts.diff_versions(
+        &tenant_id,
+        &project_id,
+        &prompt_id,
+        &from_version_id,
+        &to_version_id,
+    )?;
+    Ok(Json(diff))
+}
+
 #[utoipa::path(
     post,
     path = "/v1/datasets/{tenant_id}/{project_id}",
@@ -3549,6 +3898,10 @@ fn require<T: ?Sized>(value: &Option<Arc<T>>, what: &str) -> Result<Arc<T>, ApiE
 
 fn dataset_store(state: &ApiState) -> Result<Arc<dyn DatasetStore>, ApiError> {
     require(&state.datasets, "dataset store")
+}
+
+fn prompt_registry(state: &ApiState) -> Result<Arc<dyn PromptRegistry>, ApiError> {
+    require(&state.prompts, "prompt registry")
 }
 
 fn provider_secret_store(state: &ApiState) -> Result<Arc<dyn ProviderSecretStore>, ApiError> {
@@ -4700,6 +5053,21 @@ impl From<IngestError> for ApiError {
             IngestError::Import(_) => Self::bad_request(error.to_string()),
             IngestError::Store(error) => error.into(),
             IngestError::Other(error) => Self::internal(error.to_string()),
+        }
+    }
+}
+
+impl From<PromptRegistryError> for ApiError {
+    fn from(error: PromptRegistryError) -> Self {
+        match error {
+            PromptRegistryError::PromptNotFound { .. }
+            | PromptRegistryError::VersionNotFound { .. } => Self::not_found(error.to_string()),
+            PromptRegistryError::VersionPromptMismatch { .. } => {
+                Self::bad_request(error.to_string())
+            }
+            PromptRegistryError::LockPoisoned | PromptRegistryError::Backend(_) => {
+                Self::internal(error.to_string())
+            }
         }
     }
 }

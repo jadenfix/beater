@@ -28,6 +28,7 @@ use beater_judge::{
 use beater_oauth::SqliteOAuthStore;
 use beater_oauth_server::OAuthServerState;
 use beater_otlp::{OtlpGrpcTraceService, TraceServiceServer};
+use beater_prompts::SqlitePromptRegistry;
 use beater_schema::{
     ArtifactRef, AuthContext, CanonicalTraceBatch, RawEnvelope, RedactionClass, RunFilter,
     RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
@@ -272,6 +273,7 @@ async fn main() -> anyhow::Result<()> {
     let audit_db_path = args.data_dir.join("audit.sqlite");
     let provider_secret_db_path = args.data_dir.join("provider-secrets.sqlite");
     let judge_db_path = args.data_dir.join("judge.sqlite");
+    let prompt_db_path = args.data_dir.join("prompts.sqlite");
     let bus_db_path = args.data_dir.join("bus.sqlite");
     let security_db_path = args.data_dir.join("security.sqlite");
     let mut sqlite_store_paths = vec![
@@ -287,6 +289,7 @@ async fn main() -> anyhow::Result<()> {
         audit_db_path.clone(),
         provider_secret_db_path.clone(),
         judge_db_path.clone(),
+        prompt_db_path.clone(),
     ];
     #[cfg(feature = "billing")]
     sqlite_store_paths.push(billing_db_path.clone());
@@ -342,6 +345,7 @@ async fn main() -> anyhow::Result<()> {
         provider_secret_keyring,
     )?);
     let judge_ledger = Arc::new(SqliteJudgeLedger::open(judge_db_path)?);
+    let prompts = Arc::new(SqlitePromptRegistry::open(prompt_db_path)?);
     let judge_provider: Arc<dyn JudgeProvider> = match args.judge_provider {
         JudgeProviderArg::Keyword => Arc::new(KeywordJudgeProvider::default()),
         JudgeProviderArg::HttpRouting => Arc::new(HttpRoutingJudgeProvider::default()),
@@ -457,6 +461,7 @@ async fn main() -> anyhow::Result<()> {
             .with_calibrations(calibrations)
             .with_usage(usage)
             .with_audit(audit)
+            .with_prompts(prompts)
             .with_judge(provider_secrets, judge_broker, judge_ledger);
     // Billing/Stripe is hosted-only and compiled in only under the `billing`
     // feature; the OSS daemon neither opens a billing store nor wires the

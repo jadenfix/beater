@@ -99,6 +99,12 @@ Category | Method | HTTP request | Description
 *JudgeAPI* | [**JudgeAPI_evaluateJudge**](docs/JudgeAPI.md#JudgeAPI_evaluateJudge) | **POST** /v1/judge/{tenant_id}/{project_id}/evaluate | 
 *JudgeAPI* | [**JudgeAPI_listJudgeLedger**](docs/JudgeAPI.md#JudgeAPI_listJudgeLedger) | **GET** /v1/judge/{tenant_id}/{project_id}/ledger | 
 *OnlineAPI* | [**OnlineAPI_decideOnlineSampling**](docs/OnlineAPI.md#OnlineAPI_decideOnlineSampling) | **POST** /v1/online/{tenant_id}/{project_id}/traces/{trace_id}/sampling | 
+*PromptsAPI* | [**PromptsAPI_addPromptVersion**](docs/PromptsAPI.md#PromptsAPI_addPromptVersion) | **POST** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions | 
+*PromptsAPI* | [**PromptsAPI_createPrompt**](docs/PromptsAPI.md#PromptsAPI_createPrompt) | **POST** /v1/prompts/{tenant_id}/{project_id} | 
+*PromptsAPI* | [**PromptsAPI_diffPromptVersions**](docs/PromptsAPI.md#PromptsAPI_diffPromptVersions) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/diff | 
+*PromptsAPI* | [**PromptsAPI_getPrompt**](docs/PromptsAPI.md#PromptsAPI_getPrompt) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id} | 
+*PromptsAPI* | [**PromptsAPI_listPromptVersions**](docs/PromptsAPI.md#PromptsAPI_listPromptVersions) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions | 
+*PromptsAPI* | [**PromptsAPI_listPrompts**](docs/PromptsAPI.md#PromptsAPI_listPrompts) | **GET** /v1/prompts/{tenant_id}/{project_id} | 
 *ProviderSecretsAPI* | [**ProviderSecretsAPI_createProviderSecret**](docs/ProviderSecretsAPI.md#ProviderSecretsAPI_createProviderSecret) | **POST** /v1/provider-secrets/{tenant_id}/{project_id} | 
 *ProviderSecretsAPI* | [**ProviderSecretsAPI_listProviderSecrets**](docs/ProviderSecretsAPI.md#ProviderSecretsAPI_listProviderSecrets) | **GET** /v1/provider-secrets/{tenant_id}/{project_id} | 
 *ProviderSecretsAPI* | [**ProviderSecretsAPI_revokeProviderSecret**](docs/ProviderSecretsAPI.md#ProviderSecretsAPI_revokeProviderSecret) | **POST** /v1/provider-secrets/{tenant_id}/{project_id}/{provider_secret_id}/revoke | 
@@ -117,6 +123,7 @@ Category | Method | HTTP request | Description
 
 ## Documentation for Models
 
+ - [add_prompt_version_request_t](docs/add_prompt_version_request.md)
  - [alert_decision_t](docs/alert_decision.md)
  - [alert_input_t](docs/alert_input.md)
  - [alert_links_t](docs/alert_links.md)
@@ -150,8 +157,10 @@ Category | Method | HTTP request | Description
  - [create_dataset_request_t](docs/create_dataset_request.md)
  - [create_dataset_version_request_t](docs/create_dataset_version_request.md)
  - [create_gate_request_t](docs/create_gate_request.md)
+ - [create_prompt_request_t](docs/create_prompt_request.md)
  - [create_provider_secret_http_request_t](docs/create_provider_secret_http_request.md)
  - [create_review_queue_http_request_t](docs/create_review_queue_http_request.md)
+ - [created_prompt_t](docs/created_prompt.md)
  - [currency_t](docs/currency.md)
  - [dataset_t](docs/dataset.md)
  - [dataset_case_t](docs/dataset_case.md)
@@ -159,6 +168,8 @@ Category | Method | HTTP request | Description
  - [dataset_version_snapshot_t](docs/dataset_version_snapshot.md)
  - [dead_letter_t](docs/dead_letter.md)
  - [dead_letter_replay_report_t](docs/dead_letter_replay_report.md)
+ - [diff_line_t](docs/diff_line.md)
+ - [diff_line_kind_t](docs/diff_line_kind.md)
  - [enqueue_review_task_from_trace_http_request_t](docs/enqueue_review_task_from_trace_http_request.md)
  - [error_response_t](docs/error_response.md)
  - [eval_reproducibility_t](docs/eval_reproducibility.md)
@@ -203,6 +214,14 @@ Category | Method | HTTP request | Description
  - [page_run_summary_items_inner_t](docs/page_run_summary_items_inner.md)
  - [promote_review_annotation_http_request_t](docs/promote_review_annotation_http_request.md)
  - [promote_trace_case_request_t](docs/promote_trace_case_request.md)
+ - [prompt_t](docs/prompt.md)
+ - [prompt_list_response_t](docs/prompt_list_response.md)
+ - [prompt_template_t](docs/prompt_template.md)
+ - [prompt_variable_t](docs/prompt_variable.md)
+ - [prompt_version_t](docs/prompt_version.md)
+ - [prompt_version_diff_t](docs/prompt_version_diff.md)
+ - [prompt_version_list_response_t](docs/prompt_version_list_response.md)
+ - [prompt_version_metadata_t](docs/prompt_version_metadata.md)
  - [provider_secret_metadata_t](docs/provider_secret_metadata.md)
  - [publish_ack_t](docs/publish_ack.md)
  - [queued_trace_work_t](docs/queued_trace_work.md)

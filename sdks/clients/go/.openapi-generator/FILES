@@ -17,6 +17,7 @@ api_health.go
 api_ingest.go
 api_judge.go
 api_online.go
+api_prompts.go
 api_provider_secrets.go
 api_reviews.go
 api_search.go
@@ -25,6 +26,7 @@ api_traces.go
 api_usage.go
 client.go
 configuration.go
+docs/AddPromptVersionRequest.md
 docs/AlertDecision.md
 docs/AlertInput.md
 docs/AlertLinks.md
@@ -64,8 +66,10 @@ docs/CreateApiKeyHttpRequest.md
 docs/CreateDatasetRequest.md
 docs/CreateDatasetVersionRequest.md
 docs/CreateGateRequest.md
+docs/CreatePromptRequest.md
 docs/CreateProviderSecretHttpRequest.md
 docs/CreateReviewQueueHttpRequest.md
+docs/CreatedPrompt.md
 docs/Currency.md
 docs/Dataset.md
 docs/DatasetCase.md
@@ -74,6 +78,8 @@ docs/DatasetVersionSnapshot.md
 docs/DatasetsAPI.md
 docs/DeadLetter.md
 docs/DeadLetterReplayReport.md
+docs/DiffLine.md
+docs/DiffLineKind.md
 docs/EnqueueReviewTaskFromTraceHttpRequest.md
 docs/ErrorResponse.md
 docs/EvalReproducibility.md
@@ -125,6 +131,15 @@ docs/PageRunSummary.md
 docs/PageRunSummaryItemsInner.md
 docs/PromoteReviewAnnotationHttpRequest.md
 docs/PromoteTraceCaseRequest.md
+docs/Prompt.md
+docs/PromptListResponse.md
+docs/PromptTemplate.md
+docs/PromptVariable.md
+docs/PromptVersion.md
+docs/PromptVersionDiff.md
+docs/PromptVersionListResponse.md
+docs/PromptVersionMetadata.md
+docs/PromptsAPI.md
 docs/ProviderSecretMetadata.md
 docs/ProviderSecretsAPI.md
 docs/PublishAck.md
@@ -180,6 +195,7 @@ docs/WriteAck.md
 git_push.sh
 go.mod
 go.sum
+model_add_prompt_version_request.go
 model_alert_decision.go
 model_alert_input.go
 model_alert_links.go
@@ -213,8 +229,10 @@ model_create_api_key_http_request.go
 model_create_dataset_request.go
 model_create_dataset_version_request.go
 model_create_gate_request.go
+model_create_prompt_request.go
 model_create_provider_secret_http_request.go
 model_create_review_queue_http_request.go
+model_created_prompt.go
 model_currency.go
 model_dataset.go
 model_dataset_case.go
@@ -222,6 +240,8 @@ model_dataset_eval_report.go
 model_dataset_version_snapshot.go
 model_dead_letter.go
 model_dead_letter_replay_report.go
+model_diff_line.go
+model_diff_line_kind.go
 model_enqueue_review_task_from_trace_http_request.go
 model_error_response.go
 model_eval_reproducibility.go
@@ -266,6 +286,14 @@ model_page_run_summary.go
 model_page_run_summary_items_inner.go
 model_promote_review_annotation_http_request.go
 model_promote_trace_case_request.go
+model_prompt.go
+model_prompt_list_response.go
+model_prompt_template.go
+model_prompt_variable.go
+model_prompt_version.go
+model_prompt_version_diff.go
+model_prompt_version_list_response.go
+model_prompt_version_metadata.go
 model_provider_secret_metadata.go
 model_publish_ack.go
 model_queued_trace_work.go
@@ -327,6 +355,7 @@ test/api_health_test.go
 test/api_ingest_test.go
 test/api_judge_test.go
 test/api_online_test.go
+test/api_prompts_test.go
 test/api_provider_secrets_test.go
 test/api_reviews_test.go
 test/api_search_test.go

@@ -104,6 +104,7 @@ pub mod health_api;
 pub mod ingest_api;
 pub mod judge_api;
 pub mod online_api;
+pub mod prompts_api;
 pub mod provider_secrets_api;
 pub mod reviews_api;
 pub mod search_api;

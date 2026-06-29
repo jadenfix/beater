@@ -182,6 +182,18 @@ Class | Method | HTTP request | Description
 *JudgeApi* | [**listJudgeLedgerWithHttpInfo**](docs/JudgeApi.md#listJudgeLedgerWithHttpInfo) | **GET** /v1/judge/{tenant_id}/{project_id}/ledger | 
 *OnlineApi* | [**decideOnlineSampling**](docs/OnlineApi.md#decideOnlineSampling) | **POST** /v1/online/{tenant_id}/{project_id}/traces/{trace_id}/sampling | 
 *OnlineApi* | [**decideOnlineSamplingWithHttpInfo**](docs/OnlineApi.md#decideOnlineSamplingWithHttpInfo) | **POST** /v1/online/{tenant_id}/{project_id}/traces/{trace_id}/sampling | 
+*PromptsApi* | [**addPromptVersion**](docs/PromptsApi.md#addPromptVersion) | **POST** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions | 
+*PromptsApi* | [**addPromptVersionWithHttpInfo**](docs/PromptsApi.md#addPromptVersionWithHttpInfo) | **POST** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions | 
+*PromptsApi* | [**createPrompt**](docs/PromptsApi.md#createPrompt) | **POST** /v1/prompts/{tenant_id}/{project_id} | 
+*PromptsApi* | [**createPromptWithHttpInfo**](docs/PromptsApi.md#createPromptWithHttpInfo) | **POST** /v1/prompts/{tenant_id}/{project_id} | 
+*PromptsApi* | [**diffPromptVersions**](docs/PromptsApi.md#diffPromptVersions) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/diff | 
+*PromptsApi* | [**diffPromptVersionsWithHttpInfo**](docs/PromptsApi.md#diffPromptVersionsWithHttpInfo) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/diff | 
+*PromptsApi* | [**getPrompt**](docs/PromptsApi.md#getPrompt) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id} | 
+*PromptsApi* | [**getPromptWithHttpInfo**](docs/PromptsApi.md#getPromptWithHttpInfo) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id} | 
+*PromptsApi* | [**listPromptVersions**](docs/PromptsApi.md#listPromptVersions) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions | 
+*PromptsApi* | [**listPromptVersionsWithHttpInfo**](docs/PromptsApi.md#listPromptVersionsWithHttpInfo) | **GET** /v1/prompts/{tenant_id}/{project_id}/{prompt_id}/versions | 
+*PromptsApi* | [**listPrompts**](docs/PromptsApi.md#listPrompts) | **GET** /v1/prompts/{tenant_id}/{project_id} | 
+*PromptsApi* | [**listPromptsWithHttpInfo**](docs/PromptsApi.md#listPromptsWithHttpInfo) | **GET** /v1/prompts/{tenant_id}/{project_id} | 
 *ProviderSecretsApi* | [**createProviderSecret**](docs/ProviderSecretsApi.md#createProviderSecret) | **POST** /v1/provider-secrets/{tenant_id}/{project_id} | 
 *ProviderSecretsApi* | [**createProviderSecretWithHttpInfo**](docs/ProviderSecretsApi.md#createProviderSecretWithHttpInfo) | **POST** /v1/provider-secrets/{tenant_id}/{project_id} | 
 *ProviderSecretsApi* | [**listProviderSecrets**](docs/ProviderSecretsApi.md#listProviderSecrets) | **GET** /v1/provider-secrets/{tenant_id}/{project_id} | 
@@ -214,6 +226,7 @@ Class | Method | HTTP request | Description
 
 ## Documentation for Models
 
+ - [AddPromptVersionRequest](docs/AddPromptVersionRequest.md)
  - [AlertDecision](docs/AlertDecision.md)
  - [AlertInput](docs/AlertInput.md)
  - [AlertLinks](docs/AlertLinks.md)
@@ -247,8 +260,10 @@ Class | Method | HTTP request | Description
  - [CreateDatasetRequest](docs/CreateDatasetRequest.md)
  - [CreateDatasetVersionRequest](docs/CreateDatasetVersionRequest.md)
  - [CreateGateRequest](docs/CreateGateRequest.md)
+ - [CreatePromptRequest](docs/CreatePromptRequest.md)
  - [CreateProviderSecretHttpRequest](docs/CreateProviderSecretHttpRequest.md)
  - [CreateReviewQueueHttpRequest](docs/CreateReviewQueueHttpRequest.md)
+ - [CreatedPrompt](docs/CreatedPrompt.md)
  - [Currency](docs/Currency.md)
  - [Dataset](docs/Dataset.md)
  - [DatasetCase](docs/DatasetCase.md)
@@ -256,6 +271,8 @@ Class | Method | HTTP request | Description
  - [DatasetVersionSnapshot](docs/DatasetVersionSnapshot.md)
  - [DeadLetter](docs/DeadLetter.md)
  - [DeadLetterReplayReport](docs/DeadLetterReplayReport.md)
+ - [DiffLine](docs/DiffLine.md)
+ - [DiffLineKind](docs/DiffLineKind.md)
  - [EnqueueReviewTaskFromTraceHttpRequest](docs/EnqueueReviewTaskFromTraceHttpRequest.md)
  - [ErrorResponse](docs/ErrorResponse.md)
  - [EvalReproducibility](docs/EvalReproducibility.md)
@@ -300,6 +317,14 @@ Class | Method | HTTP request | Description
  - [PageRunSummaryItemsInner](docs/PageRunSummaryItemsInner.md)
  - [PromoteReviewAnnotationHttpRequest](docs/PromoteReviewAnnotationHttpRequest.md)
  - [PromoteTraceCaseRequest](docs/PromoteTraceCaseRequest.md)
+ - [Prompt](docs/Prompt.md)
+ - [PromptListResponse](docs/PromptListResponse.md)
+ - [PromptTemplate](docs/PromptTemplate.md)
+ - [PromptVariable](docs/PromptVariable.md)
+ - [PromptVersion](docs/PromptVersion.md)
+ - [PromptVersionDiff](docs/PromptVersionDiff.md)
+ - [PromptVersionListResponse](docs/PromptVersionListResponse.md)
+ - [PromptVersionMetadata](docs/PromptVersionMetadata.md)
  - [ProviderSecretMetadata](docs/ProviderSecretMetadata.md)
  - [PublishAck](docs/PublishAck.md)
  - [QueuedTraceWork](docs/QueuedTraceWork.md)

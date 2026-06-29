@@ -14,6 +14,7 @@ export * from './HealthApi';
 export * from './IngestApi';
 export * from './JudgeApi';
 export * from './OnlineApi';
+export * from './PromptsApi';
 export * from './ProviderSecretsApi';
 export * from './ReviewsApi';
 export * from './SearchApi';

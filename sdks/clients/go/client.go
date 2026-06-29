@@ -77,6 +77,8 @@ type APIClient struct {
 
 	OnlineAPI *OnlineAPIService
 
+	PromptsAPI *PromptsAPIService
+
 	ProviderSecretsAPI *ProviderSecretsAPIService
 
 	ReviewsAPI *ReviewsAPIService
@@ -120,6 +122,7 @@ func NewAPIClient(cfg *Configuration) *APIClient {
 	c.IngestAPI = (*IngestAPIService)(&c.common)
 	c.JudgeAPI = (*JudgeAPIService)(&c.common)
 	c.OnlineAPI = (*OnlineAPIService)(&c.common)
+	c.PromptsAPI = (*PromptsAPIService)(&c.common)
 	c.ProviderSecretsAPI = (*ProviderSecretsAPIService)(&c.common)
 	c.ReviewsAPI = (*ReviewsAPIService)(&c.common)
 	c.SearchAPI = (*SearchAPIService)(&c.common)

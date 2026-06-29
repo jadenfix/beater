@@ -15,6 +15,7 @@ from beater_client.api.health_api import HealthApi
 from beater_client.api.ingest_api import IngestApi
 from beater_client.api.judge_api import JudgeApi
 from beater_client.api.online_api import OnlineApi
+from beater_client.api.prompts_api import PromptsApi
 from beater_client.api.provider_secrets_api import ProviderSecretsApi
 from beater_client.api.reviews_api import ReviewsApi
 from beater_client.api.search_api import SearchApi

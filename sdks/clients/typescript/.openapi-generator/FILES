@@ -17,6 +17,7 @@ src/apis/HealthApi.ts
 src/apis/IngestApi.ts
 src/apis/JudgeApi.ts
 src/apis/OnlineApi.ts
+src/apis/PromptsApi.ts
 src/apis/ProviderSecretsApi.ts
 src/apis/ReviewsApi.ts
 src/apis/SearchApi.ts
@@ -25,6 +26,7 @@ src/apis/TracesApi.ts
 src/apis/UsageApi.ts
 src/apis/index.ts
 src/index.ts
+src/models/AddPromptVersionRequest.ts
 src/models/AlertDecision.ts
 src/models/AlertInput.ts
 src/models/AlertLinks.ts
@@ -58,8 +60,10 @@ src/models/CreateApiKeyHttpRequest.ts
 src/models/CreateDatasetRequest.ts
 src/models/CreateDatasetVersionRequest.ts
 src/models/CreateGateRequest.ts
+src/models/CreatePromptRequest.ts
 src/models/CreateProviderSecretHttpRequest.ts
 src/models/CreateReviewQueueHttpRequest.ts
+src/models/CreatedPrompt.ts
 src/models/Currency.ts
 src/models/Dataset.ts
 src/models/DatasetCase.ts
@@ -67,6 +71,8 @@ src/models/DatasetEvalReport.ts
 src/models/DatasetVersionSnapshot.ts
 src/models/DeadLetter.ts
 src/models/DeadLetterReplayReport.ts
+src/models/DiffLine.ts
+src/models/DiffLineKind.ts
 src/models/EnqueueReviewTaskFromTraceHttpRequest.ts
 src/models/ErrorResponse.ts
 src/models/EvalReproducibility.ts
@@ -111,6 +117,14 @@ src/models/PageRunSummary.ts
 src/models/PageRunSummaryItemsInner.ts
 src/models/PromoteReviewAnnotationHttpRequest.ts
 src/models/PromoteTraceCaseRequest.ts
+src/models/Prompt.ts
+src/models/PromptListResponse.ts
+src/models/PromptTemplate.ts
+src/models/PromptVariable.ts
+src/models/PromptVersion.ts
+src/models/PromptVersionDiff.ts
+src/models/PromptVersionListResponse.ts
+src/models/PromptVersionMetadata.ts
 src/models/ProviderSecretMetadata.ts
 src/models/PublishAck.ts
 src/models/QueuedTraceWork.ts
