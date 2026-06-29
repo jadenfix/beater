@@ -1640,7 +1640,7 @@ the §20.5 catalog-breadth work; the rest exist in `EVALUATOR_CATALOG` today.
 | **JSON-object (current)** | 1 if output parses as a JSON object | object-shape ⇒ correct (weak) | checks shape only, *not* schema — a wrong-but-well-formed object passes | Wilson (binary) | WASI |
 | **Numeric tolerance** [planned] | 1 if `|out−exp| ≤ abs` or `≤ rel·|exp|` | a numeric ground truth with a known tolerance | unit mismatch; tolerance mis-set; non-numeric output | Wilson (binary) | WASI |
 | **Cost / latency / token budget** | 1 if measured ≤ budget | the measured field is populated and trustworthy | missing/estimated cost or tokens; clock skew on latency | Wilson (binary); raw values → bootstrap | WASI |
-| **Embedding similarity** [planned] | cosine(sim(out), sim(exp)) ≥ `min_cosine` | the embedding space separates correct from incorrect | out-of-domain text; threshold not calibrated; model drift | threshold→Wilson, or cosine→bootstrap; recalibrate on model change | **judge** (needs an embedding provider) |
+| **Embedding similarity** [planned, **opt-in, calibration required**] | cosine(sim(out), sim(exp)) ≥ `min_cosine` | the embedding space separates correct from incorrect; `min_cosine` calibrated to task-specific labeled examples, not a global default | out-of-domain text; threshold not calibrated to task; model drift; calibration data missing or stale (emits abstain/uncalibrated state) | threshold→Wilson, or cosine→bootstrap; recalibrate on model change; persist threshold provenance alongside eval result | **judge** (needs an embedding provider) |
 | **SQL-result match** [planned] | 1 if executing the candidate SQL yields the expected result set | a fixed seeded DB and order-insensitive set compare | schema/data drift; nondeterministic queries; ORDER BY semantics | Wilson (binary) | WASI (execution against a sandboxed/seeded store) |
 | **Execution-based tool correctness** | 1 if the tool call, *executed*, produces the correct effect/result | tool calls are checked by EXECUTION, not by AST/argument syntax | judging only the *syntactic* call shape (a syntactically valid call can be semantically wrong, and a differently-shaped call can be correct) | Wilson (binary); per-call then per-trajectory aggregation | WASI (replayed/sandboxed) |
 | **Trajectory / process-reward** | a process score over the span sequence (plan→step→tool→…) | progress is jointly modeled across steps, *not* independent per-step scores (AgentPRM-style promise+progress) | scoring steps independently double-counts shared context and misattributes credit | per-step scores aggregated with clustered SE (§10.3 #1, cluster = trajectory) | WASI for structural checks; **judge** for quality |
@@ -1665,7 +1665,12 @@ Exact algorithm per scorer (the surface forms behind the table):
 - **Embedding similarity** — cosine `sim = (u·v)/(‖u‖‖v‖)` ∈ [−1,1] between
   embeddings of output and expected from a **pinned** embedding model; score `1`
   iff `sim ≥ min_cosine` (a model-specific threshold, **recalibrated on model
-  change** — there is no universal cutoff). Judge lane (needs a provider).
+  change** — there is no universal cutoff). **[Opt-in, calibration required]**:
+  `min_cosine` must come from a calibration run against task-specific labeled
+  examples for the specific task/domain; threshold provenance (model, version,
+  calibration dataset hash, date) is persisted alongside the eval result; when
+  calibration data is missing or stale the scorer emits an abstain/uncalibrated
+  state rather than a bare score. Judge lane (needs a provider).
 - **SQL-result match** — execute candidate SQL against a fixed **seeded** DB and
   compare result sets as **multisets** (order-insensitive unless the query has an
   explicit `ORDER BY`, in which case order is compared); score `1` iff equal.
@@ -1963,7 +1968,7 @@ Core UI requirements:
   input-distribution drift (PSI/KL), and eval-score drift, each decided on the
   anytime-valid confidence sequence below (never a fixed-N peek) and reported with §9
   weighting — plus a UMAP point-cloud view (Soundstage, §25). Reuses the embedding
-  distance already computed for §21.4 OOD probes and the §10.4 embedding scorer.
+  distance already computed for §21.4 OOD probes and the §10.4 embedding scorer (opt-in, calibration required — see §10.4).
 
 Search:
 
@@ -2399,7 +2404,7 @@ Goal: scorer breadth and statistically defensible experiments.
 
 | # | Requirement | Now | Target / concrete task | Effort | Blocker |
 | --- | --- | --- | --- | --- | --- |
-| 3.1 | Scorer catalog breadth | 10 scorers; `json_object` checks object-ness not schema | Add `FuzzyMatch{min_ratio}` (strsim), `JsonSchema{schema}`, `NumericTolerance{abs,rel}`, `EmbeddingSimilarity{model,min_cosine}` (judge lane), SQL-result match to `EvaluatorKind`/`EVALUATOR_CATALOG` **[contract]** | L | contract |
+| 3.1 | Scorer catalog breadth | 10 scorers; `json_object` checks object-ness not schema | Add `FuzzyMatch{min_ratio}` (strsim), `JsonSchema{schema}`, `NumericTolerance{abs,rel}`, SQL-result match to `EvaluatorKind`/`EVALUATOR_CATALOG` **[contract]**; `EmbeddingSimilarity{model,min_cosine}` (judge lane) **[opt-in, calibration required — not a default addition]**: `min_cosine` must come from a calibration run against task-specific labeled examples; pinned provider/model/version with persisted threshold provenance required; scorer emits an abstain/uncalibrated state when calibration data is missing or stale | L | contract |
 | 3.2 | Structured-rubric LLM judge | `LlmJudge{rubric:String}` free-text | `JudgeRubric{criteria:[{name,weight,scale}],reference_mode,exemplars}`; `JudgeResponse.per_criterion`; reference-guided + CoT rationale **[contract]** | L | contract |
 | 3.3 | Custom scorer registry | WASI sandbox runs components, no upload/registry | `beater-scorers` (or extend `beater-eval`): `ScorerStore` (upload component bytes → `Sha256Hash`, version, list/get) on `beater-store-obj`+sqlite; `/v1/scorers` CRUD **[contract]**; resolve by `wasm_hash` into the sandbox; add memory/epoch limits to `SandboxConfig` | XL | contract |
 | 3.4 | Real statistics module (**correctness fix**, §10.3) | single paired normal-approx, **hardcoded z (1.96/2.576), Bonferroni-only, no p-value → nominal alpha ≠ actual alpha** | New `beater-stats` on `statrs`: paired-t / bootstrap-percentile / Wilson CIs; test selection `{PairedT, McNemarExact, WilcoxonSignedRank, Bootstrap}` with real `p_value`; Holm-Bonferroni + Benjamini-Hochberg; `power.rs` (`required_sample_size`, `achieved_power`); **DELETE `compare_paired_scores`'s hardcoded-z path + `StatisticalTest::PairedNormalApproximation`**, route `beater-eval`/`beater-experiments`/`beater-gates` through `beater-stats`. mSPRT/confidence-sequences are the REQUIRED online follow-on (Phase 4, §10.3 #6) | L | none |
@@ -2556,7 +2561,7 @@ as milestone **v4** (§18).
 | 7.2 | **Distilled small/fast "house" judge models** | judge broker calibrates frontier judges (§10.1.1); no owned small judge | Add `JudgeModelKind::Distilled{base, adapter_ref, calibration_version}` to `beater-judge`: distil a small open-weight judge (single-token or short-CoT) from the §10.1.1 human reference + calibration set; pin behind the broker. **Honesty gate:** a distilled judge may gate *only* after clearing the §10.1.1 kappa + §10.5 ECE bar on held-out human labels vs the frozen frontier judge. "Luna/Lynx/Glider, but you own it and it is calibration-gated." | Galileo Luna-2, Patronus Lynx/Glider | XL | evidence |
 | 7.3 | **LLM gateway / proxy for app traffic** | judge broker routes *judge* calls only | New `beater-gateway` (**Patchbay**): OpenAI-compatible `POST /v1/gateway/chat/completions` over one `ModelProvider` trait — request-hash caching (reuse the §10.1 judge cache), failover/load-balance across BYOK keys (§Stash), unified reasoning params, per-tenant budgets via `QuotaLimiter` (§8.4). **Any model, BYOK optional (the core requirement):** a request may target *any* provider/model; it uses the tenant's BYOK key when present (opaque `ProviderSecretId`, never raw keys) and otherwise falls back to a **managed default model** so a caller does *not have to* bring a key/model on hosted — OSS requires BYOK and returns a typed `NoKey` error in its absence (mirrors the §2 editions "managed routing vs optional BYOK" rows). **Robustness:** retry/backoff on 429/5xx, multi-key/provider failover, request-hash cache, per-tenant budget reservation + request timeout, and provider-key **redaction** (key material is never logged or returned). **The Beater twist:** every proxied call is *natively traced with zero SDK* and *online-scorable* (§20.6). **Opt-in and complementary to OTLP, never the primary instrumentation** — a proxy alone misses non-LLM agent steps (the §26.0 Helicone lesson) — and it carries its own hot-path availability SLO (§16) because an outage would hit the customer's app **[contract]** | Braintrust AI Proxy | XL | design |
 | 7.4 | **Failure discovery / clustering → named issues** | §13 "failure clustering" is one line; no pipeline | New `beater-insights` (**Medley**): embed failing traces → cluster (HDBSCAN/agglomerative) → auto-name each cluster (judge) → attach a §11 counterfactual root-cause to each exemplar → emit a `FailureIssue` (§5.1) with representative traces, **sampling-weighted** frequency (§9), est. cost impact, root-cause span, and one-click → promote-to-dataset / → generate online-evaluator / → `propose_change` (§21). The unsupervised *front-end* over Beater's already-rigorous back-end. `GET /v1/insights/clusters\|issues` **[contract]** | LangSmith Insights/Engine, Galileo Insights, Judgment Behavior Discovery, Patronus Percival | L | contract |
-| 7.5 | **Embedding-space drift + distribution monitoring** | Offbeat alerts on score signals only | Extend `beater-alerts` (+ Medley): production-vs-reference embedding-centroid drift, input-distribution drift (PSI/KL on key attrs), eval-score drift — each decided on the §13 **anytime-valid confidence sequence**, not a fixed-N peek, reported with §9 weighting/§10.3 uncertainty (never a bare distance). UMAP point-cloud is a §25 Soundstage screen. Reuses the embedding distance already computed for §21.4 OOD probes + the §10.4 embedding scorer — via the external embedding provider + existing columnar store, **no bundled vector DB** (§26.3) | Arize embeddings/drift | L | design |
+| 7.5 | **Embedding-space drift + distribution monitoring** | Offbeat alerts on score signals only | Extend `beater-alerts` (+ Medley): production-vs-reference embedding-centroid drift, input-distribution drift (PSI/KL on key attrs), eval-score drift — each decided on the §13 **anytime-valid confidence sequence**, not a fixed-N peek, reported with §9 weighting/§10.3 uncertainty (never a bare distance). UMAP point-cloud is a §25 Soundstage screen. Reuses the embedding distance already computed for §21.4 OOD probes + the §10.4 embedding scorer (opt-in, calibration required — see §10.4) — via the external embedding provider + existing columnar store, **no bundled vector DB** (§26.3) | Arize embeddings/drift | L | design |
 | 7.6 | **Named prompt/agent optimizer strategies** | RSI `propose_change` uses LLM-rewrite only; evolutionary/population search was deferred (§21) | Un-defer as *gated proposal strategies* behind `propose_change`: `OptimizerStrategy = { LlmRewrite, FewShotBayesian, MIPRO, Evolutionary, GEPA, ParamSearch }` (in **Beatboxing**/`beater-experiments`). All candidates flow through the SAME §10.3 stats + §21.4 anti-overfit guardrail + frozen-Test gate. **Differentiator:** to our knowledge no competitor optimizer documents a held-out + multiplicity-corrected acceptance gate (2026-06-27; re-verify per §26.0), so each is exposed to multiple-comparison overfitting; Beater's candidates run under FWER/FDR + held-out Test + the §21.4 Goodhart guardrail | Opik Optimizer (MIPRO/GEPA/evolutionary/Bayesian), DSPy, LangSmith Polly | L | none |
 | 7.7 | **AutoRubric + G-Eval generation** | `suggest_scorers` is advisory only (§21.1) | Make it generative: from a §7.4 failure cluster + a few human labels, auto-generate a structured `JudgeRubric` (§20.5 #3.2) and G-Eval-style evaluation steps from a task description — **gated**: a generated rubric cannot enter a production gate until it clears the §10.1.1 kappa + §10.5 ECE bar on held-out labels (what makes Beater's auto-rubric trustworthy where competitors' are vibes). `POST /v1/scorers/generate` **[contract]** | Judgment AutoRubrics, Opik G-Eval, Braintrust autoevals | M | contract |
 | 7.8 | **Conversation- & agent-trajectory named scorers** | catalog is single-turn-shaped | Add to `EVALUATOR_CATALOG`/§10.4: conversation-level (Coherence, Session-Completeness, User-Frustration) over §20.3 session/thread groups, and agent-trajectory (Tool-Selection-Quality, Tool-Error-Rate, Action-Advancement/Completion, Agent-Flow; RAG Context-Adherence, Chunk-Attribution/Utilization). Each pinned with §10.4 assumptions + CI; trajectory scorers use the §10.4 clustered process-reward aggregation, never per-step means **[contract]** | Opik &amp; Galileo agentic/conversation metrics | M | contract |
@@ -2802,6 +2807,15 @@ that buys Test points by blowing past a guardrail bound is dominated, not accept
 > default threshold / window `k` must be **auto-calibrated to the measured eval
 > noise floor** (§10.3), not hardcoded.
 
+> **Phasing.** Signals 1 (held-out gap), 2 (OOD-probe delta), and 5 (complexity
+> penalty) are **GA-safe**: they use the same held-out Test split and anytime-valid
+> confidence sequences as the rest of the platform. Signal 3 (smoothness/sensitivity)
+> is a **heuristic** — enable once per-task noise is measured. Signal 4 (proxy-vs-true
+> divergence) is **split**: EvalStop (4a) is GA-safe once `k` is calibrated to the
+> measured noise floor; the KL scaling-law stop (4b) and the CSI latent-outlier
+> detector (4c) are **[deferred]** — not enabled until BEATER-specific calibration
+> data is collected (see Signal 4 below).
+
 #### The five signals (computed per candidate RSI change)
 
 **Signal 1 — Held-out generalization gap.** The most basic overfitting tell:
@@ -2891,7 +2905,7 @@ detectors, used together:
   and **keep the best checkpoint** (not the last) [arXiv:2606.04145]. `k` is
   auto-calibrated to the per-step Test-score noise (a single noisy dip is not a
   decline).
-- **KL-distance scaling law (closed-form peak).** Over-optimization scales with the
+- **KL-distance scaling law (closed-form peak) [deferred — requires calibration data].** Over-optimization scales with the
   policy's drift from its init. With `d = √(D_KL(π ‖ π_init))`, the gold (true)
   reward follows
   `R_bon(d) = d·(α − β·d)` for best-of-n sampling and
@@ -2899,11 +2913,15 @@ detectors, used together:
   to BEATER's OWN proxy-vs-KL data** — Gao's published coefficients are **not
   reusable** (they are method-, scale-, and reward-model-specific; re-fit per
   config) — then **stop at the closed-form peak** (`d* = α/(2β)` for the BoN form),
-  i.e. the drift past which more optimization *reduces* true reward.
-- **Info-bottleneck latent-outlier detector (secondary).** A CSI-style
+  i.e. the drift past which more optimization *reduces* true reward. **Not enabled
+  until α, β are fit to measured BEATER proxy-vs-KL data; using published
+  coefficients before that calibration run silently mis-places the stop point.**
+- **Info-bottleneck latent-outlier detector (secondary) [deferred — requires calibration data].** A CSI-style
   (Contrastive Shifted Instances) outlier score on a bottlenecked latent of the
   candidate's behavior flags when a change has moved into a representation region
   uncharacteristic of genuinely-improving changes — a secondary divergence alarm.
+  **Not enabled until a bottleneck model is trained and validated on BEATER's own
+  behavioral embeddings; without that, the outlier boundary is uncalibrated.**
 
 State plainly: **KL-regularization ALONE is insufficient.** Under heavy-tailed
 reward misspecification, bounding KL does not bound true-reward loss
@@ -2934,9 +2952,9 @@ ACCEPT a candidate change only if ALL hold (constrained optimization, per axis):
 Ties broken by lower complexity (Signal 5) and higher verifier_gain over judge_gain (§21.2).
 
 HALT the whole RSI job (and ROLL BACK to the best checkpoint) when divergence is detected:
-    k consecutive frozen-Test declines while the proxy rises   (Signal 4 EvalStop), OR
-    drift d = √D_KL(π‖π_init) past the fitted scaling-law peak  (Signal 4 KL law),  OR
-    a CSI latent-outlier alarm                                  (Signal 4 secondary).
+    k consecutive frozen-Test declines while the proxy rises   (Signal 4a EvalStop — GA-safe once k calibrated), OR
+    drift d = √D_KL(π‖π_init) past the fitted scaling-law peak  (Signal 4b KL law — DEFERRED until α,β fit to BEATER data),  OR
+    a CSI latent-outlier alarm                                  (Signal 4c — DEFERRED until bottleneck model trained on BEATER data).
 ```
 
 This is the multi-objective framing made operational: **generalization gap,
