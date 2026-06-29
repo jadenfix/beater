@@ -53,7 +53,9 @@ impl PlanId {
     pub fn new(value: impl Into<String>) -> Result<Self, BillingError> {
         let value = value.into();
         if value.is_empty() {
-            return Err(BillingError::InvalidPlan("plan id cannot be empty".to_string()));
+            return Err(BillingError::InvalidPlan(
+                "plan id cannot be empty".to_string(),
+            ));
         }
         if value.chars().any(char::is_whitespace) {
             return Err(BillingError::InvalidPlan(format!(
@@ -389,7 +391,11 @@ pub fn money_scale(rate: &Money, factor: u64) -> Result<Money, BillingError> {
 /// Pro-rate `base` by `numerator / denominator`, computed in `i128` to avoid
 /// intermediate overflow and clamped to `[0, base]`. `denominator` must be
 /// positive.
-pub fn money_prorate(base: &Money, numerator: i64, denominator: i64) -> Result<Money, BillingError> {
+pub fn money_prorate(
+    base: &Money,
+    numerator: i64,
+    denominator: i64,
+) -> Result<Money, BillingError> {
     if denominator <= 0 {
         return Err(BillingError::InvalidPeriod(
             "proration denominator must be positive".to_string(),
@@ -476,10 +482,7 @@ impl<C: beater_core::Clock> Billing<C> {
             .get_subscription(&scope.org_id)
             .await?
             .ok_or_else(|| {
-                BillingError::NotFound(format!(
-                    "subscription for org {}",
-                    scope.org_id.as_str()
-                ))
+                BillingError::NotFound(format!("subscription for org {}", scope.org_id.as_str()))
             })?;
         let plan = self
             .store
@@ -548,13 +551,9 @@ impl<C: beater_core::Clock> Billing<C> {
         new_plan_id: &PlanId,
         at: Timestamp,
     ) -> Result<PlanChange, BillingError> {
-        let subscription = self
-            .store
-            .get_subscription(org_id)
-            .await?
-            .ok_or_else(|| {
-                BillingError::NotFound(format!("subscription for org {}", org_id.as_str()))
-            })?;
+        let subscription = self.store.get_subscription(org_id).await?.ok_or_else(|| {
+            BillingError::NotFound(format!("subscription for org {}", org_id.as_str()))
+        })?;
         let old_plan = self
             .store
             .get_plan(&subscription.plan_id)

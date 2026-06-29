@@ -7,6 +7,8 @@ use beater_api::{router, ApiState};
 use beater_archive::ParquetTraceArchive;
 use beater_audit::SqliteAuditStore;
 use beater_auth::SqliteApiKeyStore;
+#[cfg(feature = "billing")]
+use beater_billing::SqliteBillingStore;
 use beater_bus::{DeadLetter, DurableBus, InMemoryBus, SqliteDurableBus};
 use beater_calibration::SqliteCalibrationStore;
 use beater_core::{IdempotencyKey, Money, Page, PageRequest, ProjectId, TenantId, TraceId};
@@ -36,7 +38,6 @@ use beater_store_obj::FsArtifactStore;
 use beater_store_sql::{
     migrate_local_beaterd_sqlite, SqliteMetadataStore, SqliteQuotaLimiter, SqliteTraceStore,
 };
-use beater_billing::SqliteBillingStore;
 use beater_usage::SqliteUsageLedger;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -106,7 +107,9 @@ struct Args {
     judge_budget_micros: i64,
     /// Stripe webhook signing secret (HMAC). When set, the
     /// `/v1/billing/webhooks/stripe` route verifies inbound deliveries against
-    /// it. Defaults to a local dev secret so the route is wired out of the box.
+    /// it. Hosted-only: available only in builds compiled with the `billing`
+    /// feature.
+    #[cfg(feature = "billing")]
     #[arg(
         long,
         env = "BEATER_STRIPE_WEBHOOK_SECRET",
@@ -263,6 +266,7 @@ async fn main() -> anyhow::Result<()> {
     let review_db_path = args.data_dir.join("reviews.sqlite");
     let calibration_db_path = args.data_dir.join("calibrations.sqlite");
     let usage_db_path = args.data_dir.join("usage.sqlite");
+    #[cfg(feature = "billing")]
     let billing_db_path = args.data_dir.join("billing.sqlite");
     let audit_db_path = args.data_dir.join("audit.sqlite");
     let provider_secret_db_path = args.data_dir.join("provider-secrets.sqlite");
@@ -279,11 +283,12 @@ async fn main() -> anyhow::Result<()> {
         review_db_path.clone(),
         calibration_db_path.clone(),
         usage_db_path.clone(),
-        billing_db_path.clone(),
         audit_db_path.clone(),
         provider_secret_db_path.clone(),
         judge_db_path.clone(),
     ];
+    #[cfg(feature = "billing")]
+    sqlite_store_paths.push(billing_db_path.clone());
     if matches!(args.bus_backend, BusBackendArg::Sqlite) {
         sqlite_store_paths.push(bus_db_path.clone());
     }
@@ -321,6 +326,7 @@ async fn main() -> anyhow::Result<()> {
     let human_reviews = Arc::new(SqliteHumanReviewStore::open(review_db_path)?);
     let calibrations = Arc::new(SqliteCalibrationStore::open(calibration_db_path)?);
     let usage = Arc::new(SqliteUsageLedger::open(usage_db_path)?);
+    #[cfg(feature = "billing")]
     let billing = Arc::new(SqliteBillingStore::open(billing_db_path)?);
     let audit = Arc::new(SqliteAuditStore::open(audit_db_path)?);
     let provider_secret_keyring = match args.provider_secret_key.as_deref() {
@@ -449,9 +455,15 @@ async fn main() -> anyhow::Result<()> {
             .with_human_reviews(human_reviews)
             .with_calibrations(calibrations)
             .with_usage(usage)
-            .with_billing(billing, args.stripe_webhook_secret.clone().into_bytes())
             .with_audit(audit)
             .with_judge(provider_secrets, judge_broker, judge_ledger);
+    // Billing/Stripe is hosted-only and compiled in only under the `billing`
+    // feature; the OSS daemon neither opens a billing store nor wires the
+    // Stripe webhook route.
+    #[cfg(feature = "billing")]
+    {
+        state = state.with_billing(billing, args.stripe_webhook_secret.clone().into_bytes());
+    }
     // Build the API-key store once (strict auth only) and share it between the
     // `/v1` auth path and the session-authorized `/auth/api-keys` endpoints.
     let api_key_store: Option<Arc<dyn beater_auth::ApiKeyStore>> =

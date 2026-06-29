@@ -13,18 +13,22 @@ use beater_audit::{
     PiiUnmaskAuditInput,
 };
 use beater_auth::{ApiKeyStore, CreateApiKeyRequest, RevokedApiKey};
+#[cfg(feature = "billing")]
 use beater_billing::store::BillingStore;
+#[cfg(feature = "billing")]
 use beater_billing::stripe::{EventApplication, StripeError, StripeSync};
+#[cfg(feature = "billing")]
 use beater_billing::{
     Billing, BillingError, Invoice, Plan, PlanChange, PlanId, Subscription, SubscriptionStatus,
 };
 use beater_calibration::{
     calibrate_eval_report, CalibrationPolicy, CalibrationReport, CalibrationStore,
 };
+#[cfg(feature = "billing")]
+use beater_core::OrganizationId;
 use beater_core::{
     AgentReleaseId, AnnotationId, ApiKeyId, ArtifactId, DatasetCaseId, DatasetId, DatasetVersionId,
-    EnvironmentId, EvaluatorVersionId, ExperimentRunId, GateId, OrganizationId, Page, PageRequest,
-    ProjectId,
+    EnvironmentId, EvaluatorVersionId, ExperimentRunId, GateId, Page, PageRequest, ProjectId,
     PromptVersionId, ProviderSecretId, ReviewQueueId, ReviewTaskId, Sha256Hash, SpanId, TenantId,
     TenantScope, TraceId,
 };
@@ -114,9 +118,11 @@ pub struct ApiState {
     judge_broker: Option<Arc<dyn JudgeBroker>>,
     judge_ledger: Option<Arc<dyn JudgeLedgerStore>>,
     usage: Option<Arc<dyn UsageLedgerStore>>,
+    #[cfg(feature = "billing")]
     billing: Option<Arc<dyn BillingStore>>,
     /// Stripe webhook signing secret (HMAC). Required for the Stripe webhook
     /// route to verify inbound deliveries.
+    #[cfg(feature = "billing")]
     stripe_webhook_secret: Option<Vec<u8>>,
     audit: Option<Arc<dyn AuditStore>>,
     /// OAuth 2.1 authorization-server store. When set, `authorize()` also
@@ -152,7 +158,9 @@ impl ApiState {
             judge_broker: None,
             judge_ledger: None,
             usage: None,
+            #[cfg(feature = "billing")]
             billing: None,
+            #[cfg(feature = "billing")]
             stripe_webhook_secret: None,
             audit: None,
             oauth: None,
@@ -275,6 +283,11 @@ impl ApiState {
     /// Wire the billing store and the Stripe webhook signing secret. Enables the
     /// `/v1/plans`, `/v1/subscriptions`, `/v1/billing/invoices` and
     /// `/v1/billing/webhooks/stripe` routes.
+    ///
+    /// Billing is a hosted concern and is gated behind the non-default `billing`
+    /// cargo feature so the open-source build neither compiles billing code nor
+    /// advertises Stripe endpoints in the OSS API contract.
+    #[cfg(feature = "billing")]
     pub fn with_billing(
         mut self,
         billing: Arc<dyn BillingStore>,
@@ -301,7 +314,11 @@ impl ApiState {
 /// spec; the `openapi_coverage` integration test enforces this both ways.
 ///
 /// Update this when adding or removing a `/v1` route in [`router`].
-pub const V1_ROUTE_COUNT: usize = 49;
+///
+/// Billing/Stripe routes are hosted-only and compiled in only under the
+/// `billing` feature, so the count is feature-aware: the open-source default
+/// build registers 41 `/v1` routes; the hosted `billing` build adds 8.
+pub const V1_ROUTE_COUNT: usize = if cfg!(feature = "billing") { 49 } else { 41 };
 
 /// See [`V1_ROUTE_COUNT`].
 pub fn v1_route_count() -> usize {
@@ -309,7 +326,7 @@ pub fn v1_route_count() -> usize {
 }
 
 pub fn router(state: ApiState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/health", get(health))
         .route("/openapi.json", get(openapi_json))
         .route("/v1/traces/native", post(ingest_native))
@@ -447,7 +464,13 @@ pub fn router(state: ApiState) -> Router {
             "/v1/import/:tenant_id/:project_id/:environment_id",
             post(import_source_route),
         )
-        .route("/v1/traces/:tenant_id/:trace_id", get(get_trace))
+        .route("/v1/traces/:tenant_id/:trace_id", get(get_trace));
+
+    // Billing/Stripe is a hosted concern gated behind the non-default `billing`
+    // feature; the OSS build neither registers these routes nor advertises them
+    // in the API contract.
+    #[cfg(feature = "billing")]
+    let router = router
         .route("/v1/plans", get(get_plans_route))
         .route("/v1/plans/:plan_id", get(get_plan_route))
         .route(
@@ -463,8 +486,9 @@ pub fn router(state: ApiState) -> Router {
             "/v1/billing/invoices/:org_id/:period_key",
             get(get_invoice_route),
         )
-        .route("/v1/billing/webhooks/stripe", post(stripe_webhook_route))
-        .with_state(state)
+        .route("/v1/billing/webhooks/stripe", post(stripe_webhook_route));
+
+    router.with_state(state)
 }
 
 #[utoipa::path(
@@ -950,6 +974,7 @@ async fn get_usage_summary_route(
 // ---------------------------------------------------------------------------
 
 /// Request body for creating a subscription.
+#[cfg(feature = "billing")]
 #[derive(Clone, Debug, Deserialize, ToSchema)]
 struct CreateSubscriptionRequest {
     /// Plan to subscribe the org to.
@@ -963,6 +988,7 @@ struct CreateSubscriptionRequest {
 }
 
 /// Request body for changing an org's plan with proration.
+#[cfg(feature = "billing")]
 #[derive(Clone, Debug, Deserialize, ToSchema)]
 struct ChangePlanRequest {
     /// New plan id.
@@ -972,12 +998,14 @@ struct ChangePlanRequest {
 }
 
 /// Acknowledgement for an inbound Stripe webhook delivery.
+#[cfg(feature = "billing")]
 #[derive(Clone, Debug, Serialize, ToSchema)]
 struct StripeWebhookAck {
     /// `applied`, `duplicate`, or `stale`.
     outcome: String,
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     get,
     path = "/v1/plans",
@@ -995,6 +1023,7 @@ async fn get_plans_route(State(state): State<ApiState>) -> Result<Json<Vec<Plan>
     Ok(Json(plans))
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     get,
     path = "/v1/plans/{plan_id}",
@@ -1020,6 +1049,7 @@ async fn get_plan_route(
     Ok(Json(plan))
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     get,
     path = "/v1/subscriptions/{org_id}",
@@ -1048,15 +1078,16 @@ async fn get_subscription_route(
     let billing = billing_store(&state)?;
     let org_id = OrganizationId::new(org_id)?;
     authorize_org_route(&state, &headers, &org_id, ApiScope::Admin).await?;
-    let subscription = billing
-        .get_subscription(&org_id)
-        .await?
-        .ok_or_else(|| {
-            ApiError::not_found(format!("subscription for org {} not found", org_id.as_str()))
-        })?;
+    let subscription = billing.get_subscription(&org_id).await?.ok_or_else(|| {
+        ApiError::not_found(format!(
+            "subscription for org {} not found",
+            org_id.as_str()
+        ))
+    })?;
     Ok(Json(subscription))
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     post,
     path = "/v1/subscriptions/{org_id}",
@@ -1092,8 +1123,9 @@ async fn create_subscription_route(
     let period_end = parse_required_timestamp(&request.period_end, "period_end")?;
     let status = match request.status.as_deref() {
         None | Some("active") => SubscriptionStatus::Active,
-        Some(other) => SubscriptionStatus::parse(other)
-            .ok_or_else(|| ApiError::bad_request(format!("unknown subscription status: {other}")))?,
+        Some(other) => SubscriptionStatus::parse(other).ok_or_else(|| {
+            ApiError::bad_request(format!("unknown subscription status: {other}"))
+        })?,
     };
     let subscription = billing
         .create_subscription(Subscription {
@@ -1108,6 +1140,7 @@ async fn create_subscription_route(
     Ok(Json(subscription))
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     post,
     path = "/v1/subscriptions/{org_id}/change-plan",
@@ -1148,6 +1181,7 @@ async fn change_subscription_plan_route(
     Ok(Json(change))
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     get,
     path = "/v1/billing/invoices/{org_id}",
@@ -1179,6 +1213,7 @@ async fn get_org_invoices_route(
     Ok(Json(invoices))
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     get,
     path = "/v1/billing/invoices/{org_id}/{period_key}",
@@ -1220,6 +1255,7 @@ async fn get_invoice_route(
     Ok(Json(invoice))
 }
 
+#[cfg(feature = "billing")]
 #[utoipa::path(
     post,
     path = "/v1/billing/webhooks/stripe",
@@ -3146,23 +3182,25 @@ fn usage_ledger(state: &ApiState) -> Result<Arc<dyn UsageLedgerStore>, ApiError>
     require(&state.usage, "usage ledger")
 }
 
+#[cfg(feature = "billing")]
 fn billing_store(state: &ApiState) -> Result<Arc<dyn BillingStore>, ApiError> {
     require(&state.billing, "billing store")
 }
 
 /// Build the [`Billing`] service from the wired billing + usage stores.
+#[cfg(feature = "billing")]
 fn billing_service(state: &ApiState) -> Result<Billing, ApiError> {
     let billing = billing_store(state)?;
     let usage = usage_ledger(state)?;
     Ok(Billing::new(billing, usage))
 }
 
+#[cfg(feature = "billing")]
 fn stripe_sync(state: &ApiState) -> Result<StripeSync, ApiError> {
     let billing = billing_store(state)?;
-    let secret = state
-        .stripe_webhook_secret
-        .clone()
-        .ok_or_else(|| ApiError::not_implemented("stripe webhook secret is not configured".to_string()))?;
+    let secret = state.stripe_webhook_secret.clone().ok_or_else(|| {
+        ApiError::not_implemented("stripe webhook secret is not configured".to_string())
+    })?;
     Ok(StripeSync::new(billing, secret))
 }
 
@@ -3581,6 +3619,7 @@ async fn authorize_tenant_route(
 /// Authorize an org-scoped billing route. Billing is org-scoped; auth is
 /// project-scoped, so we map the organization id onto the tenant scope for the
 /// credential check. A no-op when auth is disabled.
+#[cfg(feature = "billing")]
 async fn authorize_org_route(
     state: &ApiState,
     headers: &HeaderMap,
@@ -4186,6 +4225,7 @@ fn parse_optional_timestamp(
         .transpose()
 }
 
+#[cfg(feature = "billing")]
 fn parse_required_timestamp(
     value: &str,
     field_name: &str,
@@ -4275,10 +4315,13 @@ impl From<StoreError> for ApiError {
     }
 }
 
+#[cfg(feature = "billing")]
 impl From<BillingError> for ApiError {
     fn from(error: BillingError) -> Self {
         match error {
-            BillingError::NotFound(_) => Self::with_status(StatusCode::NOT_FOUND, error.to_string()),
+            BillingError::NotFound(_) => {
+                Self::with_status(StatusCode::NOT_FOUND, error.to_string())
+            }
             BillingError::Conflict(_) | BillingError::ConcurrentModification(_) => {
                 Self::with_status(StatusCode::CONFLICT, error.to_string())
             }
@@ -4292,6 +4335,7 @@ impl From<BillingError> for ApiError {
     }
 }
 
+#[cfg(feature = "billing")]
 impl From<StripeError> for ApiError {
     fn from(error: StripeError) -> Self {
         match error {

@@ -17,9 +17,7 @@
 //! 4. **Apply** — newer events map to append-only [`BillingAdjustment`]s and, as
 //!    appropriate, subscription/invoice status transitions.
 
-use crate::{
-    AdjustmentKind, BillingAdjustment, BillingStore, InvoiceStatus, SubscriptionStatus,
-};
+use crate::{AdjustmentKind, BillingAdjustment, BillingStore, InvoiceStatus, SubscriptionStatus};
 use async_trait::async_trait;
 use beater_core::{Clock, Money, OrganizationId, SystemClock};
 use beater_security::SecurityError;
@@ -199,8 +197,8 @@ impl<C: Clock> StripeSync<C> {
         )?;
 
         // Parse only after the signature is trusted.
-        let event: StripeEvent = serde_json::from_slice(raw)
-            .map_err(|err| StripeError::Malformed(err.to_string()))?;
+        let event: StripeEvent =
+            serde_json::from_slice(raw).map_err(|err| StripeError::Malformed(err.to_string()))?;
         let object_id = event.data.object.id.clone();
 
         // 2. Dedup by event id (UNIQUE). A repeat delivery is acknowledged but
@@ -337,9 +335,7 @@ mod tests {
             .unwrap_or_else(Utc::now)
     }
 
-    fn sync(
-        store: Arc<dyn BillingStore>,
-    ) -> Result<StripeSync<FixedClock>, anyhow::Error> {
+    fn sync(store: Arc<dyn BillingStore>) -> Result<StripeSync<FixedClock>, anyhow::Error> {
         Ok(StripeSync::with_clock(
             store,
             SECRET.to_vec(),
@@ -383,7 +379,11 @@ mod tests {
 
         let org = OrganizationId::new("org-1").map_err(|e| anyhow::anyhow!(e.to_string()))?;
         let adjustments = store.list_adjustments(&org).await?;
-        assert_eq!(adjustments.len(), 1, "exactly one adjustment despite re-delivery");
+        assert_eq!(
+            adjustments.len(),
+            1,
+            "exactly one adjustment despite re-delivery"
+        );
         Ok(())
     }
 
@@ -464,7 +464,10 @@ mod tests {
             "data": { "object": { "id": "sub_a", "org_id": "org-1" }}
         }))?;
         let header = signed_header(&body)?;
-        assert_eq!(sync.apply_event(&body, &header).await?, EventApplication::Applied);
+        assert_eq!(
+            sync.apply_event(&body, &header).await?,
+            EventApplication::Applied
+        );
 
         let updated = store
             .get_subscription(&org)

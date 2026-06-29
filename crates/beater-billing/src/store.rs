@@ -39,10 +39,7 @@ pub trait BillingStore: Send + Sync {
     /// Insert a new subscription. Fails with [`StoreError::Conflict`] if the org
     /// already has one.
     async fn create_subscription(&self, subscription: Subscription) -> StoreResult<Subscription>;
-    async fn get_subscription(
-        &self,
-        org_id: &OrganizationId,
-    ) -> StoreResult<Option<Subscription>>;
+    async fn get_subscription(&self, org_id: &OrganizationId) -> StoreResult<Option<Subscription>>;
     /// Optimistic plan change: bump the plan only if `expected_version` still
     /// matches, appending `adjustments` atomically. Returns
     /// [`StoreError::Conflict`] on a lost update (no rows affected).
@@ -199,13 +196,11 @@ impl SqliteBillingStore {
 }
 
 fn decode<T: serde::de::DeserializeOwned>(json: &str, what: &str) -> StoreResult<T> {
-    serde_json::from_str(json)
-        .map_err(|err| StoreError::Integrity(format!("decode {what}: {err}")))
+    serde_json::from_str(json).map_err(|err| StoreError::Integrity(format!("decode {what}: {err}")))
 }
 
 fn encode<T: serde::Serialize>(value: &T, what: &str) -> StoreResult<String> {
-    serde_json::to_string(value)
-        .map_err(|err| StoreError::backend(format!("encode {what}: {err}")))
+    serde_json::to_string(value).map_err(|err| StoreError::backend(format!("encode {what}: {err}")))
 }
 
 #[async_trait]
@@ -281,10 +276,7 @@ impl BillingStore for SqliteBillingStore {
         Ok(subscription)
     }
 
-    async fn get_subscription(
-        &self,
-        org_id: &OrganizationId,
-    ) -> StoreResult<Option<Subscription>> {
+    async fn get_subscription(&self, org_id: &OrganizationId) -> StoreResult<Option<Subscription>> {
         let connection = self.lock()?;
         let json: Option<String> = connection
             .query_row(
@@ -383,9 +375,7 @@ impl BillingStore for SqliteBillingStore {
         status: SubscriptionStatus,
     ) -> StoreResult<Option<Subscription>> {
         let mut connection = self.lock()?;
-        let tx = connection
-            .transaction()
-            .into_store_ctx("begin status tx")?;
+        let tx = connection.transaction().into_store_ctx("begin status tx")?;
         let current_json: Option<String> = tx
             .query_row(
                 "SELECT subscription_json FROM billing_subscriptions WHERE org_id = ?1",
@@ -562,7 +552,12 @@ impl BillingStore for SqliteBillingStore {
             tx.execute(
                 "UPDATE billing_invoices SET status = ?1, invoice_json = ?2
                   WHERE org_id = ?3 AND period_key = ?4",
-                params![invoice.status.as_str(), updated_json, org_id.as_str(), period_key],
+                params![
+                    invoice.status.as_str(),
+                    updated_json,
+                    org_id.as_str(),
+                    period_key
+                ],
             )
             .into_store_ctx("update invoice status")?;
         }
@@ -727,7 +722,9 @@ mod tests {
     async fn create_subscription_is_unique() -> anyhow::Result<()> {
         let store = store()?;
         store.put_plan(sample_plan("pro")?).await?;
-        store.create_subscription(sample_subscription("pro")?).await?;
+        store
+            .create_subscription(sample_subscription("pro")?)
+            .await?;
         let second = store.create_subscription(sample_subscription("pro")?).await;
         assert!(matches!(second, Err(StoreError::Conflict(_))));
         Ok(())
@@ -772,10 +769,7 @@ mod tests {
         // Duplicate delivery is rejected.
         assert!(!store.record_stripe_event("evt_1", "sub_a", 100).await?);
         store.mark_stripe_event_applied("evt_1").await?;
-        assert_eq!(
-            store.last_applied_stripe_created("sub_a").await?,
-            Some(100)
-        );
+        assert_eq!(store.last_applied_stripe_created("sub_a").await?, Some(100));
         Ok(())
     }
 }
