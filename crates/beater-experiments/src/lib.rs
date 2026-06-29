@@ -7,9 +7,11 @@ use beater_core::{
 use beater_datasets::DatasetVersionSnapshot;
 use beater_eval::{
     compare_paired_scores, evaluate_deterministic, EvaluationCase, EvaluatorSpec,
-    ExperimentComparison, GateDecision, GatePolicy, ScoreResult,
+    ExperimentComparison, GateDecision, GatePolicy, JudgeRequest, ScoreResult,
 };
-use beater_judge::{JudgeBroker, JudgeBrokerOutcome, JudgeBrokerRequest};
+use beater_judge::{
+    JudgeBroker, JudgeBrokerOutcome, JudgeBrokerRequest, JudgeProvider, ProviderCredentials,
+};
 use beater_schema::EvaluatorLane;
 use beater_store::{IntoStoreResult, StoreError, StoreResult};
 use chrono::Utc;
@@ -823,16 +825,265 @@ pub struct CandidateChange {
     pub proposed_by: OptimizerStrategy,
 }
 
+/// One failing example handed to a proposer as reflective signal.
+///
+/// Carries the high-signal fields a reflective rewrite needs — what went in,
+/// what we wanted vs. what we got, the numeric score, and any error/exception
+/// text — without depending on the richer (unmerged) `beater-scenarios`
+/// clustering. Excerpts are truncated by [`FailureExample::from_parts`] so a
+/// single huge output cannot blow up a reflective prompt.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FailureExample {
+    /// A truncated excerpt of the case input.
+    pub input_excerpt: String,
+    /// The expected / reference output, truncated, if the case had one.
+    pub expected: Option<String>,
+    /// A truncated excerpt of the actual output produced by the agent.
+    pub actual: String,
+    /// The numeric score this example received from the evaluator.
+    pub score: f64,
+    /// Any error / exception text surfaced for this example, if present.
+    pub error: Option<String>,
+}
+
+impl FailureExample {
+    /// Maximum characters retained per excerpt before truncation.
+    pub const EXCERPT_LIMIT: usize = 280;
+
+    /// Build a [`FailureExample`], truncating every free-text field to
+    /// [`EXCERPT_LIMIT`](Self::EXCERPT_LIMIT) characters so a pathological case
+    /// cannot dominate a reflective prompt.
+    pub fn from_parts(
+        input: impl Into<String>,
+        expected: Option<String>,
+        actual: impl Into<String>,
+        score: f64,
+        error: Option<String>,
+    ) -> Self {
+        Self {
+            input_excerpt: truncate_excerpt(&input.into()),
+            expected: expected.map(|e| truncate_excerpt(&e)),
+            actual: truncate_excerpt(&actual.into()),
+            score,
+            error: error.map(|e| truncate_excerpt(&e)),
+        }
+    }
+
+    /// The deterministic failure signature for this example — see
+    /// [`ProposalContext`] for how signatures are aggregated. When error text is
+    /// present we normalize it (lowercased, volatile tokens masked); otherwise
+    /// we fall back to the first divergent token between expected and actual.
+    pub fn signature(&self) -> String {
+        if let Some(error) = self.error.as_deref().filter(|e| !e.trim().is_empty()) {
+            return format!("error: {}", normalize_signature(error));
+        }
+        match self.expected.as_deref() {
+            Some(expected) => format!(
+                "divergence: {}",
+                first_divergent_token(expected, &self.actual)
+            ),
+            None => format!("low_score: {}", normalize_signature(&self.actual)),
+        }
+    }
+}
+
+/// Truncate a free-text excerpt to [`FailureExample::EXCERPT_LIMIT`] characters,
+/// appending an ellipsis marker when truncation occurred. Operates on `char`
+/// boundaries so it never splits a multi-byte code point.
+fn truncate_excerpt(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= FailureExample::EXCERPT_LIMIT {
+        return trimmed.to_string();
+    }
+    let head: String = trimmed
+        .chars()
+        .take(FailureExample::EXCERPT_LIMIT)
+        .collect();
+    format!("{head}…")
+}
+
+/// Normalize a string into a stable failure signature: lowercase, collapse
+/// whitespace, and mask volatile tokens (numbers, hex, uuids) to `<n>` so that
+/// "timeout after 1200ms" and "timeout after 950ms" bucket together. Kept
+/// deliberately simple and deterministic — this is the local, on-`main`
+/// substitute for `beater-scenarios` clustering, not a reimplementation of it.
+fn normalize_signature(text: &str) -> String {
+    let lowered = text.trim().to_lowercase();
+    let mut out = String::with_capacity(lowered.len());
+    let mut prev_space = false;
+    for word in lowered.split_whitespace() {
+        if prev_space {
+            out.push(' ');
+        }
+        out.push_str(&mask_token(word));
+        prev_space = true;
+    }
+    // Cap signature length so an unbounded message cannot become a unique bucket.
+    out.chars().take(120).collect()
+}
+
+/// Mask volatile substrings within a single token so values that differ only by
+/// number/hex/uuid bucket together: every maximal run of digits/hex is replaced
+/// by `<n>`. So "1200ms" and "950ms" both become "<n>ms", and a bare uuid /
+/// hex id collapses to "<n>". Non-numeric tokens pass through unchanged.
+fn mask_token(word: &str) -> String {
+    let mut out = String::with_capacity(word.len());
+    let mut in_run = false;
+    for ch in word.chars() {
+        // Treat a hex-ish character as part of a numeric run only when the token
+        // actually contains a digit somewhere (so plain words like "deaf" or
+        // "cab" are not mangled).
+        let numericish = ch.is_ascii_digit()
+            || ((ch.is_ascii_hexdigit() || ch == '-') && word.chars().any(|c| c.is_ascii_digit()));
+        if numericish {
+            if !in_run {
+                out.push_str("<n>");
+                in_run = true;
+            }
+        } else {
+            out.push(ch);
+            in_run = false;
+        }
+    }
+    out
+}
+
+/// Return the first token of `actual` that diverges from `expected`, used as a
+/// coarse failure signature when there is no explicit error string. Tokens are
+/// whitespace-delimited; returns `<missing>`/`<extra>` for length mismatches.
+fn first_divergent_token(expected: &str, actual: &str) -> String {
+    let mut exp = expected.split_whitespace();
+    let mut act = actual.split_whitespace();
+    loop {
+        match (exp.next(), act.next()) {
+            (Some(e), Some(a)) if e == a => continue,
+            (Some(e), Some(a)) => {
+                return normalize_signature(&format!("{e} -> {a}"));
+            }
+            (Some(e), None) => return normalize_signature(&format!("{e} -> <missing>")),
+            (None, Some(a)) => return normalize_signature(&format!("<extra> -> {a}")),
+            (None, None) => return "<no_divergence>".to_string(),
+        }
+    }
+}
+
+/// A counted failure signature: a normalized failure bucket and how many of the
+/// failing examples fell into it. See [`ProposalContext::failure_signatures`].
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FailureSignature {
+    /// The normalized signature string.
+    pub signature: String,
+    /// How many failing examples matched this signature.
+    pub count: usize,
+}
+
+/// Aggregate statistics over the failing examples in a [`ProposalContext`].
+///
+/// All fields are derived deterministically from the supplied failing examples;
+/// `score_buckets` is a fixed-width histogram over `[0,1]` in 0.2-wide buckets
+/// (index 0 = `[0.0,0.2)` … index 4 = `[0.8,1.0]`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FailureStats {
+    /// Number of failing examples summarized.
+    pub n_failures: usize,
+    /// Mean score across the failing examples (0.0 when there are none).
+    pub mean_score: f64,
+    /// Fixed five-bucket score histogram over `[0,1]` (0.2-wide buckets).
+    pub score_buckets: [usize; 5],
+}
+
+impl FailureStats {
+    fn from_examples(examples: &[FailureExample]) -> Self {
+        let n_failures = examples.len();
+        let mut score_buckets = [0usize; 5];
+        let mut sum = 0.0;
+        for ex in examples {
+            sum += ex.score;
+            let clamped = ex.score.clamp(0.0, 1.0);
+            // 1.0 lands in the top bucket rather than overflowing to index 5.
+            let idx = ((clamped * 5.0) as usize).min(4);
+            score_buckets[idx] += 1;
+        }
+        let mean_score = if n_failures == 0 {
+            0.0
+        } else {
+            sum / n_failures as f64
+        };
+        Self {
+            n_failures,
+            mean_score,
+            score_buckets,
+        }
+    }
+}
+
 /// Read-only context handed to a [`ProposalStrategy`].
 ///
-/// The strategy reflects on the optimization goal and the indexed agent surface
-/// (§21.1 `index_agent`) to emit candidates; it has no ability to accept them.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// The strategy reflects on the optimization goal, the current lever text, and a
+/// set of *failing examples* (§21.1 `index_agent`) to emit candidates; it has no
+/// ability to accept them. The failure features here are derived locally and
+/// deterministically — this is the on-`main` substitute for the richer
+/// `beater-scenarios` clustering (unmerged PR #470), not a dependency on it.
+///
+/// `Eq`/`Hash` are intentionally not derived: the aggregate stats carry an
+/// `f64` mean, so the struct is `PartialEq` only.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProposalContext {
     /// The improvement goal in natural language (§21.3 "goal + params").
     pub goal: String,
     /// The current prompt (or other lever text) the optimizer may rewrite.
     pub current_prompt: String,
+    /// The failing examples that motivate this optimization round.
+    pub failing_examples: Vec<FailureExample>,
+    /// Aggregate statistics over [`failing_examples`](Self::failing_examples).
+    pub stats: FailureStats,
+    /// The most common failure signatures, most frequent first, ties broken by
+    /// signature string for determinism.
+    pub failure_signatures: Vec<FailureSignature>,
+}
+
+impl ProposalContext {
+    /// Construct a context from a goal, current lever text, and the failing
+    /// examples, computing the aggregate stats and failure signatures
+    /// deterministically.
+    pub fn new(
+        goal: impl Into<String>,
+        current_prompt: impl Into<String>,
+        failing_examples: Vec<FailureExample>,
+    ) -> Self {
+        let stats = FailureStats::from_examples(&failing_examples);
+        let failure_signatures = Self::compute_signatures(&failing_examples);
+        Self {
+            goal: goal.into(),
+            current_prompt: current_prompt.into(),
+            failing_examples,
+            stats,
+            failure_signatures,
+        }
+    }
+
+    /// Construct a context with no failing examples — preserves the old
+    /// two-field call sites and the empty-failure case.
+    pub fn from_goal(goal: impl Into<String>, current_prompt: impl Into<String>) -> Self {
+        Self::new(goal, current_prompt, Vec::new())
+    }
+
+    /// Group the failing examples by [`FailureExample::signature`] and return the
+    /// buckets ordered by descending count (ties broken by signature string).
+    fn compute_signatures(examples: &[FailureExample]) -> Vec<FailureSignature> {
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for ex in examples {
+            *counts.entry(ex.signature()).or_insert(0) += 1;
+        }
+        let mut signatures: Vec<FailureSignature> = counts
+            .into_iter()
+            .map(|(signature, count)| FailureSignature { signature, count })
+            .collect();
+        // Descending count; BTreeMap already gives ascending-signature order so
+        // the final sort keeps signatures sorted within equal counts.
+        signatures.sort_by(|a, b| b.count.cmp(&a.count).then(a.signature.cmp(&b.signature)));
+        signatures
+    }
 }
 
 /// Errors a [`ProposalStrategy`] or [`propose_with`] can return.
@@ -848,6 +1099,10 @@ pub enum OptimizerError {
     /// The proposal context was insufficient to produce a candidate.
     #[error("invalid proposal context: {0}")]
     InvalidContext(String),
+    /// A proposer that consults an external broker/model failed to produce a
+    /// candidate (e.g. the broker errored or returned nothing usable).
+    #[error("proposer failed: {0}")]
+    ProposerFailed(String),
 }
 
 /// A strategy that *proposes* candidate changes for the held-out gate to judge.
@@ -859,21 +1114,100 @@ pub trait ProposalStrategy {
     fn propose(&self, ctx: &ProposalContext) -> Result<Vec<CandidateChange>, OptimizerError>;
 }
 
+/// An LLM-backed proposal strategy whose `propose` requires an async broker call.
+///
+/// This complements the sync [`ProposalStrategy`] trait: strategies that must
+/// consult a live model (e.g. [`LlmRewrite`]) implement this instead, taking a
+/// [`JudgeProvider`] (the existing LLM-call abstraction in `beater-judge`) plus
+/// the [`ProviderCredentials`] needed to authenticate the call. The candidates
+/// returned are *still only proposals* — acceptance is decided by the held-out
+/// gate, never by the proposer.
+#[async_trait]
+pub trait AsyncProposalStrategy {
+    /// Emit zero or more candidate changes, consulting `provider` as needed.
+    async fn propose_async(
+        &self,
+        ctx: &ProposalContext,
+        provider: &dyn JudgeProvider,
+        credentials: ProviderCredentials,
+    ) -> Result<Vec<CandidateChange>, OptimizerError>;
+}
+
 /// Reflective single-shot LLM rewrite of a prompt lever (§21.3).
 ///
-/// Minimal implementation: emits a single placeholder candidate derived from the
-/// context. A future revision will delegate to the judge/LLM broker; the
-/// candidate it returns still only earns acceptance via the held-out gate.
+/// Two entry points, both honest about what they do:
+/// * [`ProposalStrategy::propose`] (sync) emits a single *scaffold* candidate
+///   that records the reflective brief built from the context but does not call
+///   a model — useful when no broker is wired (e.g. dry runs / planning).
+/// * [`AsyncProposalStrategy::propose_async`] (async) builds the same reflective
+///   brief and sends it to the real [`JudgeProvider`], returning the model's
+///   improved prompt as the candidate's `target`/`description`.
+///
+/// Either way the candidate is *only a proposal*; it must clear the held-out
+/// Test gate (§21.3) + the beater-stats CI before it can be accepted. Proposal
+/// is not acceptance: the gate decides.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LlmRewrite;
 
-impl ProposalStrategy for LlmRewrite {
-    fn propose(&self, ctx: &ProposalContext) -> Result<Vec<CandidateChange>, OptimizerError> {
+/// The model the reflective rewrite asks for when none is otherwise configured.
+const LLM_REWRITE_MODEL: &str = "gpt-4o-mini";
+
+impl LlmRewrite {
+    /// Build the reflective brief sent to (or recorded for) the model: goal,
+    /// current prompt, failure stats, the top failure signatures, and a few
+    /// concrete failing examples. Deterministic given the context.
+    fn reflective_brief(ctx: &ProposalContext) -> String {
+        let mut brief = String::new();
+        brief.push_str(
+            "You are improving an LLM agent's system prompt. Rewrite the CURRENT PROMPT so it \
+             better achieves the GOAL and fixes the observed failures. Respond with ONLY the \
+             improved system prompt text, no preamble.\n\n",
+        );
+        brief.push_str(&format!("GOAL:\n{}\n\n", ctx.goal.trim()));
+        brief.push_str(&format!(
+            "CURRENT PROMPT:\n{}\n\n",
+            ctx.current_prompt.trim()
+        ));
+        brief.push_str(&format!(
+            "FAILURE STATS: {} failing examples, mean score {:.3}, score buckets {:?}\n",
+            ctx.stats.n_failures, ctx.stats.mean_score, ctx.stats.score_buckets
+        ));
+        if !ctx.failure_signatures.is_empty() {
+            brief.push_str("TOP FAILURE SIGNATURES:\n");
+            for sig in ctx.failure_signatures.iter().take(5) {
+                brief.push_str(&format!("  - [{}x] {}\n", sig.count, sig.signature));
+            }
+        }
+        if !ctx.failing_examples.is_empty() {
+            brief.push_str("\nFAILING EXAMPLES:\n");
+            for (i, ex) in ctx.failing_examples.iter().take(5).enumerate() {
+                brief.push_str(&format!("  Example {} (score {:.3}):\n", i + 1, ex.score));
+                brief.push_str(&format!("    input:    {}\n", ex.input_excerpt));
+                if let Some(expected) = &ex.expected {
+                    brief.push_str(&format!("    expected: {expected}\n"));
+                }
+                brief.push_str(&format!("    actual:   {}\n", ex.actual));
+                if let Some(error) = &ex.error {
+                    brief.push_str(&format!("    error:    {error}\n"));
+                }
+            }
+        }
+        brief
+    }
+
+    fn validate(ctx: &ProposalContext) -> Result<(), OptimizerError> {
         if ctx.goal.trim().is_empty() {
             return Err(OptimizerError::InvalidContext(
                 "goal must not be empty".to_string(),
             ));
         }
+        Ok(())
+    }
+}
+
+impl ProposalStrategy for LlmRewrite {
+    fn propose(&self, ctx: &ProposalContext) -> Result<Vec<CandidateChange>, OptimizerError> {
+        Self::validate(ctx)?;
         Ok(vec![CandidateChange {
             kind: ChangeKind::SystemPrompt,
             target: "system_prompt".to_string(),
@@ -881,32 +1215,134 @@ impl ProposalStrategy for LlmRewrite {
                 "Rewrite the system prompt to better satisfy goal: {}",
                 ctx.goal
             ),
-            rationale:
-                "reflective LLM rewrite placeholder candidate (§21.3); must clear the held-out \
-                 Test gate + beater-stats CI before acceptance"
-                    .to_string(),
+            rationale: format!(
+                "reflective LLM-rewrite scaffold (§21.3) over {} failing example(s); no model \
+                 was called on this sync path — call `propose_async` with a broker for the live \
+                 rewrite. Either way the candidate must clear the held-out Test gate + \
+                 beater-stats CI before acceptance.",
+                ctx.stats.n_failures
+            ),
             proposed_by: OptimizerStrategy::LlmRewrite,
         }])
     }
 }
 
+#[async_trait]
+impl AsyncProposalStrategy for LlmRewrite {
+    async fn propose_async(
+        &self,
+        ctx: &ProposalContext,
+        provider: &dyn JudgeProvider,
+        credentials: ProviderCredentials,
+    ) -> Result<Vec<CandidateChange>, OptimizerError> {
+        Self::validate(ctx)?;
+        // The reflective brief is packed into the `rubric` field of a
+        // `JudgeRequest`; the provider's free-text `rationale` carries back the
+        // model's rewritten prompt. This reuses the existing LLM-call seam in
+        // `beater-judge` without introducing a new contract type.
+        let request = JudgeRequest {
+            rubric: Self::reflective_brief(ctx),
+            model: LLM_REWRITE_MODEL.to_string(),
+            input: Value::String(ctx.current_prompt.clone()),
+            output: Value::String(ctx.goal.clone()),
+            reference: None,
+        };
+        let response = provider
+            .judge(request, credentials)
+            .await
+            .map_err(|err| OptimizerError::ProposerFailed(err.to_string()))?;
+        let rewritten = response.rationale.trim();
+        if rewritten.is_empty() {
+            return Err(OptimizerError::ProposerFailed(
+                "broker returned an empty rewritten prompt".to_string(),
+            ));
+        }
+        Ok(vec![CandidateChange {
+            kind: ChangeKind::SystemPrompt,
+            target: rewritten.to_string(),
+            description: format!(
+                "Broker-proposed system-prompt rewrite for goal: {}",
+                ctx.goal
+            ),
+            rationale: format!(
+                "reflective LLM rewrite via the beater-judge broker over {} failing example(s) \
+                 (model {}); a proposal only — must clear the held-out Test gate + beater-stats \
+                 CI before acceptance. Proposal is not acceptance: the gate decides.",
+                ctx.stats.n_failures, LLM_REWRITE_MODEL
+            ),
+            proposed_by: OptimizerStrategy::LlmRewrite,
+        }])
+    }
+}
+
+/// Deterministic grid search over the model-params lever of π (§6.1).
+///
+/// This is a real (LLM-free) strategy: it emits one candidate per point of a
+/// small fixed temperature/top-p grid, deterministically ordered. It does not
+/// run the candidates — that is the gate's job. Proposal is not acceptance.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ParamSearch;
+
+impl ParamSearch {
+    /// The fixed temperature grid swept by [`ParamSearch`].
+    const TEMPERATURES: [f64; 3] = [0.0, 0.3, 0.7];
+    /// The fixed top-p grid swept by [`ParamSearch`].
+    const TOP_PS: [f64; 2] = [0.9, 1.0];
+}
+
+impl ProposalStrategy for ParamSearch {
+    fn propose(&self, ctx: &ProposalContext) -> Result<Vec<CandidateChange>, OptimizerError> {
+        if ctx.goal.trim().is_empty() {
+            return Err(OptimizerError::InvalidContext(
+                "goal must not be empty".to_string(),
+            ));
+        }
+        let mut candidates = Vec::new();
+        for &temperature in &Self::TEMPERATURES {
+            for &top_p in &Self::TOP_PS {
+                candidates.push(CandidateChange {
+                    kind: ChangeKind::ModelParams,
+                    target: format!("model_params(temperature={temperature},top_p={top_p})"),
+                    description: format!(
+                        "Set model params to temperature={temperature}, top_p={top_p}"
+                    ),
+                    rationale: format!(
+                        "deterministic param-grid point (§6.1 model-params lever) proposed for \
+                         goal: {}; a proposal only — the held-out Test gate + beater-stats CI \
+                         decide acceptance.",
+                        ctx.goal
+                    ),
+                    proposed_by: OptimizerStrategy::ParamSearch,
+                });
+            }
+        }
+        Ok(candidates)
+    }
+}
+
 /// Dispatch to the named [`OptimizerStrategy`], returning its proposed candidates.
 ///
-/// Only [`OptimizerStrategy::LlmRewrite`] is implemented; the other variants
-/// return a typed [`OptimizerError::NotYetImplemented`]. Whatever a strategy
-/// proposes is *only* a proposal — acceptance still requires clearing the
-/// held-out Test gate (§21.3) and the planned §21.4 guardrail.
+/// Two strategies are implemented synchronously here:
+/// * [`OptimizerStrategy::LlmRewrite`] — emits the reflective-rewrite *scaffold*
+///   (no model call). For the live, broker-backed rewrite call
+///   [`LlmRewrite::propose_async`] directly, which needs an async [`JudgeProvider`].
+/// * [`OptimizerStrategy::ParamSearch`] — a deterministic model-params grid.
+///
+/// The remaining variants are genuinely deferred and return a typed
+/// [`OptimizerError::NotYetImplemented`]. Whatever a strategy proposes is *only*
+/// a proposal — acceptance still requires clearing the held-out Test gate
+/// (§21.3) and the planned §21.4 guardrail.
 pub fn propose_with(
     strategy: OptimizerStrategy,
     ctx: &ProposalContext,
 ) -> Result<Vec<CandidateChange>, OptimizerError> {
     match strategy {
         OptimizerStrategy::LlmRewrite => LlmRewrite.propose(ctx),
+        OptimizerStrategy::ParamSearch => ParamSearch.propose(ctx),
         OptimizerStrategy::FewShotBayesian
         | OptimizerStrategy::Mipro
         | OptimizerStrategy::Evolutionary
-        | OptimizerStrategy::Gepa
-        | OptimizerStrategy::ParamSearch => Err(OptimizerError::NotYetImplemented(strategy)),
+        | OptimizerStrategy::Gepa => Err(OptimizerError::NotYetImplemented(strategy)),
     }
 }
 
@@ -923,9 +1359,73 @@ mod tests {
     use serde_json::json;
 
     fn proposal_context() -> ProposalContext {
-        ProposalContext {
-            goal: "reduce hallucinations on factual lookups".to_string(),
-            current_prompt: "You are a helpful assistant.".to_string(),
+        ProposalContext::new(
+            "reduce hallucinations on factual lookups",
+            "You are a helpful assistant.",
+            vec![
+                FailureExample::from_parts(
+                    "What year did the Eiffel Tower open?",
+                    Some("1889".to_string()),
+                    "1887",
+                    0.0,
+                    None,
+                ),
+                FailureExample::from_parts(
+                    "Who wrote Hamlet?",
+                    Some("Shakespeare".to_string()),
+                    "Marlowe",
+                    0.1,
+                    None,
+                ),
+                FailureExample::from_parts(
+                    "Capital of Australia?",
+                    Some("Canberra".to_string()),
+                    "",
+                    0.0,
+                    Some("tool timeout after 1200ms".to_string()),
+                ),
+                FailureExample::from_parts(
+                    "Capital of Canada?",
+                    Some("Ottawa".to_string()),
+                    "",
+                    0.0,
+                    Some("tool timeout after 950ms".to_string()),
+                ),
+            ],
+        )
+    }
+
+    /// A fake [`JudgeProvider`] that returns a canned completion in `rationale`,
+    /// standing in for a live model so [`LlmRewrite::propose_async`] can be
+    /// tested without network access. The production path calls the real broker
+    /// provider; only the test substitutes this mock.
+    struct FakeRewriteProvider {
+        completion: String,
+    }
+
+    #[async_trait]
+    impl JudgeProvider for FakeRewriteProvider {
+        fn max_cost(
+            &self,
+            _provider: &str,
+            _request: &beater_eval::JudgeRequest,
+        ) -> beater_core::Money {
+            beater_core::Money::usd_micros(0)
+        }
+
+        async fn judge(
+            &self,
+            request: beater_eval::JudgeRequest,
+            _credentials: ProviderCredentials,
+        ) -> beater_judge::JudgeProviderResult<beater_eval::JudgeResponse> {
+            // Assert the reflective brief actually reached the provider.
+            assert!(request.rubric.contains("GOAL:"));
+            assert!(request.rubric.contains("FAILURE STATS:"));
+            Ok(beater_eval::JudgeResponse {
+                score: 0.0,
+                rationale: self.completion.clone(),
+                cost: beater_core::Money::usd_micros(0),
+            })
         }
     }
 
@@ -942,10 +1442,7 @@ mod tests {
 
     #[test]
     fn llm_rewrite_rejects_empty_goal() {
-        let ctx = ProposalContext {
-            goal: "   ".to_string(),
-            current_prompt: "x".to_string(),
-        };
+        let ctx = ProposalContext::from_goal("   ", "x");
         let err = LlmRewrite
             .propose(&ctx)
             .err()
@@ -969,13 +1466,94 @@ mod tests {
             OptimizerStrategy::Mipro,
             OptimizerStrategy::Evolutionary,
             OptimizerStrategy::Gepa,
-            OptimizerStrategy::ParamSearch,
         ] {
             let err = propose_with(strategy, &ctx)
                 .err()
                 .unwrap_or_else(|| panic!("expected NotYetImplemented for {strategy:?}"));
             assert_eq!(err, OptimizerError::NotYetImplemented(strategy));
         }
+    }
+
+    #[test]
+    fn proposal_context_computes_stats_and_signatures() {
+        let ctx = proposal_context();
+        assert_eq!(ctx.stats.n_failures, 4);
+        // Two timeouts (masked to the same signature) should be the top bucket.
+        let top = &ctx.failure_signatures[0];
+        assert!(top.signature.contains("timeout after <n>ms"), "{top:?}");
+        assert_eq!(top.count, 2);
+        // Mean score is below the failing band.
+        assert!(ctx.stats.mean_score < 0.2);
+        // All four failures live in the lowest score bucket.
+        assert_eq!(ctx.stats.score_buckets[0], 4);
+    }
+
+    #[test]
+    fn proposal_context_roundtrips_serde() {
+        let ctx = proposal_context();
+        let json = serde_json::to_string(&ctx).unwrap_or_else(|err| panic!("{err}"));
+        let back: ProposalContext =
+            serde_json::from_str(&json).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(ctx, back);
+    }
+
+    #[test]
+    fn from_goal_constructs_empty_failure_context() {
+        let ctx = ProposalContext::from_goal("g", "p");
+        assert_eq!(ctx.stats.n_failures, 0);
+        assert_eq!(ctx.stats.mean_score, 0.0);
+        assert!(ctx.failure_signatures.is_empty());
+    }
+
+    #[tokio::test]
+    async fn llm_rewrite_async_calls_broker_and_returns_rewrite() {
+        let provider = FakeRewriteProvider {
+            completion: "You are a meticulous assistant. Cite a source for every factual claim \
+                         and say 'I am not sure' when uncertain."
+                .to_string(),
+        };
+        let credentials = ProviderCredentials::new("openai", "sk-test");
+        let candidates = LlmRewrite
+            .propose_async(&proposal_context(), &provider, credentials)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].kind, ChangeKind::SystemPrompt);
+        assert_eq!(candidates[0].proposed_by, OptimizerStrategy::LlmRewrite);
+        // The broker's completion becomes the candidate target (the new prompt).
+        assert!(candidates[0].target.contains("meticulous assistant"));
+        // Proposal-not-acceptance invariant is preserved in the rationale.
+        assert!(candidates[0].rationale.contains("gate decides"));
+    }
+
+    #[tokio::test]
+    async fn llm_rewrite_async_rejects_empty_broker_output() {
+        let provider = FakeRewriteProvider {
+            completion: "   ".to_string(),
+        };
+        let credentials = ProviderCredentials::new("openai", "sk-test");
+        let err = LlmRewrite
+            .propose_async(&proposal_context(), &provider, credentials)
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("expected ProposerFailed"));
+        assert!(matches!(err, OptimizerError::ProposerFailed(_)));
+    }
+
+    #[test]
+    fn param_search_emits_deterministic_grid() {
+        let candidates = propose_with(OptimizerStrategy::ParamSearch, &proposal_context())
+            .unwrap_or_else(|err| panic!("{err}"));
+        // 3 temperatures x 2 top_p = 6 grid points.
+        assert_eq!(candidates.len(), 6);
+        assert!(candidates.iter().all(|c| c.kind == ChangeKind::ModelParams));
+        assert_eq!(candidates[0].proposed_by, OptimizerStrategy::ParamSearch);
+        // Deterministic ordering: first point is the lowest temperature/top_p.
+        assert!(candidates[0].target.contains("temperature=0,top_p=0.9"));
+        // A second call yields the identical grid.
+        let again = propose_with(OptimizerStrategy::ParamSearch, &proposal_context())
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(candidates, again);
     }
 
     #[tokio::test]
