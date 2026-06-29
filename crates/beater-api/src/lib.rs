@@ -864,6 +864,7 @@ async fn run_judge_eval_route(
             evaluator: request.evaluator,
             case: request.case,
             provider_secret_id: request.provider_secret_id,
+            cache_namespace: request.cache_namespace,
         })
         .await
         .map_err(judge_failure)?;
@@ -3020,6 +3021,10 @@ struct RunJudgeEvalHttpRequest {
     evaluator: EvaluatorSpec,
     case: EvaluationCase,
     provider_secret_id: ProviderSecretId,
+    /// Calibration-map / judge-instrument version folded into the judge cache
+    /// key; bumping it on recalibration invalidates stale cached scores.
+    #[serde(default)]
+    cache_namespace: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
