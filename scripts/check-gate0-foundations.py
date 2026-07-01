@@ -69,6 +69,36 @@ def read(path: str) -> str:
     return (REPO / path).read_text()
 
 
+def check_governance_security_presence(repo: Path = REPO) -> None:
+    required_docs = ["LICENSE", "GOVERNANCE.md", "SECURITY.md", "CONTRIBUTING.md"]
+    for doc in required_docs:
+        path = repo / doc
+        if not path.is_file():
+            fail(f"{doc} is missing")
+        if not path.read_text(encoding="utf-8").strip():
+            fail(f"{doc} must not be empty")
+
+    security = (repo / "SECURITY.md").read_text(encoding="utf-8").lower()
+    private_disclosure = (
+        "coordinated disclosure" in security
+        or "private disclosure" in security
+        or "report privately" in security
+    )
+    disclosure_path = any(
+        marker in security
+        for marker in [
+            "github security advisories",
+            "report a vulnerability",
+            "private advisory",
+            "security@",
+            "contact listed in `governance.md`",
+            "contact listed in governance.md",
+        ]
+    )
+    if not private_disclosure or not disclosure_path:
+        fail("SECURITY.md must describe a private/coordinated disclosure path")
+
+
 def rust_block(text: str, start_pattern: str) -> str | None:
     start = re.compile(start_pattern)
     lines = text.splitlines()
@@ -441,6 +471,7 @@ def check_temporal_contract() -> None:
 
 
 def main() -> None:
+    check_governance_security_presence()
     check_store_crate_has_no_sqlite_dependency()
     check_trace_store_conformance_runs_on_two_backends()
     check_metadata_store_boundary()
