@@ -136,6 +136,12 @@ $t$ / exact McNemar, bootstrap CIs, sequential e-values, CUPED) live in
 [`crates/beater-stats`](crates/beater-stats/src/lib.rs); the gate wiring is in
 [`crates/beater-experiments/src/rsi.rs`](crates/beater-experiments/src/rsi.rs).
 
+The same gate runs as a GitHub Action: `uses: jadenfix/beater@main` posts a
+pass / fail / **inconclusive** verdict — with effect size, CI, $p$-value, and
+"how many more cases would make this conclusive" when underpowered — as a PR
+comment, with no server and no API keys. See
+[`docs/eval-gate-action.md`](docs/eval-gate-action.md).
+
 ## Repository map
 
 | Path | Purpose |
