@@ -785,11 +785,12 @@ where
 /// → [`compare_paired_scores`] → [`GateDecision`], §21.3) and the planned §21.4
 /// anti-overfitting guardrail before it can be accepted. Proposal is not
 /// acceptance: the strategy emits candidates, the gate decides.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OptimizerStrategy {
     /// Reflective single-shot LLM rewrite of a prompt lever of π (§6.1) — the
     /// reflective-proposal baseline of §21.3. Implemented (minimally) below.
+    #[default]
     LlmRewrite,
     /// Few-shot exemplar selection driven by a Bayesian acquisition function.
     FewShotBayesian,
@@ -801,12 +802,6 @@ pub enum OptimizerStrategy {
     Gepa,
     /// Hyperparameter / model-params search over the model-params lever of π (§6.1).
     ParamSearch,
-}
-
-impl Default for OptimizerStrategy {
-    fn default() -> Self {
-        Self::LlmRewrite
-    }
 }
 
 /// The policy-π (§6.1) lever a [`CandidateChange`] targets, mirroring the planned
