@@ -7,14 +7,15 @@ use beater_core::{
 use beater_datasets::DatasetVersionSnapshot;
 use beater_eval::{
     compare_paired_scores_with_design, conservative_gate_design, evaluate_deterministic,
-    EvaluationCase, EvaluatorSpec, ExperimentComparison, GateDecision, GatePolicy, ScoreResult,
+    EvaluationCase, EvaluatorSpec, ExperimentComparison, GateDecision, GatePolicy,
+    MultiplicityPolicy, ScoreResult,
 };
 use beater_judge::{
     GenerationRequest, JudgeBroker, JudgeBrokerOutcome, JudgeBrokerRequest, ProviderCredentials,
     TextGenerator,
 };
 use beater_schema::EvaluatorLane;
-use beater_stats::{assess_generalization_gap, GapAssessment};
+use beater_stats::{assess_generalization_gap, benjamini_hochberg, holm_bonferroni, GapAssessment};
 use beater_store::{IntoStoreResult, StoreError, StoreResult};
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -1495,6 +1496,18 @@ pub struct OptimizationRoundConfig {
     /// Gate policy applied to the held-out **Test** split via
     /// [`compare_paired_scores`].
     pub gate_policy: GatePolicy,
+    /// Multiple-comparison control across the *candidate family* proposed in this
+    /// round (§10.3 #4 / #436). When a strategy emits more than one candidate,
+    /// screening each against the same baseline inflates the family-wise false-win
+    /// rate; this policy corrects for it. [`MultiplicityPolicy::Holm`] (the default)
+    /// controls the family-wise error rate and uniformly dominates the single-step
+    /// `alpha / comparison_count` Bonferroni already applied inside the gate;
+    /// [`MultiplicityPolicy::BenjaminiHochberg`] controls the false-discovery rate;
+    /// [`MultiplicityPolicy::None`] disables the family guard. It is orthogonal to
+    /// `gate_policy.comparison_count` (which pre-declares a fixed comparison
+    /// budget): the guard only ever *withdraws* a within-round `Pass`, never grants
+    /// one, and is a no-op when the round proposes a single candidate.
+    pub multiplicity: MultiplicityPolicy,
     /// Largest benign generalization gap for [`assess_generalization_gap`]
     /// (e.g. `0.0` — "held-out lift must not be significantly below the
     /// optimization-split lift").
@@ -1509,7 +1522,8 @@ pub struct OptimizationRoundConfig {
 
 impl OptimizationRoundConfig {
     /// Sensible anti-overfit defaults: zero-tolerance gap, 95% bootstrap CI,
-    /// 2000 resamples, fixed seed. The caller still must set `goal`,
+    /// 2000 resamples, fixed seed, and Holm family-wise multiplicity control
+    /// across the candidate family. The caller still must set `goal`,
     /// `current_prompt`, `failures`, `cases`, `strategy`, and `gate_policy`.
     pub fn new(
         goal: impl Into<String>,
@@ -1526,6 +1540,7 @@ impl OptimizationRoundConfig {
             cases,
             strategy,
             gate_policy,
+            multiplicity: MultiplicityPolicy::Holm,
             overfit_tolerance: 0.0,
             overfit_confidence: 0.95,
             overfit_resamples: 2000,
@@ -1638,7 +1653,6 @@ pub async fn run_optimization_round(
     };
 
     let mut evaluated = Vec::with_capacity(candidates.len());
-    let mut accepted: Option<CandidateChange> = None;
 
     // 3 + 4. For each candidate: score its cases (injected evaluator), then run
     //         the REAL held-out gate + anti-overfit assessment.
@@ -1649,17 +1663,84 @@ pub async fn run_optimization_round(
             .map_err(OptimizerError::EvaluationFailed)?;
 
         let evaluation = gate_candidate(&candidate, &scores, &cfg)?;
-        if evaluation.accepted && accepted.is_none() {
-            // First candidate (in proposal order) to clear both gates wins.
-            accepted = Some(evaluation.candidate.clone());
-        }
         evaluated.push(evaluation);
     }
+
+    // 5. Family-wise multiple-comparison control across the candidates proposed
+    //    this round (§10.3 #4 / #436 item 3). Screening N candidates against one
+    //    baseline inflates the family-wise false-win rate; a candidate that clears
+    //    the gate on its own but does not survive the correction has its `Pass`
+    //    withdrawn to `Inconclusive` (and loses acceptance). No-op for a single
+    //    candidate — a family of one needs no correction — so the pre-declared
+    //    `comparison_count` path (and its e2e coverage) is unchanged.
+    apply_family_multiplicity(&mut evaluated, cfg.multiplicity, cfg.gate_policy.alpha)?;
+
+    // First candidate (in proposal order) that still clears both gates after the
+    // family correction wins. Deterministic in proposal order.
+    let accepted = evaluated
+        .iter()
+        .find(|evaluation| evaluation.accepted)
+        .map(|evaluation| evaluation.candidate.clone());
 
     Ok(OptimizationOutcome {
         accepted,
         evaluated,
     })
+}
+
+/// Apply a family-wise / false-discovery multiple-comparison correction across a
+/// round's candidate evaluations (§10.3 #4 / #436 item 3).
+///
+/// The gate already applies the pre-declared single-step Bonferroni
+/// (`alpha / comparison_count`) to each candidate's CI. This adds the *within-round*
+/// family correction across the candidates actually proposed: the raw per-candidate
+/// p-values (`ExperimentComparison::p_value`, which is independent of the CI's alpha)
+/// are run through Holm (FWER) or Benjamini-Hochberg (FDR). A candidate whose gate
+/// decision is `Pass` but which does **not** survive the correction has its decision
+/// downgraded to `Inconclusive` and its acceptance withdrawn — mirroring the
+/// `EvalDesign::permit_pass` downgrade discipline: the guard can only ever remove a
+/// win, never manufacture one.
+///
+/// It is a deliberate no-op when:
+/// * the policy is [`MultiplicityPolicy::None`], or
+/// * fewer than two candidates were evaluated (a family of one has no multiplicity),
+///
+/// so single-candidate rounds — including the pre-declared `comparison_count` gate
+/// path — are byte-for-byte unchanged.
+fn apply_family_multiplicity(
+    evaluated: &mut [CandidateEvaluation],
+    policy: MultiplicityPolicy,
+    alpha: f64,
+) -> Result<(), OptimizerError> {
+    if matches!(policy, MultiplicityPolicy::None) || evaluated.len() < 2 {
+        return Ok(());
+    }
+
+    let p_values: Vec<f64> = evaluated
+        .iter()
+        .map(|evaluation| evaluation.gate.p_value)
+        .collect();
+
+    let decisions = match policy {
+        MultiplicityPolicy::Holm => holm_bonferroni(&p_values, alpha),
+        MultiplicityPolicy::BenjaminiHochberg => benjamini_hochberg(&p_values, alpha),
+        // `None` handled above.
+        MultiplicityPolicy::None => return Ok(()),
+    }
+    .map_err(|err| OptimizerError::GateFailed(err.to_string()))?;
+
+    for (evaluation, decision) in evaluated.iter_mut().zip(decisions) {
+        // Only a genuine `Pass` can be withdrawn; a regression failure or an
+        // already-inconclusive verdict is left untouched. Survival of the family
+        // correction is the `reject`-the-null (candidate really beats baseline)
+        // decision at the family level.
+        if evaluation.gate.decision == GateDecision::Pass && !decision.reject {
+            evaluation.gate.decision = GateDecision::Inconclusive;
+            evaluation.accepted = false;
+        }
+    }
+
+    Ok(())
 }
 
 /// Route one candidate's per-case scores through the held-out Test gate and the
@@ -2166,6 +2247,114 @@ mod tests {
         .err()
         .unwrap_or_else(|| panic!("expected a GateFailed error"));
         assert!(matches!(err, OptimizerError::GateFailed(_)), "{err:?}");
+    }
+
+    /// Build a minimal `CandidateEvaluation` that `Pass`ed the gate on its own,
+    /// carrying a chosen raw p-value — the only field the family multiplicity
+    /// correction reads.
+    fn passing_eval(p_value: f64) -> CandidateEvaluation {
+        CandidateEvaluation {
+            candidate: CandidateChange {
+                kind: ChangeKind::SystemPrompt,
+                target: "prompt".to_string(),
+                description: "desc".to_string(),
+                rationale: "why".to_string(),
+                proposed_by: OptimizerStrategy::ParamSearch,
+            },
+            gate: ExperimentComparison {
+                sample_size: 6,
+                baseline_mean: 0.5,
+                candidate_mean: 0.6,
+                delta: 0.1,
+                ci_low: 0.0,
+                ci_high: 0.2,
+                p_value,
+                decision: GateDecision::Pass,
+                test: beater_eval::StatisticalTest::PairedT,
+                adjusted_alpha: 0.05,
+                mde: None,
+                required_n: None,
+            },
+            overfit: GapAssessment {
+                optimize_lift: 0.1,
+                holdout_lift: 0.1,
+                gap: 0.0,
+                gap_ci_low: -0.1,
+                gap_ci_high: 0.1,
+                overfit: false,
+            },
+            accepted: true,
+        }
+    }
+
+    /// Holm withdraws a family of three marginal passers: each clears α=0.05 alone
+    /// (p ∈ {0.02, 0.03, 0.04}) but none survives the family-wise correction
+    /// (Holm's tightest step is α/3 ≈ 0.0167), so all are downgraded and none is
+    /// accepted. Proves the §10.3 #4 / #436 guard is load-bearing.
+    #[test]
+    fn holm_withdraws_a_family_of_marginal_passers() {
+        let mut evals = vec![passing_eval(0.02), passing_eval(0.03), passing_eval(0.04)];
+        apply_family_multiplicity(&mut evals, MultiplicityPolicy::Holm, 0.05)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(
+            evals
+                .iter()
+                .all(|e| e.gate.decision == GateDecision::Inconclusive && !e.accepted),
+            "every marginal candidate must be withdrawn under Holm"
+        );
+    }
+
+    /// Benjamini-Hochberg (FDR) is more lenient than Holm (FWER) on the *same*
+    /// family: the three marginal passers all clear the BH threshold (adjusted
+    /// p ≈ 0.04 ≤ 0.05), so they keep their `Pass`. Same input, different policy,
+    /// different outcome — both branches are load-bearing.
+    #[test]
+    fn benjamini_hochberg_keeps_family_that_holm_withdraws() {
+        let mut evals = vec![passing_eval(0.02), passing_eval(0.03), passing_eval(0.04)];
+        apply_family_multiplicity(&mut evals, MultiplicityPolicy::BenjaminiHochberg, 0.05)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(
+            evals
+                .iter()
+                .all(|e| e.gate.decision == GateDecision::Pass && e.accepted),
+            "BH controls FDR, not FWER, so this family survives"
+        );
+    }
+
+    /// A strongly-significant family (p ≈ 0.001) survives Holm intact — the guard
+    /// only removes noise, it never withdraws a genuine win.
+    #[test]
+    fn holm_keeps_a_strongly_significant_family() {
+        let mut evals = vec![
+            passing_eval(0.001),
+            passing_eval(0.002),
+            passing_eval(0.003),
+        ];
+        apply_family_multiplicity(&mut evals, MultiplicityPolicy::Holm, 0.05)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(evals
+            .iter()
+            .all(|e| e.gate.decision == GateDecision::Pass && e.accepted));
+    }
+
+    /// The guard is a deliberate no-op for a single candidate (a family of one has
+    /// no multiplicity) and when the policy is `None` — so the pre-declared
+    /// `comparison_count` gate path is never double-corrected.
+    #[test]
+    fn family_guard_is_a_noop_for_single_candidate_or_none_policy() {
+        // Single candidate with a terrible p-value: still untouched.
+        let mut one = vec![passing_eval(0.9)];
+        apply_family_multiplicity(&mut one, MultiplicityPolicy::Holm, 0.05)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(one[0].gate.decision == GateDecision::Pass && one[0].accepted);
+
+        // Policy None disables the correction even for a marginal family.
+        let mut none = vec![passing_eval(0.04), passing_eval(0.04)];
+        apply_family_multiplicity(&mut none, MultiplicityPolicy::None, 0.05)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(none
+            .iter()
+            .all(|e| e.gate.decision == GateDecision::Pass && e.accepted));
     }
 
     #[test]

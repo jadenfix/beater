@@ -851,6 +851,12 @@ pub fn compare_paired_scores(
 /// pass a design without taking a direct `beater-design` dependency.
 pub use beater_design::EvalDesign;
 
+/// The multiple-comparison policy (§10.3 #4), re-exported so gate/round callers
+/// can select a family-wise (Holm) or false-discovery (Benjamini-Hochberg)
+/// correction across a candidate family without a direct `beater-design`
+/// dependency.
+pub use beater_design::MultiplicityPolicy;
+
 /// Build a conservative [`EvalDesign`] for a deploy gate from its [`GatePolicy`]
 /// and the realised sample size. This is the design the experiment/gate path
 /// pre-registers when the caller has not supplied one of its own: a single-metric,
