@@ -691,7 +691,12 @@ impl IngestService {
         &self,
         request: NativeIngestRequest,
     ) -> Result<IngestOutcome, IngestError> {
-        self.enforce_quota_events(&request.scope, 1).await?;
+        self.enforce_quota_events(
+            &request.scope,
+            1,
+            request.idempotency_key.as_ref().map(|key| key.as_str()),
+        )
+        .await?;
         let prepared = self.prepare_native_batch(request).await?;
         self.write_batch_and_queue_downstream(prepared).await
     }
@@ -700,7 +705,12 @@ impl IngestService {
         &self,
         request: NativeIngestRequest,
     ) -> Result<IngestOutcome, IngestError> {
-        self.enforce_quota_events(&request.scope, 1).await?;
+        self.enforce_quota_events(
+            &request.scope,
+            1,
+            request.idempotency_key.as_ref().map(|key| key.as_str()),
+        )
+        .await?;
         let prepared = self.prepare_native_batch(request).await?;
         let publish = self.publish_trace_write(&prepared).await?;
         Ok(IngestOutcome {
@@ -714,8 +724,12 @@ impl IngestService {
         request: RawTraceIngestRequest,
     ) -> Result<IngestOutcome, IngestError> {
         let event_count = request.spans.len() as u64;
-        self.enforce_quota_events(&request.scope, event_count)
-            .await?;
+        self.enforce_quota_events(
+            &request.scope,
+            event_count,
+            request.raw_idempotency_key.as_ref().map(|key| key.as_str()),
+        )
+        .await?;
         let prepared = self.prepare_raw_batch(request).await?;
         self.write_batch_and_queue_downstream(prepared).await
     }
@@ -724,9 +738,13 @@ impl IngestService {
         &self,
         prepared: PreparedTraceBatch,
     ) -> Result<IngestOutcome, IngestError> {
+        // Share the batch with the store via an `Arc` handle (pointer bump),
+        // not a deep clone. Reference-iterating backends (Postgres/ClickHouse)
+        // never copy the payload at all; `prepared` keeps its handle so the rare
+        // publish fallback below can re-queue the same batch without a re-copy.
         let ack = self
             .traces
-            .write_batch(prepared.batch.clone())
+            .write_batch(Arc::clone(&prepared.batch))
             .await
             .map_err(IngestError::Store)?;
         let downstream_queued = match self
@@ -760,8 +778,12 @@ impl IngestService {
         request: RawTraceIngestRequest,
     ) -> Result<IngestOutcome, IngestError> {
         let event_count = request.spans.len() as u64;
-        self.enforce_quota_events(&request.scope, event_count)
-            .await?;
+        self.enforce_quota_events(
+            &request.scope,
+            event_count,
+            request.raw_idempotency_key.as_ref().map(|key| key.as_str()),
+        )
+        .await?;
         let prepared = self.prepare_raw_batch(request).await?;
         let publish = self.publish_trace_write(&prepared).await?;
         Ok(IngestOutcome {
@@ -1153,7 +1175,7 @@ impl IngestService {
             project_id: request.scope.project_id,
             queue_key: idempotency_key,
             trace_ids,
-            batch: CanonicalTraceBatch::one(raw, span),
+            batch: Arc::new(CanonicalTraceBatch::one(raw, span)),
         })
     }
 
@@ -1277,10 +1299,10 @@ impl IngestService {
             project_id: scope.project_id,
             queue_key: raw_idempotency_key,
             trace_ids,
-            batch: CanonicalTraceBatch {
+            batch: Arc::new(CanonicalTraceBatch {
                 raw_envelopes: vec![raw],
                 spans,
-            },
+            }),
         })
     }
 
@@ -1316,8 +1338,11 @@ impl IngestService {
         &self,
         prepared: &PreparedTraceBatch,
     ) -> Result<PublishAck, IngestError> {
+        // The retry-queue payload owns its batch. This deep clone only happens on
+        // the cold publish path (initial-publish fallback and the explicit buffer
+        // APIs), never on the hot store-write path, which shares the `Arc`.
         let payload = serde_json::to_vec(&QueuedTraceWrite {
-            batch: prepared.batch.clone(),
+            batch: (*prepared.batch).clone(),
         })
         .map_err(anyhow::Error::from)?;
         let mut message = BusMessage::new(
@@ -1416,7 +1441,9 @@ impl IngestService {
         }
 
         let trace_ids = trace_ids_for_batch(&queued.batch);
-        let write_ack = match self.traces.write_batch(queued.batch.clone()).await {
+        // `queued` is owned here (the hook above received its own clone), so move
+        // the batch into the store via `Arc` rather than deep-cloning it again.
+        let write_ack = match self.traces.write_batch(Arc::new(queued.batch)).await {
             Ok(write_ack) => write_ack,
             Err(err) => {
                 report.failed_writes += 1;
@@ -1489,6 +1516,7 @@ impl IngestService {
         &self,
         scope: &TenantScope,
         event_count: u64,
+        idempotency_key: Option<&str>,
     ) -> Result<(), IngestError> {
         let Some(limit) = self.policy.per_project_event_quota else {
             return Ok(());
@@ -1507,6 +1535,10 @@ impl IngestService {
                 limit,
                 window_start,
                 reset_at,
+                // Carry the batch idempotency key so a client retry of the same
+                // logical ingest (e.g. after a network timeout) does not
+                // double-charge the project's event quota for the same window.
+                idempotency_key: idempotency_key.map(str::to_string),
             })
             .await
             .map_err(IngestError::Store)?;
@@ -1547,7 +1579,7 @@ impl IngestService {
             }
             if let Some(allowed) = &self.policy.allowed_attributes {
                 if !allowed.contains(&key) {
-                    dropped.insert(key, value);
+                    dropped.insert(key, json!("[redacted]"));
                     continue;
                 }
             }
@@ -1617,6 +1649,45 @@ impl Default for IngestPolicy {
             trace_write_max_attempts: 3,
             trace_completion: TraceCompletionConfig::default(),
         }
+    }
+}
+
+impl IngestPolicy {
+    /// Validate that the policy fields form a coherent configuration.
+    ///
+    /// Call at startup after building the policy from CLI/env args; impossible
+    /// combinations (inline cutoff larger than the raw cap, zero limits) are
+    /// caught here with a clear diagnostic rather than producing silent
+    /// mismatches at runtime.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.max_raw_payload_bytes >= 1,
+            "max_raw_payload_bytes must be at least 1; got {}",
+            self.max_raw_payload_bytes
+        );
+        anyhow::ensure!(
+            self.max_attributes >= 1,
+            "max_attributes must be at least 1; got {}",
+            self.max_attributes
+        );
+        anyhow::ensure!(
+            self.inline_payload_bytes <= self.max_raw_payload_bytes,
+            "inline_payload_bytes ({}) must not exceed max_raw_payload_bytes ({}); \
+             payloads cannot be inlined when the inline cutoff is larger than the payload cap",
+            self.inline_payload_bytes,
+            self.max_raw_payload_bytes
+        );
+        anyhow::ensure!(
+            self.trace_completion.idle_timeout > Duration::zero(),
+            "trace_idle_timeout must be positive; got {} seconds",
+            self.trace_completion.idle_timeout.num_seconds()
+        );
+        anyhow::ensure!(
+            self.trace_completion.late_window > Duration::zero(),
+            "trace_late_window must be positive; got {} seconds",
+            self.trace_completion.late_window.num_seconds()
+        );
+        Ok(())
     }
 }
 
@@ -1816,7 +1887,10 @@ struct PreparedTraceBatch {
     project_id: ProjectId,
     queue_key: IdempotencyKey,
     trace_ids: BTreeSet<TraceId>,
-    batch: CanonicalTraceBatch,
+    // `Arc` so the store write and the rare durable-retry fallback share one
+    // allocation instead of deep-cloning the full span/attribute payload on
+    // every ingest (see `write_batch_and_queue_downstream`).
+    batch: Arc<CanonicalTraceBatch>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -3687,7 +3761,7 @@ mod tests {
         // Deny wins over allow.
         assert!(!span.attributes.contains_key("secret"));
         let dropped = &span.unmapped_attrs["dropped_attributes"];
-        assert_eq!(dropped["drop_me"], json!("unlisted"));
+        assert_eq!(dropped["drop_me"], json!("[redacted]"));
         assert_eq!(dropped["secret"], json!("[redacted]"));
         assert!(dropped.get("keep").is_none());
     }
@@ -4235,7 +4309,7 @@ mod tests {
     impl TraceStore for NotFoundTraceStore {
         async fn write_batch(
             &self,
-            _batch: CanonicalTraceBatch,
+            _batch: Arc<CanonicalTraceBatch>,
         ) -> beater_store::StoreResult<WriteAck> {
             Err(StoreError::NotFound("trace".to_string()))
         }
@@ -4291,7 +4365,7 @@ mod tests {
     impl TraceStore for UnavailableTraceStore {
         async fn write_batch(
             &self,
-            _batch: CanonicalTraceBatch,
+            _batch: Arc<CanonicalTraceBatch>,
         ) -> beater_store::StoreResult<WriteAck> {
             Err(StoreError::Backend("trace store unavailable".to_string()))
         }
@@ -4339,5 +4413,172 @@ mod tests {
         ) -> beater_store::StoreResult<Page<SpanSummary>> {
             Err(StoreError::Backend("trace store unavailable".to_string()))
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // IngestPolicy::validate() tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn policy_validate_accepts_defaults() {
+        IngestPolicy::default()
+            .validate()
+            .unwrap_or_else(|err| panic!("default policy must be valid: {err}"));
+    }
+
+    #[test]
+    fn policy_validate_rejects_inline_exceeds_raw() {
+        let policy = IngestPolicy {
+            max_raw_payload_bytes: 100,
+            inline_payload_bytes: 200,
+            ..IngestPolicy::default()
+        };
+        let err = policy
+            .validate()
+            .err()
+            .unwrap_or_else(|| panic!("expected validation error"));
+        assert!(
+            err.to_string().contains("inline_payload_bytes"),
+            "expected mention of inline_payload_bytes in: {err}"
+        );
+    }
+
+    #[test]
+    fn policy_validate_rejects_zero_max_raw_payload_bytes() {
+        let policy = IngestPolicy {
+            max_raw_payload_bytes: 0,
+            inline_payload_bytes: 0,
+            ..IngestPolicy::default()
+        };
+        let err = policy
+            .validate()
+            .err()
+            .unwrap_or_else(|| panic!("expected validation error"));
+        assert!(
+            err.to_string().contains("max_raw_payload_bytes"),
+            "expected mention of max_raw_payload_bytes in: {err}"
+        );
+    }
+
+    #[test]
+    fn policy_validate_rejects_zero_max_attributes() {
+        let policy = IngestPolicy {
+            max_attributes: 0,
+            ..IngestPolicy::default()
+        };
+        let err = policy
+            .validate()
+            .err()
+            .unwrap_or_else(|| panic!("expected validation error"));
+        assert!(
+            err.to_string().contains("max_attributes"),
+            "expected mention of max_attributes in: {err}"
+        );
+    }
+
+    #[test]
+    fn policy_validate_rejects_zero_idle_timeout() {
+        let policy = IngestPolicy {
+            trace_completion: TraceCompletionConfig {
+                idle_timeout: Duration::zero(),
+                ..TraceCompletionConfig::default()
+            },
+            ..IngestPolicy::default()
+        };
+        let err = policy
+            .validate()
+            .err()
+            .unwrap_or_else(|| panic!("expected validation error"));
+        assert!(
+            err.to_string().contains("trace_idle_timeout"),
+            "expected mention of trace_idle_timeout in: {err}"
+        );
+    }
+
+    #[test]
+    fn policy_validate_rejects_zero_late_window() {
+        let policy = IngestPolicy {
+            trace_completion: TraceCompletionConfig {
+                late_window: Duration::zero(),
+                ..TraceCompletionConfig::default()
+            },
+            ..IngestPolicy::default()
+        };
+        let err = policy
+            .validate()
+            .err()
+            .unwrap_or_else(|| panic!("expected validation error"));
+        assert!(
+            err.to_string().contains("trace_late_window"),
+            "expected mention of trace_late_window in: {err}"
+        );
+    }
+
+    /// R248: a span that exceeds a custom (small) raw payload cap is rejected with
+    /// PayloadTooLarge — proving that the max_raw_payload_bytes knob is wired
+    /// through to ingest enforcement.
+    #[tokio::test]
+    async fn ingest_rejects_payload_over_custom_raw_limit() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        // 64 bytes is far below the ~300-500 bytes a fixture request serialises to.
+        let service = IngestService::new(
+            artifacts,
+            traces,
+            bus.clone(),
+            IngestPolicy {
+                max_raw_payload_bytes: 64,
+                inline_payload_bytes: 32,
+                ..IngestPolicy::default()
+            },
+        );
+        let err = service
+            .ingest_native(fixture_request())
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("should be rejected over the 64-byte cap"));
+        assert!(
+            matches!(err, IngestError::PayloadTooLarge { .. }),
+            "expected PayloadTooLarge, got {err}"
+        );
+        assert_eq!(
+            bus.depth().await,
+            Ok(0),
+            "nothing should be queued on rejection"
+        );
+    }
+
+    /// R248: the same span that fails under a tiny custom cap succeeds under a
+    /// raised cap — proving that raising max_raw_payload_bytes changes behavior.
+    #[tokio::test]
+    async fn ingest_accepts_payload_within_raised_raw_limit() {
+        let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
+        let artifacts = Arc::new(
+            FsArtifactStore::new(tempdir.path().join("artifacts"))
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+        let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
+        let bus = Arc::new(InMemoryBus::new(16));
+        // 4 KiB — large enough for the fixture request, much smaller than the 1 MiB default.
+        let service = IngestService::new(
+            artifacts,
+            traces,
+            bus.clone(),
+            IngestPolicy {
+                max_raw_payload_bytes: 4096,
+                ..IngestPolicy::default()
+            },
+        );
+        let outcome = service
+            .ingest_native(fixture_request())
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.ack.accepted_raw, 1);
+        assert_eq!(bus.depth().await, Ok(1));
     }
 }

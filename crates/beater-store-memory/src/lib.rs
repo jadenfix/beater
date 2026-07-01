@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use beater_core::{IdempotencyKey, Page, PageRequest, ProjectId, TenantId, Timestamp, TraceId};
+use beater_core::{
+    IdempotencyKey, Page, PageRequest, ProjectId, SpanId, TenantId, Timestamp, TraceId,
+};
 use beater_schema::{
     span_matches, span_summary, CanonicalSpan, CanonicalTraceBatch, RawEnvelope, RunFilter,
     RunSummary, SpanFilter, SpanSummary, TraceView, WriteAck,
@@ -9,7 +11,10 @@ use beater_store::{
     OrganizationMetadata, ProjectMetadata, QuotaDecision, QuotaLimiter, QuotaReservationRequest,
     RoleBinding, StoreError, StoreResult, TraceStore,
 };
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::{Arc, Mutex},
+};
 
 #[derive(Clone, Default)]
 pub struct InMemoryTraceStore {
@@ -34,9 +39,24 @@ struct InMemoryQuotaCounter {
     used: u64,
 }
 
+/// Recorded outcome of a keyed reservation, mirroring the SQLite
+/// `quota_reservations` ledger so a client retry replays the same decision
+/// instead of double-counting.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InMemoryQuotaReservation {
+    tenant_id: TenantId,
+    project_id: ProjectId,
+    window_start: Timestamp,
+    idempotency_key: String,
+    accepted: bool,
+    used_after: u64,
+    reset_at: Timestamp,
+}
+
 #[derive(Clone, Default)]
 struct InMemoryQuotaState {
     counters: Vec<InMemoryQuotaCounter>,
+    reservations: Vec<InMemoryQuotaReservation>,
 }
 
 #[derive(Clone, Default)]
@@ -49,8 +69,53 @@ struct InMemoryMetadataState {
 
 #[derive(Clone, Default)]
 struct InMemoryTraceState {
-    raw_envelopes: Vec<RawEnvelope>,
-    spans: Vec<CanonicalSpan>,
+    raw_envelopes: HashMap<RawEnvelopeKey, RawEnvelope>,
+    spans: HashMap<SpanDedupKey, CanonicalSpan>,
+    span_order: Vec<SpanDedupKey>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct RawEnvelopeKey {
+    tenant_id: TenantId,
+    project_id: ProjectId,
+    idempotency_key: IdempotencyKey,
+}
+
+impl From<&RawEnvelope> for RawEnvelopeKey {
+    fn from(raw: &RawEnvelope) -> Self {
+        Self {
+            tenant_id: raw.tenant_id.clone(),
+            project_id: raw.project_id.clone(),
+            idempotency_key: raw.idempotency_key.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct SpanDedupKey {
+    tenant_id: TenantId,
+    project_id: ProjectId,
+    trace_id: TraceId,
+    span_id: SpanId,
+    seq: u64,
+}
+
+impl From<&CanonicalSpan> for SpanDedupKey {
+    fn from(span: &CanonicalSpan) -> Self {
+        Self {
+            tenant_id: span.tenant_id.clone(),
+            project_id: span.project_id.clone(),
+            trace_id: span.trace_id.clone(),
+            span_id: span.span_id.clone(),
+            seq: span.seq,
+        }
+    }
+}
+
+impl InMemoryTraceState {
+    fn spans_in_insert_order(&self) -> impl Iterator<Item = &CanonicalSpan> {
+        self.span_order.iter().filter_map(|key| self.spans.get(key))
+    }
 }
 
 impl InMemoryTraceStore {
@@ -85,39 +150,40 @@ impl InMemoryQuotaLimiter {
 
 #[async_trait]
 impl TraceStore for InMemoryTraceStore {
-    async fn write_batch(&self, batch: CanonicalTraceBatch) -> StoreResult<WriteAck> {
+    async fn write_batch(&self, batch: Arc<CanonicalTraceBatch>) -> StoreResult<WriteAck> {
+        // Take ownership without a deep copy when we hold the only handle (the
+        // common ingest path); fall back to cloning the inner batch only when a
+        // retry handle is still alive.
+        let batch = Arc::try_unwrap(batch).unwrap_or_else(|shared| (*shared).clone());
         let mut state = self.lock()?;
         let mut accepted_raw = 0;
         let mut duplicate_raw = 0;
         for raw in batch.raw_envelopes {
-            let exists = state.raw_envelopes.iter().any(|existing| {
-                existing.tenant_id == raw.tenant_id
-                    && existing.project_id == raw.project_id
-                    && existing.idempotency_key == raw.idempotency_key
-            });
-            if exists {
-                duplicate_raw += 1;
-            } else {
-                state.raw_envelopes.push(raw);
+            let key = RawEnvelopeKey::from(&raw);
+            if let Entry::Vacant(entry) = state.raw_envelopes.entry(key) {
+                entry.insert(raw);
                 accepted_raw += 1;
+            } else {
+                duplicate_raw += 1;
             }
         }
 
         let mut accepted_spans = 0;
         let mut duplicate_spans = 0;
         for span in batch.spans {
-            let exists = state.spans.iter().any(|existing| {
-                existing.tenant_id == span.tenant_id
-                    && existing.project_id == span.project_id
-                    && existing.trace_id == span.trace_id
-                    && existing.span_id == span.span_id
-                    && existing.seq == span.seq
-            });
-            if exists {
-                duplicate_spans += 1;
+            let key = SpanDedupKey::from(&span);
+            let inserted_key = if let Entry::Vacant(entry) = state.spans.entry(key) {
+                let key = entry.key().clone();
+                entry.insert(span);
+                Some(key)
             } else {
-                state.spans.push(span);
+                None
+            };
+            if let Some(key) = inserted_key {
+                state.span_order.push(key);
                 accepted_spans += 1;
+            } else {
+                duplicate_spans += 1;
             }
         }
 
@@ -132,8 +198,7 @@ impl TraceStore for InMemoryTraceStore {
     async fn get_trace(&self, tenant: TenantId, trace: TraceId) -> StoreResult<TraceView> {
         let state = self.lock()?;
         let mut spans = state
-            .spans
-            .iter()
+            .spans_in_insert_order()
             .filter(|span| span.tenant_id == tenant && span.trace_id == trace)
             .cloned()
             .collect::<Vec<_>>();
@@ -153,8 +218,7 @@ impl TraceStore for InMemoryTraceStore {
     ) -> StoreResult<TraceView> {
         let state = self.lock()?;
         let mut spans = state
-            .spans
-            .iter()
+            .spans_in_insert_order()
             .filter(|span| {
                 span.tenant_id == tenant && span.project_id == project && span.trace_id == trace
             })
@@ -175,15 +239,12 @@ impl TraceStore for InMemoryTraceStore {
         idempotency_key: IdempotencyKey,
     ) -> StoreResult<Option<RawEnvelope>> {
         let state = self.lock()?;
-        Ok(state
-            .raw_envelopes
-            .iter()
-            .find(|raw| {
-                raw.tenant_id == tenant
-                    && raw.project_id == project
-                    && raw.idempotency_key == idempotency_key
-            })
-            .cloned())
+        let key = RawEnvelopeKey {
+            tenant_id: tenant,
+            project_id: project,
+            idempotency_key,
+        };
+        Ok(state.raw_envelopes.get(&key).cloned())
     }
 
     async fn query_runs(
@@ -203,8 +264,7 @@ impl TraceStore for InMemoryTraceStore {
     ) -> StoreResult<Page<SpanSummary>> {
         let state = self.lock()?;
         let mut spans = state
-            .spans
-            .iter()
+            .spans_in_insert_order()
             .filter(|span| span.tenant_id == tenant && span_matches(span, &filter))
             .cloned()
             .map(span_summary)
@@ -357,40 +417,77 @@ impl MetadataStore for InMemoryMetadataStore {
 impl QuotaLimiter for InMemoryQuotaLimiter {
     async fn reserve_quota(&self, request: QuotaReservationRequest) -> StoreResult<QuotaDecision> {
         let mut state = self.lock()?;
-        let counter = state.counters.iter_mut().find(|counter| {
+
+        // Idempotent replay: a retry of the same logical reservation (same key,
+        // same window) returns the recorded decision without advancing the
+        // counter again. The whole method holds the state mutex, so the lookup
+        // and the counter update are atomic.
+        if let Some(key) = request.idempotency_key.as_deref() {
+            if let Some(existing) = state.reservations.iter().find(|reservation| {
+                reservation.tenant_id == request.tenant_id
+                    && reservation.project_id == request.project_id
+                    && reservation.window_start == request.window_start
+                    && reservation.idempotency_key == key
+            }) {
+                return Ok(QuotaDecision {
+                    accepted: existing.accepted,
+                    used: existing.used_after,
+                    limit: request.limit,
+                    reset_at: existing.reset_at,
+                });
+            }
+        }
+
+        let counter = state.counters.iter().position(|counter| {
             counter.tenant_id == request.tenant_id
                 && counter.project_id == request.project_id
                 && counter.window_start == request.window_start
         });
-        let current_used = counter.as_ref().map(|counter| counter.used).unwrap_or(0);
+        let current_used = counter.map(|idx| state.counters[idx].used).unwrap_or(0);
         let Some(new_used) = current_used.checked_add(request.amount) else {
             return Err(StoreError::integrity("quota counter overflow"));
         };
-        if new_used > request.limit {
-            return Ok(QuotaDecision {
+
+        let decision = if new_used > request.limit {
+            QuotaDecision {
                 accepted: false,
                 used: current_used,
                 limit: request.limit,
                 reset_at: request.reset_at,
-            });
-        }
-
-        if let Some(counter) = counter {
-            counter.used = new_used;
+            }
         } else {
-            state.counters.push(InMemoryQuotaCounter {
+            match counter {
+                Some(idx) => state.counters[idx].used = new_used,
+                None => state.counters.push(InMemoryQuotaCounter {
+                    tenant_id: request.tenant_id.clone(),
+                    project_id: request.project_id.clone(),
+                    window_start: request.window_start,
+                    used: new_used,
+                }),
+            }
+            QuotaDecision {
+                accepted: true,
+                used: new_used,
+                limit: request.limit,
+                reset_at: request.reset_at,
+            }
+        };
+
+        // Record the keyed outcome (accepted or rejected) so a later retry of this
+        // key replays it verbatim.
+        if let Some(key) = request.idempotency_key.as_deref() {
+            state.reservations.push(InMemoryQuotaReservation {
                 tenant_id: request.tenant_id,
                 project_id: request.project_id,
                 window_start: request.window_start,
-                used: new_used,
+                idempotency_key: key.to_string(),
+                accepted: decision.accepted,
+                used_after: decision.used,
+                reset_at: decision.reset_at,
             });
         }
-        Ok(QuotaDecision {
-            accepted: true,
-            used: new_used,
-            limit: request.limit,
-            reset_at: request.reset_at,
-        })
+
+        Ok(decision)
     }
 }
 
@@ -399,7 +496,8 @@ mod tests {
     use super::*;
     use beater_store_conformance::{
         assert_metadata_store_conformance, assert_quota_limiter_concurrency_conformance,
-        assert_quota_limiter_conformance, assert_trace_store_conformance,
+        assert_quota_limiter_conformance, assert_quota_limiter_idempotency_conformance,
+        assert_trace_store_conformance,
     };
     use std::collections::BTreeSet;
 
@@ -511,6 +609,11 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
     async fn in_memory_quota_limiter_concurrency_conforms() {
         assert_quota_limiter_concurrency_conformance(InMemoryQuotaLimiter::new()).await;
+    }
+
+    #[tokio::test]
+    async fn in_memory_quota_limiter_idempotency_conforms() {
+        assert_quota_limiter_idempotency_conformance(InMemoryQuotaLimiter::new()).await;
     }
 
     fn tenant_id(value: &str) -> TenantId {
