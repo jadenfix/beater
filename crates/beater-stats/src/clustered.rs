@@ -169,40 +169,44 @@ pub fn clustered_bootstrap_ci<T: PartialEq + Clone>(
         return Err(StatsError::InvalidResampleCount(n_resamples));
     }
 
-    // Bucket observations by cluster (first-seen order).
+    // Reduce each cluster to its `(sum, count)` once (first-seen order). The
+    // resample loop then only touches these `G` partial sums instead of rescanning
+    // all `N` observations on every draw — O(n_resamples · G) rather than
+    // O(n_resamples · N) — and never materialises per-cluster value vectors.
     let mut labels: Vec<T> = Vec::new();
-    let mut buckets: Vec<Vec<f64>> = Vec::new();
+    let mut bucket_stats: Vec<(f64, usize)> = Vec::new();
     for (value, id) in values.iter().zip(cluster_ids.iter()) {
         if let Some(pos) = labels.iter().position(|l| *l == *id) {
-            buckets[pos].push(*value);
+            bucket_stats[pos].0 += *value;
+            bucket_stats[pos].1 += 1;
         } else {
             labels.push(id.clone());
-            buckets.push(vec![*value]);
+            bucket_stats.push((*value, 1));
         }
     }
-    let g = buckets.len();
+    let g = bucket_stats.len();
 
     let observed = mean(values);
-    let mut rng = Xorshift64::new(seed);
-    let mut means: Vec<f64> = Vec::with_capacity(n_resamples);
-    for _ in 0..n_resamples {
+    // Resample whole clusters via the shared per-index core (parallel under the
+    // `parallel` feature; reproducible regardless of evaluation order).
+    let mut means = crate::resampling::replicates(n_resamples, |i| {
+        let mut rng = Xorshift64::for_resample(seed, i);
         let mut sum = 0.0;
         let mut count = 0usize;
         for _ in 0..g {
-            let bucket = &buckets[rng.next_index(g)];
-            sum += bucket.iter().sum::<f64>();
-            count += bucket.len();
+            let (bucket_sum, bucket_len) = bucket_stats[rng.next_index(g)];
+            sum += bucket_sum;
+            count += bucket_len;
         }
-        means.push(sum / count as f64);
-    }
-    means.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        sum / count as f64
+    });
 
     let alpha = 1.0 - confidence;
-    let lo_idx = ((alpha / 2.0) * n_resamples as f64).floor() as usize;
-    let hi_idx = ((1.0 - alpha / 2.0) * n_resamples as f64).floor() as usize;
+    let (lo_idx, hi_idx) = crate::resampling::two_sided_indices(alpha, n_resamples);
+    let (lower, upper) = crate::resampling::percentile_endpoints(&mut means, lo_idx, hi_idx);
     Ok(crate::BootstrapInterval {
-        lower: means[lo_idx.min(n_resamples - 1)],
-        upper: means[hi_idx.min(n_resamples - 1)],
+        lower,
+        upper,
         estimate: observed,
         n_resamples,
     })
@@ -282,5 +286,10 @@ mod tests {
             .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(first, second);
         assert!(first.lower <= first.estimate && first.estimate <= first.upper);
+        // Golden endpoints: precomputing per-cluster sums and the per-index
+        // resampling are order-independent, so the sequential and
+        // `--features parallel` builds must both reproduce these values.
+        assert!((first.lower - 0.05).abs() < 1e-12, "{}", first.lower);
+        assert!((first.upper - 2.05).abs() < 1e-12, "{}", first.upper);
     }
 }

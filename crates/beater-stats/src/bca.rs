@@ -9,7 +9,10 @@
 //! (the jackknife skewness of the statistic), restoring ~nominal coverage.
 
 use crate::numerics::normal_quantile;
-use crate::{mean, normal_cdf, BootstrapInterval, ConfidenceInterval, StatsError, Xorshift64};
+use crate::{
+    mean, normal_cdf, resample_diff, resample_mean_at, resampling, BootstrapInterval,
+    ConfidenceInterval, StatsError,
+};
 
 /// Outcome of a paired bootstrap test over per-pair differences.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -82,19 +85,18 @@ pub fn bootstrap_bca_ci(
 
     let theta_hat = mean(sample_a) - mean(sample_b);
 
-    let mut rng = Xorshift64::new(seed);
-    let mut replicates: Vec<f64> = Vec::with_capacity(n_resamples);
-    let mut n_below = 0usize;
-    for _ in 0..n_resamples {
-        let ra = resample_mean(sample_a, &mut rng);
-        let rb = resample_mean(sample_b, &mut rng);
-        let theta = ra - rb;
-        if theta < theta_hat {
-            n_below += 1;
-        }
-        replicates.push(theta);
-    }
-    replicates.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    // Bootstrap replicates via the shared per-index core (parallel under the
+    // `parallel` feature; same replicates as `bootstrap_diff_ci` for a given
+    // seed). BCa reads several data-dependent percentiles off the distribution,
+    // so — unlike the two-endpoint routines — it keeps the fully sorted vector
+    // rather than quickselecting.
+    let mut replicates =
+        resampling::replicates(n_resamples, |i| resample_diff(sample_a, sample_b, seed, i));
+    let n_below = replicates
+        .iter()
+        .filter(|&&theta| theta < theta_hat)
+        .count();
+    replicates.sort_by(|x, y| x.total_cmp(y));
 
     let alpha = 1.0 - confidence;
     let percentile = |q: f64| -> f64 {
@@ -220,27 +222,15 @@ pub fn paired_bootstrap_test(
     }
 
     let estimate = mean(differences);
-    let mut rng = Xorshift64::new(seed);
-    let mut means: Vec<f64> = Vec::with_capacity(n_resamples);
-    let mut le_zero = 0usize;
-    let mut ge_zero = 0usize;
-    for _ in 0..n_resamples {
-        let m = resample_mean(differences, &mut rng);
-        if m <= 0.0 {
-            le_zero += 1;
-        }
-        if m >= 0.0 {
-            ge_zero += 1;
-        }
-        means.push(m);
-    }
-    means.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    let mut means = resampling::replicates(n_resamples, |i| resample_mean_at(differences, seed, i));
+    let le_zero = means.iter().filter(|&&m| m <= 0.0).count();
+    let ge_zero = means.iter().filter(|&&m| m >= 0.0).count();
 
-    let lo_idx = ((alpha / 2.0) * n_resamples as f64).floor() as usize;
-    let hi_idx = ((1.0 - alpha / 2.0) * n_resamples as f64).floor() as usize;
+    let (lo_idx, hi_idx) = resampling::two_sided_indices(alpha, n_resamples);
+    let (low, high) = resampling::percentile_endpoints(&mut means, lo_idx, hi_idx);
     let ci = ConfidenceInterval {
-        low: means[lo_idx.min(n_resamples - 1)],
-        high: means[hi_idx.min(n_resamples - 1)],
+        low,
+        high,
         confidence: 1.0 - alpha,
     };
 
@@ -253,16 +243,6 @@ pub fn paired_bootstrap_test(
         p_value,
         n_resamples,
     })
-}
-
-/// Mean of a with-replacement resample of `xs`, drawing `xs.len()` draws.
-fn resample_mean(xs: &[f64], rng: &mut Xorshift64) -> f64 {
-    let n = xs.len();
-    let mut sum = 0.0;
-    for _ in 0..n {
-        sum += xs[rng.next_index(n)];
-    }
-    sum / n as f64
 }
 
 #[cfg(test)]
@@ -286,6 +266,16 @@ mod tests {
             bootstrap_bca_ci(&a, &b, 0.95, 5_000, 42).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(first, second);
         assert!(first.lower <= first.estimate && first.estimate <= first.upper);
+        // Golden endpoints: the per-index resampling is order-independent, so the
+        // sequential and `--features parallel` builds must both reproduce these —
+        // CI runs both, so a serial/parallel divergence (which would select a
+        // different replicate entirely) fails here.
+        assert!(
+            (first.lower - 0.186_666_666_7).abs() < 1e-9,
+            "{}",
+            first.lower
+        );
+        assert!((first.upper - 0.28).abs() < 1e-9, "{}", first.upper);
     }
 
     #[test]
@@ -323,6 +313,9 @@ mod tests {
         assert!(out.estimate > 0.0);
         assert!(out.ci.low > 0.0, "CI should exclude zero: {:?}", out.ci);
         assert!(out.p_value < 0.05, "p={}", out.p_value);
+        // Golden endpoints (path-independent across the serial/parallel builds).
+        assert!((out.ci.low - 0.095).abs() < 1e-12, "{}", out.ci.low);
+        assert!((out.ci.high - 0.117_5).abs() < 1e-12, "{}", out.ci.high);
     }
 
     #[test]
