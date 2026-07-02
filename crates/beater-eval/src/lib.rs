@@ -720,11 +720,19 @@ impl Default for GatePolicy {
     }
 }
 
-pub fn compare_paired_scores(
+/// Validate the shared paired-comparison preconditions (aligned lengths, the
+/// policy sample floor, finite scores, a usable alpha, a non-zero comparison
+/// family) and return the family-adjusted per-comparison alpha.
+///
+/// Single-step Bonferroni across the comparison family: no lower clamp — a
+/// large `comparison_count` must genuinely shrink alpha; clamping it up would
+/// let the family-wise error rate exceed the requested level (`beater-stats`
+/// re-validates the result is a usable alpha in `(0, 1)`).
+fn validated_adjusted_alpha(
     baseline: &[f64],
     candidate: &[f64],
     policy: &GatePolicy,
-) -> Result<ExperimentComparison, EvalError> {
+) -> Result<f64, EvalError> {
     // Pairs must align one-to-one; a length mismatch is a caller bug, not
     // something to silently paper over by truncating to the shorter prefix.
     if baseline.len() != candidate.len() {
@@ -742,7 +750,7 @@ pub fn compare_paired_scores(
         });
     }
     // Reject non-finite scores up front so they cannot slip past the degenerate
-    // single-case branch below and silently produce a Pass on NaN.
+    // single-case branch and silently produce a Pass on NaN.
     if baseline
         .iter()
         .chain(candidate.iter())
@@ -763,49 +771,64 @@ pub fn compare_paired_scores(
             "comparison_count must be greater than zero".to_string(),
         ));
     }
-
-    // Single-step Bonferroni correction across the comparison family: the
-    // per-comparison level the CI and decision are computed at. No lower clamp — a
-    // large `comparison_count` must genuinely shrink alpha; clamping it up would let
-    // the family-wise error rate exceed the requested level. `compare_paired`
-    // validates the result is a usable alpha in (0, 1).
-    let adjusted_alpha = policy.alpha / policy.comparison_count as f64;
-
     if n == 0 {
         return Err(EvalError::Statistics("no scores to compare".to_string()));
     }
+    Ok(policy.alpha / policy.comparison_count as f64)
+}
 
-    // A single paired observation has no sampling variability, so a real
-    // variance-based test is undefined — `beater-stats` correctly refuses n < 2.
-    // This is the deterministic single-case smoke-gate regime (a caller opts in by
-    // setting `min_sample_size = 1`): the interval collapses to the point estimate,
-    // and the p-value is 1.0 because one sample carries no power to reject the null.
-    // The gate still decides from that degenerate interval against the regression
-    // bound, preserving deterministic single-case behavior.
+/// The deterministic single-case smoke-gate regime (`n < 2`, a caller opts in
+/// by setting `min_sample_size = 1`): a single paired observation has no
+/// sampling variability, so a real variance-based test is undefined —
+/// `beater-stats` correctly refuses `n < 2`. The interval collapses to the
+/// point estimate and the p-value is 1.0 (one sample carries no power to
+/// reject the null); the gate still decides from that degenerate interval
+/// against the regression bound, preserving deterministic single-case behavior.
+fn single_case_smoke_comparison(
+    baseline: &[f64],
+    candidate: &[f64],
+    policy: &GatePolicy,
+    adjusted_alpha: f64,
+) -> ExperimentComparison {
+    let delta =
+        candidate.first().copied().unwrap_or(0.0) - baseline.first().copied().unwrap_or(0.0);
+    let decision = if delta < -policy.max_regression {
+        GateDecision::FailRegression
+    } else {
+        GateDecision::Pass
+    };
+    ExperimentComparison {
+        sample_size: baseline.len(),
+        baseline_mean: mean(baseline),
+        candidate_mean: mean(candidate),
+        delta,
+        ci_low: delta,
+        ci_high: delta,
+        p_value: 1.0,
+        decision,
+        test: StatisticalTest::PairedT,
+        adjusted_alpha,
+        // The single-case smoke-gate regime never returns `Inconclusive`, so
+        // there is no underpowered verdict to annotate.
+        mde: None,
+        required_n: None,
+    }
+}
+
+pub fn compare_paired_scores(
+    baseline: &[f64],
+    candidate: &[f64],
+    policy: &GatePolicy,
+) -> Result<ExperimentComparison, EvalError> {
+    let adjusted_alpha = validated_adjusted_alpha(baseline, candidate, policy)?;
+    let n = baseline.len();
     if n < 2 {
-        let delta =
-            candidate.first().copied().unwrap_or(0.0) - baseline.first().copied().unwrap_or(0.0);
-        let decision = if delta < -policy.max_regression {
-            GateDecision::FailRegression
-        } else {
-            GateDecision::Pass
-        };
-        return Ok(ExperimentComparison {
-            sample_size: n,
-            baseline_mean: mean(baseline),
-            candidate_mean: mean(candidate),
-            delta,
-            ci_low: delta,
-            ci_high: delta,
-            p_value: 1.0,
-            decision,
-            test: StatisticalTest::PairedT,
+        return Ok(single_case_smoke_comparison(
+            baseline,
+            candidate,
+            policy,
             adjusted_alpha,
-            // The single-case smoke-gate regime never returns `Inconclusive`, so
-            // there is no underpowered verdict to annotate.
-            mde: None,
-            required_n: None,
-        });
+        ));
     }
 
     // Real statistics: a method-appropriate test (exact McNemar for paired binary
@@ -1080,13 +1103,13 @@ pub fn compare_paired_scores_designed(
 
     let (baseline, candidate) = (inputs.baseline, inputs.candidate);
     // Shared validation + the degenerate single-case smoke regime, exactly as
-    // the plain path: run it first so every dispatch below can assume clean,
-    // aligned, finite inputs (and the smoke regime keeps its behavior).
-    let base = compare_paired_scores(baseline, candidate, policy)?;
+    // the plain path, so every dispatch below can assume clean, aligned,
+    // finite inputs.
+    let adjusted_alpha = validated_adjusted_alpha(baseline, candidate, policy)?;
     let n = baseline.len();
-    let adjusted_alpha = base.adjusted_alpha;
     if n < 2 {
-        return Ok(enforce_design(base, design, true));
+        let smoke = single_case_smoke_comparison(baseline, candidate, policy, adjusted_alpha);
+        return Ok(enforce_design(smoke, design, true));
     }
 
     let differences: Vec<f64> = candidate
@@ -1129,7 +1152,6 @@ pub fn compare_paired_scores_designed(
             )
             .map_err(|err| EvalError::Statistics(err.to_string()))?;
             let comparison = assemble_comparison(
-                &base,
                 baseline,
                 candidate,
                 outcome.estimate,
@@ -1144,8 +1166,7 @@ pub fn compare_paired_scores_designed(
         // Sequential was pre-registered but cannot be honored (unbounded metric
         // family, or clustering — the e-process assumes independent bounded
         // increments): compute the best offline answer and refuse to certify it.
-        let comparison =
-            offline_dispatch(inputs, &differences, &base, policy, design, adjusted_alpha)?;
+        let comparison = offline_dispatch(inputs, &differences, policy, design, adjusted_alpha)?;
         return Ok(enforce_design(comparison, design, false));
     }
 
@@ -1160,7 +1181,6 @@ pub fn compare_paired_scores_designed(
                 confidence: 1.0 - adjusted_alpha,
             });
             let comparison = assemble_comparison(
-                &base,
                 baseline,
                 candidate,
                 outcome.estimate,
@@ -1175,13 +1195,12 @@ pub fn compare_paired_scores_designed(
         // The design pre-registered clustering but no aligned labels were
         // supplied: i.i.d. SEs would be exactly the too-small-SE hazard the
         // manifest exists to prevent, so the offline result cannot certify Pass.
-        let comparison =
-            offline_dispatch(inputs, &differences, &base, policy, design, adjusted_alpha)?;
+        let comparison = offline_dispatch(inputs, &differences, policy, design, adjusted_alpha)?;
         return Ok(enforce_design(comparison, design, false));
     }
 
     // ── 3. Offline dispatch by pre-registered test selection ─────────────────
-    let comparison = offline_dispatch(inputs, &differences, &base, policy, design, adjusted_alpha)?;
+    let comparison = offline_dispatch(inputs, &differences, policy, design, adjusted_alpha)?;
     Ok(enforce_design(comparison, design, true))
 }
 
@@ -1204,7 +1223,6 @@ fn pre_registered_effect_scale(design: &EvalDesign) -> Option<f64> {
 fn offline_dispatch(
     inputs: &DesignedComparisonInputs<'_>,
     differences: &[f64],
-    base: &ExperimentComparison,
     policy: &GatePolicy,
     design: &EvalDesign,
     adjusted_alpha: f64,
@@ -1247,7 +1265,6 @@ fn offline_dispatch(
                 confidence: 1.0 - adjusted_alpha,
             });
             Ok(assemble_comparison(
-                base,
                 baseline,
                 candidate,
                 outcome.estimate,
@@ -1283,7 +1300,6 @@ fn offline_dispatch(
                         confidence: 1.0 - adjusted_alpha,
                     });
                     return Ok(assemble_comparison(
-                        base,
                         baseline,
                         candidate,
                         outcome.estimate,
@@ -1306,7 +1322,6 @@ fn offline_dispatch(
                 confidence: 1.0 - adjusted_alpha,
             });
             Ok(assemble_comparison(
-                base,
                 baseline,
                 candidate,
                 outcome.estimate,
@@ -1322,7 +1337,6 @@ fn offline_dispatch(
                 .map_err(|err| EvalError::Statistics(err.to_string()))?;
             match outcome.ci {
                 Some(ci) => Ok(assemble_comparison(
-                    base,
                     baseline,
                     candidate,
                     outcome.estimate,
@@ -1336,7 +1350,6 @@ fn offline_dispatch(
                 // assumption-light paired bootstrap still yields a decidable
                 // interval.
                 None => paired_bootstrap_comparison(
-                    base,
                     baseline,
                     candidate,
                     differences,
@@ -1345,20 +1358,14 @@ fn offline_dispatch(
                 ),
             }
         }
-        PairedTestChoice::PairedBootstrap => paired_bootstrap_comparison(
-            base,
-            baseline,
-            candidate,
-            differences,
-            policy,
-            adjusted_alpha,
-        ),
+        PairedTestChoice::PairedBootstrap => {
+            paired_bootstrap_comparison(baseline, candidate, differences, policy, adjusted_alpha)
+        }
     }
 }
 
 /// The paired-bootstrap comparison with the gate's fixed, documented seed.
 fn paired_bootstrap_comparison(
-    base: &ExperimentComparison,
     baseline: &[f64],
     candidate: &[f64],
     differences: &[f64],
@@ -1373,7 +1380,6 @@ fn paired_bootstrap_comparison(
     )
     .map_err(|err| EvalError::Statistics(err.to_string()))?;
     Ok(assemble_comparison(
-        base,
         baseline,
         candidate,
         outcome.estimate,
@@ -1389,7 +1395,6 @@ fn paired_bootstrap_comparison(
 /// CI-vs-regression-bound decision rule and the §10.3 #5 power annotations.
 #[allow(clippy::too_many_arguments)]
 fn assemble_comparison(
-    base: &ExperimentComparison,
     baseline: &[f64],
     candidate: &[f64],
     estimate: f64,
@@ -1418,9 +1423,9 @@ fn assemble_comparison(
         (None, None)
     };
     ExperimentComparison {
-        sample_size: base.sample_size,
-        baseline_mean: base.baseline_mean,
-        candidate_mean: base.candidate_mean,
+        sample_size: baseline.len(),
+        baseline_mean: mean(baseline),
+        candidate_mean: mean(candidate),
         delta: estimate,
         ci_low: ci.low,
         ci_high: ci.high,
@@ -2575,6 +2580,23 @@ mod tests {
             matches!(result, Err(EvalError::Statistics(_))),
             "a McNemar pin on continuous scores is a design/executor mismatch: {result:?}"
         );
+    }
+
+    #[test]
+    fn cuped_on_binary_scores_keeps_the_exact_mcnemar_test() {
+        // Previously a CUPED covariate silently switched a paired-binary
+        // comparison to a t-test on {−1,0,1} differences. CUPED is a t-family
+        // estimator: on binary data the exact McNemar test must still run and
+        // the covariate is ignored.
+        let baseline = vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0];
+        let candidate = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0];
+        let covariate = vec![0.5; 10];
+        let policy = GatePolicy::default();
+        let design = cuped_design(&policy, baseline.len(), 0.5);
+        let out =
+            compare_paired_scores_cuped(&baseline, &candidate, Some(&covariate), &policy, &design)
+                .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, StatisticalTest::McnemarExact);
     }
 
     fn clustered_design(policy: &GatePolicy, n: usize) -> EvalDesign {
