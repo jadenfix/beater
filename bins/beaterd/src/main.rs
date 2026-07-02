@@ -102,6 +102,17 @@ struct Args {
     quota_db_path: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = AuthModeArg::Required)]
     auth_mode: AuthModeArg,
+    /// Permit `--auth-mode local` to bind HTTP to a non-loopback address (e.g.
+    /// `0.0.0.0` inside a trusted container network). Off by default: local mode
+    /// disables API-key auth, so a public bind would expose an unauthenticated API.
+    /// Only set this when the bind is reachable solely from a trusted network — the
+    /// docker-compose dev stack does exactly this.
+    #[arg(
+        long,
+        env = "BEATER_ALLOW_INSECURE_LOCAL_BIND",
+        default_value_t = false
+    )]
+    allow_insecure_non_loopback: bool,
     #[arg(long, env = "BEATER_PROVIDER_SECRET_KEY")]
     provider_secret_key: Option<String>,
     /// Comma-separated connector tool slugs allowed to execute even when they
@@ -212,10 +223,15 @@ enum AuthModeArg {
 }
 
 fn validate_auth_mode_bind(args: &Args) -> anyhow::Result<()> {
-    if matches!(args.auth_mode, AuthModeArg::Local) && !args.addr.ip().is_loopback() {
+    if matches!(args.auth_mode, AuthModeArg::Local)
+        && !args.addr.ip().is_loopback()
+        && !args.allow_insecure_non_loopback
+    {
         anyhow::bail!(
             "--auth-mode local may only bind HTTP to loopback addresses; got --addr {}. \
-             Use --auth-mode required for non-loopback binds.",
+             Use --auth-mode required for non-loopback binds, or pass \
+             --allow-insecure-non-loopback (env BEATER_ALLOW_INSECURE_LOCAL_BIND) to opt \
+             into an insecure local bind on a trusted network.",
             args.addr
         );
     }
@@ -1386,6 +1402,19 @@ mod auth_default_tests {
                 err.contains("--auth-mode local may only bind HTTP to loopback addresses"),
                 "{err}"
             );
+
+            // The explicit opt-in permits the same otherwise-rejected public bind
+            // (this is what the docker-compose dev stack relies on).
+            let opted_in = Args::parse_from([
+                "beaterd",
+                "--auth-mode",
+                "local",
+                "--addr",
+                addr,
+                "--allow-insecure-non-loopback",
+            ]);
+            validate_auth_mode_bind(&opted_in)
+                .expect("--allow-insecure-non-loopback opts into a public local bind");
         }
     }
 
