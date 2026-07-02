@@ -663,11 +663,12 @@ impl GateDecision {
     }
 }
 
-/// The statistical test that produced an [`ExperimentComparison`]. These mirror
-/// `beater_stats::TestKind`; the gate records which method was actually used so a
-/// reader can tell a t-test result from an exact McNemar one. The old single
-/// `PairedNormalApproximation` (a hard-coded-z normal approximation with no
-/// p-value) is gone — see `beater-stats`.
+/// The statistical test that produced an [`ExperimentComparison`]. The gate
+/// records which method was **actually executed** so a reader can tell a
+/// t-test result from an exact McNemar, Wilcoxon, bootstrap, cluster-robust, or
+/// anytime-valid sequential one. The old single `PairedNormalApproximation`
+/// (a hard-coded-z normal approximation with no p-value) is gone — see
+/// `beater-stats`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum StatisticalTest {
@@ -675,6 +676,19 @@ pub enum StatisticalTest {
     PairedT,
     /// Exact McNemar test (paired binary outcome).
     McnemarExact,
+    /// Wilcoxon signed-rank (continuous, non-normal paired differences); the
+    /// reported delta/CI are on the Hodges-Lehmann pseudo-median scale.
+    WilcoxonSignedRank,
+    /// Paired percentile bootstrap (small N / unclear assumptions), with a
+    /// fixed, documented seed so gate decisions are reproducible.
+    PairedBootstrap,
+    /// Cluster-robust paired t-test (CR1 sandwich SE, `G − 1` df) for a design
+    /// whose `cluster_key` marks the observations as non-independent.
+    ClusteredPairedT,
+    /// Anytime-valid normal-mixture confidence sequence + e-value p, for
+    /// pre-registered `Online` + `Sequential` designs (§10.3 #6); valid under
+    /// continuous peeking and any data-dependent stopping time.
+    SequentialEValue,
 }
 
 impl From<beater_stats::TestKind> for StatisticalTest {
@@ -682,6 +696,7 @@ impl From<beater_stats::TestKind> for StatisticalTest {
         match kind {
             beater_stats::TestKind::PairedT => StatisticalTest::PairedT,
             beater_stats::TestKind::McnemarExact => StatisticalTest::McnemarExact,
+            beater_stats::TestKind::ClusteredPairedT => StatisticalTest::ClusteredPairedT,
         }
     }
 }
@@ -910,31 +925,38 @@ pub fn conservative_gate_design(policy: &GatePolicy, sample_size: usize) -> Eval
     }
 }
 
-/// Design-aware deploy gate: enforce the pre-registered [`EvalDesign`] before a
-/// `Pass` can be certified (§1 #9, §10.3). The comparison is computed exactly as
-/// [`compare_paired_scores`] does, but a design that is structurally malformed
-/// ([`EvalDesign::validate`]) or *incapable of a valid decision*
-/// ([`EvalDesign::permit_pass`] — an online fixed-horizon stream, a non-independent
-/// unit with no cluster key, a tail-sampled unweighted population claim, an
-/// uncorrected multi-metric family, or a gate reading a non-`Test` split) can
-/// **never** yield `Pass`: the decision is forced to `Inconclusive`. A regression
-/// failure is preserved (an invalid design is no reason to ship). This is the
-/// first consumer that makes the pre-registration manifest load-bearing.
+/// Design-aware deploy gate: execute the pre-registered [`EvalDesign`] and
+/// enforce it before a `Pass` can be certified (§1 #9, §10.3).
+///
+/// The executed test is **dispatched from the design** (see
+/// [`compare_paired_scores_designed`]): `test_selection` picks the §10.3 #3
+/// method (with `Auto` resolving by metric family + satisfied assumptions via
+/// `beater_stats::recommend_paired_test`), an `Online + Sequential` design runs
+/// the anytime-valid confidence-sequence path, and a design that pre-registers
+/// a `cluster_key` can only certify a `Pass` when per-case cluster labels were
+/// actually supplied (this entry point supplies none, so such designs are
+/// downgraded — use [`compare_paired_scores_designed`] with cluster ids).
+///
+/// A design that is structurally malformed ([`EvalDesign::validate`]) or
+/// *incapable of a valid decision* ([`EvalDesign::permit_pass`]) can **never**
+/// yield `Pass`: the decision is forced to `Inconclusive`. A regression failure
+/// is preserved (an invalid design is no reason to ship).
 pub fn compare_paired_scores_with_design(
     baseline: &[f64],
     candidate: &[f64],
     policy: &GatePolicy,
     design: &EvalDesign,
 ) -> Result<ExperimentComparison, EvalError> {
-    let mut comparison = compare_paired_scores(baseline, candidate, policy)?;
-    let design_ok = design.validate().is_ok() && design.permit_pass().is_ok();
-    if !design_ok && comparison.decision == GateDecision::Pass {
-        // Nominal alpha ≠ actual alpha under this design — refuse to certify a Pass.
-        comparison.decision = GateDecision::Inconclusive;
-        comparison.mde = None;
-        comparison.required_n = None;
-    }
-    Ok(comparison)
+    compare_paired_scores_designed(
+        &DesignedComparisonInputs {
+            baseline,
+            candidate,
+            covariate: None,
+            cluster_ids: None,
+        },
+        policy,
+        design,
+    )
 }
 
 /// Design-aware deploy gate with optional CUPED variance reduction (§10.3 #4 /
@@ -972,52 +994,411 @@ pub fn compare_paired_scores_cuped(
     policy: &GatePolicy,
     design: &EvalDesign,
 ) -> Result<ExperimentComparison, EvalError> {
-    // The known population covariate mean μ_x comes from the pre-registered design;
-    // it is what makes the one-sample regression estimator valid (centering on the
-    // sample mean instead would under-cover — see `beater_stats::cuped_paired_t_test`).
-    let population_covariate_mean = match &design.variance_reduction {
-        VarianceReduction::Cuped {
-            population_mean, ..
-        } => *population_mean,
-        VarianceReduction::None => {
-            return compare_paired_scores_with_design(baseline, candidate, policy, design);
-        }
-    };
-    // A covariate is only usable when it aligns one-to-one with the pairs.
-    let Some(covariate) = covariate.filter(|c| c.len() == baseline.len()) else {
-        return compare_paired_scores_with_design(baseline, candidate, policy, design);
-    };
-    // CUPED spends one degree of freedom on θ, so it needs n ≥ 3; below that (or
-    // below the policy floor) fall back to the unadjusted design path unchanged.
-    if baseline.len() < 3 || baseline.len() < policy.min_sample_size {
-        return compare_paired_scores_with_design(baseline, candidate, policy, design);
-    }
+    compare_paired_scores_designed(
+        &DesignedComparisonInputs {
+            baseline,
+            candidate,
+            covariate,
+            cluster_ids: None,
+        },
+        policy,
+        design,
+    )
+}
 
-    // Reuse the plain path for all shared validation (lengths, finiteness, alpha,
-    // min-sample, comparison_count) and for the family-adjusted alpha + means.
+/// Per-case inputs for the fully design-honoring comparison
+/// ([`compare_paired_scores_designed`]).
+#[derive(Clone, Copy, Debug)]
+pub struct DesignedComparisonInputs<'a> {
+    /// Baseline per-case scores.
+    pub baseline: &'a [f64],
+    /// Candidate per-case scores, paired one-to-one with `baseline`.
+    pub candidate: &'a [f64],
+    /// The pre-registered CUPED covariate, aligned per case (see
+    /// [`compare_paired_scores_cuped`] for its validity requirements).
+    pub covariate: Option<&'a [f64]>,
+    /// Per-case cluster labels resolving the design's `cluster_key`. Required
+    /// (aligned one-to-one) for a design that pre-registers clustering to be
+    /// able to certify a `Pass`.
+    pub cluster_ids: Option<&'a [String]>,
+}
+
+/// Deterministic seed for the gate's paired-bootstrap path: gate decisions must
+/// be reproducible from the raw scores alone, so the resampling stream is fixed
+/// rather than drawn from ambient entropy.
+const GATE_BOOTSTRAP_SEED: u64 = 0xBEA7_E12A_11D5_EED5;
+
+/// Bootstrap resamples for the gate's paired-bootstrap path (§10.3 default).
+const GATE_BOOTSTRAP_RESAMPLES: usize = 10_000;
+
+/// The fully design-honoring paired comparison (roadmap PR-A4): executes the
+/// §10.3 method the pre-registered [`EvalDesign`] committed to, instead of
+/// unconditionally running a paired-t/McNemar.
+///
+/// Dispatch, in priority order:
+///
+/// 1. **Sequential** — an `Online` design with a `Sequential` stopping rule
+///    runs the anytime-valid normal-mixture confidence sequence
+///    (`beater_stats::confidence_sequence_mean`), valid under continuous
+///    peeking; requires a `[0, 1]`-bounded metric family
+///    (`Proportion`/`Bounded`/`ProperScore`, so the paired difference is
+///    1-sub-Gaussian) and no cluster key. Otherwise the comparison falls back
+///    to the offline method and a `Pass` is downgraded to `Inconclusive` —
+///    fixed-horizon inference on a peeked stream cannot certify a win.
+/// 2. **Clustered** — a design with a `cluster_key` runs the cluster-robust
+///    paired t (`beater_stats::clustered_paired_t_test`, CR1 SE, `G − 1` df)
+///    over the supplied `cluster_ids`. If the labels are missing or misaligned
+///    the i.i.d. result is computed but a `Pass` is downgraded: i.i.d. standard
+///    errors on clustered data are exactly the inflated-false-win hazard the
+///    design pre-registered against (§10.3 #1). CUPED is not combined with
+///    clustering (the θ fit assumes independent pairs); the covariate is
+///    ignored on this path.
+/// 3. **Offline test selection** — `test_selection` picks the method;
+///    [`TestSelectionPolicy::Auto`] resolves it from the data via
+///    `beater_stats::recommend_paired_test` (binary → exact McNemar;
+///    small N → paired bootstrap; ~normal differences → paired t; otherwise
+///    Wilcoxon signed-rank). A pre-registered CUPED policy applies on the
+///    t-family path only (the regression estimator is a t-family method); the
+///    Wilcoxon path reports the Hodges-Lehmann pseudo-median and its
+///    distribution-free CI (falling back to the paired bootstrap in the rare
+///    small-N/tight-alpha corner where that CI is undefined). An explicitly
+///    pinned `McnemarExact` on non-binary scores is a design/executor mismatch
+///    and errors loudly rather than silently running a different test.
+///
+/// The decision rule is identical on every path: the (method-appropriate) CI is
+/// tested against the negated regression bound, `Inconclusive` verdicts carry
+/// the §10.3 #5 power annotations, and a design that fails
+/// [`EvalDesign::validate`]/[`EvalDesign::permit_pass`] — or whose pre-registered
+/// requirements this call could not honor — can never certify a `Pass`, while
+/// regression failures are always preserved.
+pub fn compare_paired_scores_designed(
+    inputs: &DesignedComparisonInputs<'_>,
+    policy: &GatePolicy,
+    design: &EvalDesign,
+) -> Result<ExperimentComparison, EvalError> {
+    use beater_design::{Monitoring, StoppingRule};
+
+    let (baseline, candidate) = (inputs.baseline, inputs.candidate);
+    // Shared validation + the degenerate single-case smoke regime, exactly as
+    // the plain path: run it first so every dispatch below can assume clean,
+    // aligned, finite inputs (and the smoke regime keeps its behavior).
     let base = compare_paired_scores(baseline, candidate, policy)?;
+    let n = baseline.len();
     let adjusted_alpha = base.adjusted_alpha;
+    if n < 2 {
+        return Ok(enforce_design(base, design, true));
+    }
 
     let differences: Vec<f64> = candidate
         .iter()
         .zip(baseline.iter())
         .map(|(c, b)| c - b)
         .collect();
-    let outcome = beater_stats::cuped_paired_t_test(
-        &differences,
-        covariate,
-        population_covariate_mean,
+
+    let is_sequential_design = design.monitoring == Monitoring::Online
+        && matches!(design.stopping_rule, StoppingRule::Sequential { .. });
+    let wants_cluster = design.cluster_key.is_some();
+    let cluster_ids = inputs
+        .cluster_ids
+        .filter(|ids| ids.len() == n)
+        .filter(|_| wants_cluster);
+
+    // ── 1. Anytime-valid sequential path (§10.3 #6) ──────────────────────────
+    if is_sequential_design {
+        let bounded_metric = matches!(
+            design.primary_metric.metric_type,
+            beater_design::MetricType::Proportion
+                | beater_design::MetricType::Bounded
+                | beater_design::MetricType::ProperScore
+        );
+        if bounded_metric && !wants_cluster {
+            // Scores in [0, 1] ⇒ paired differences in [−1, 1] ⇒ 1-sub-Gaussian.
+            let sigma = 1.0;
+            // The mixture scale comes from the pre-registered effect size (the
+            // same scale the LR-optimal fixed bet uses); any fixed choice is
+            // valid, this one makes the sequence tightest near the planned
+            // effect. Default to 1.0 when the design pins no usable scale.
+            let effect = design.mde.or(pre_registered_effect_scale(design));
+            let tau = effect.filter(|e| e.is_finite() && *e > 0.0).unwrap_or(1.0);
+            let outcome = beater_stats::confidence_sequence_mean(
+                &differences,
+                0.0,
+                sigma,
+                tau,
+                adjusted_alpha,
+            )
+            .map_err(|err| EvalError::Statistics(err.to_string()))?;
+            let comparison = assemble_comparison(
+                &base,
+                baseline,
+                candidate,
+                outcome.estimate,
+                outcome.ci,
+                outcome.p_value,
+                StatisticalTest::SequentialEValue,
+                policy,
+                adjusted_alpha,
+            );
+            return Ok(enforce_design(comparison, design, true));
+        }
+        // Sequential was pre-registered but cannot be honored (unbounded metric
+        // family, or clustering — the e-process assumes independent bounded
+        // increments): compute the best offline answer and refuse to certify it.
+        let comparison =
+            offline_dispatch(inputs, &differences, &base, policy, design, adjusted_alpha)?;
+        return Ok(enforce_design(comparison, design, false));
+    }
+
+    // ── 2. Cluster-robust path (§10.3 #1) ────────────────────────────────────
+    if wants_cluster {
+        if let Some(ids) = cluster_ids {
+            let outcome = beater_stats::clustered_paired_t_test(&differences, ids, adjusted_alpha)
+                .map_err(|err| EvalError::Statistics(err.to_string()))?;
+            let ci = outcome.ci.unwrap_or(beater_stats::ConfidenceInterval {
+                low: outcome.estimate,
+                high: outcome.estimate,
+                confidence: 1.0 - adjusted_alpha,
+            });
+            let comparison = assemble_comparison(
+                &base,
+                baseline,
+                candidate,
+                outcome.estimate,
+                ci,
+                outcome.p_value,
+                StatisticalTest::ClusteredPairedT,
+                policy,
+                adjusted_alpha,
+            );
+            return Ok(enforce_design(comparison, design, true));
+        }
+        // The design pre-registered clustering but no aligned labels were
+        // supplied: i.i.d. SEs would be exactly the too-small-SE hazard the
+        // manifest exists to prevent, so the offline result cannot certify Pass.
+        let comparison =
+            offline_dispatch(inputs, &differences, &base, policy, design, adjusted_alpha)?;
+        return Ok(enforce_design(comparison, design, false));
+    }
+
+    // ── 3. Offline dispatch by pre-registered test selection ─────────────────
+    let comparison = offline_dispatch(inputs, &differences, &base, policy, design, adjusted_alpha)?;
+    Ok(enforce_design(comparison, design, true))
+}
+
+/// The effect scale the design pre-registered on its estimand, if positive.
+fn pre_registered_effect_scale(design: &EvalDesign) -> Option<f64> {
+    use beater_design::Estimand;
+    match design.estimand {
+        Estimand::Superiority { mde } => Some(mde),
+        Estimand::NonInferiority { margin } => Some(margin),
+        Estimand::RegressionGuard { max_regression } if max_regression > 0.0 => {
+            Some(max_regression)
+        }
+        _ => None,
+    }
+}
+
+/// Offline fixed-horizon dispatch on the design's pre-registered
+/// `test_selection` (with `Auto` resolved from the data), including the CUPED
+/// policy on the t-family path.
+fn offline_dispatch(
+    inputs: &DesignedComparisonInputs<'_>,
+    differences: &[f64],
+    base: &ExperimentComparison,
+    policy: &GatePolicy,
+    design: &EvalDesign,
+    adjusted_alpha: f64,
+) -> Result<ExperimentComparison, EvalError> {
+    use beater_design::TestSelectionPolicy;
+    use beater_stats::PairedTestChoice;
+
+    let (baseline, candidate) = (inputs.baseline, inputs.candidate);
+    let choice = match design.test_selection {
+        TestSelectionPolicy::Auto => beater_stats::recommend_paired_test(baseline, candidate)
+            .map_err(|err| EvalError::Statistics(err.to_string()))?,
+        TestSelectionPolicy::PairedT => PairedTestChoice::PairedT,
+        TestSelectionPolicy::McnemarExact => {
+            let binary = baseline
+                .iter()
+                .chain(candidate.iter())
+                .all(|v| *v == 0.0 || *v == 1.0);
+            if !binary {
+                return Err(EvalError::Statistics(
+                    "design pre-registered exact McNemar but the scores are not a paired \
+                     binary outcome"
+                        .to_string(),
+                ));
+            }
+            PairedTestChoice::McnemarExact
+        }
+        TestSelectionPolicy::WilcoxonSignedRank => PairedTestChoice::WilcoxonSignedRank,
+        TestSelectionPolicy::PairedBootstrap => PairedTestChoice::PairedBootstrap,
+    };
+
+    match choice {
+        PairedTestChoice::McnemarExact => {
+            // `compare_paired` selects exact McNemar for binary data and carries
+            // the score-interval CI for the paired difference in proportions.
+            let outcome = beater_stats::compare_paired(baseline, candidate, adjusted_alpha)
+                .map_err(|err| EvalError::Statistics(err.to_string()))?;
+            let ci = outcome.ci.unwrap_or(beater_stats::ConfidenceInterval {
+                low: outcome.estimate,
+                high: outcome.estimate,
+                confidence: 1.0 - adjusted_alpha,
+            });
+            Ok(assemble_comparison(
+                base,
+                baseline,
+                candidate,
+                outcome.estimate,
+                ci,
+                outcome.p_value,
+                outcome.test.into(),
+                policy,
+                adjusted_alpha,
+            ))
+        }
+        PairedTestChoice::PairedT => {
+            // The CUPED regression estimator is a t-family method, so the
+            // pre-registered policy applies exactly on this branch (n ≥ 3, a
+            // fully aligned covariate, and a declared population mean).
+            if let VarianceReduction::Cuped {
+                population_mean, ..
+            } = &design.variance_reduction
+            {
+                if let Some(covariate) = inputs
+                    .covariate
+                    .filter(|c| c.len() == baseline.len() && baseline.len() >= 3)
+                {
+                    let outcome = beater_stats::cuped_paired_t_test(
+                        differences,
+                        covariate,
+                        *population_mean,
+                        adjusted_alpha,
+                    )
+                    .map_err(|err| EvalError::Statistics(err.to_string()))?;
+                    let ci = outcome.ci.unwrap_or(beater_stats::ConfidenceInterval {
+                        low: outcome.estimate,
+                        high: outcome.estimate,
+                        confidence: 1.0 - adjusted_alpha,
+                    });
+                    return Ok(assemble_comparison(
+                        base,
+                        baseline,
+                        candidate,
+                        outcome.estimate,
+                        ci,
+                        outcome.p_value,
+                        // A paired t on CUPED-adjusted differences is still a
+                        // paired t; the CUPED provenance lives in the hashed
+                        // design commitment.
+                        StatisticalTest::PairedT,
+                        policy,
+                        adjusted_alpha,
+                    ));
+                }
+            }
+            let outcome = beater_stats::paired_t_test(differences, adjusted_alpha)
+                .map_err(|err| EvalError::Statistics(err.to_string()))?;
+            let ci = outcome.ci.unwrap_or(beater_stats::ConfidenceInterval {
+                low: outcome.estimate,
+                high: outcome.estimate,
+                confidence: 1.0 - adjusted_alpha,
+            });
+            Ok(assemble_comparison(
+                base,
+                baseline,
+                candidate,
+                outcome.estimate,
+                ci,
+                outcome.p_value,
+                StatisticalTest::PairedT,
+                policy,
+                adjusted_alpha,
+            ))
+        }
+        PairedTestChoice::WilcoxonSignedRank => {
+            let outcome = beater_stats::wilcoxon_signed_rank(differences, adjusted_alpha)
+                .map_err(|err| EvalError::Statistics(err.to_string()))?;
+            match outcome.ci {
+                Some(ci) => Ok(assemble_comparison(
+                    base,
+                    baseline,
+                    candidate,
+                    outcome.estimate,
+                    ci,
+                    outcome.p_value,
+                    StatisticalTest::WilcoxonSignedRank,
+                    policy,
+                    adjusted_alpha,
+                )),
+                // Too few pairs for a distribution-free CI at this alpha: the
+                // assumption-light paired bootstrap still yields a decidable
+                // interval.
+                None => paired_bootstrap_comparison(
+                    base,
+                    baseline,
+                    candidate,
+                    differences,
+                    policy,
+                    adjusted_alpha,
+                ),
+            }
+        }
+        PairedTestChoice::PairedBootstrap => paired_bootstrap_comparison(
+            base,
+            baseline,
+            candidate,
+            differences,
+            policy,
+            adjusted_alpha,
+        ),
+    }
+}
+
+/// The paired-bootstrap comparison with the gate's fixed, documented seed.
+fn paired_bootstrap_comparison(
+    base: &ExperimentComparison,
+    baseline: &[f64],
+    candidate: &[f64],
+    differences: &[f64],
+    policy: &GatePolicy,
+    adjusted_alpha: f64,
+) -> Result<ExperimentComparison, EvalError> {
+    let outcome = beater_stats::paired_bootstrap_test(
+        differences,
         adjusted_alpha,
+        GATE_BOOTSTRAP_RESAMPLES,
+        GATE_BOOTSTRAP_SEED,
     )
     .map_err(|err| EvalError::Statistics(err.to_string()))?;
-    let ci = outcome.ci.unwrap_or(beater_stats::ConfidenceInterval {
-        low: outcome.estimate,
-        high: outcome.estimate,
-        confidence: 1.0 - adjusted_alpha,
-    });
+    Ok(assemble_comparison(
+        base,
+        baseline,
+        candidate,
+        outcome.estimate,
+        outcome.ci,
+        outcome.p_value,
+        StatisticalTest::PairedBootstrap,
+        policy,
+        adjusted_alpha,
+    ))
+}
 
-    // Identical decision rule to `compare_paired_scores`: the CI is tested against
-    // the negated regression bound.
+/// Assemble an [`ExperimentComparison`] from a method outcome: apply the shared
+/// CI-vs-regression-bound decision rule and the §10.3 #5 power annotations.
+#[allow(clippy::too_many_arguments)]
+fn assemble_comparison(
+    base: &ExperimentComparison,
+    baseline: &[f64],
+    candidate: &[f64],
+    estimate: f64,
+    ci: beater_stats::ConfidenceInterval,
+    p_value: f64,
+    test: StatisticalTest,
+    policy: &GatePolicy,
+    adjusted_alpha: f64,
+) -> ExperimentComparison {
     let decision = if ci.high < -policy.max_regression {
         GateDecision::FailRegression
     } else if ci.low >= -policy.max_regression {
@@ -1030,43 +1411,45 @@ pub fn compare_paired_scores_cuped(
             baseline,
             candidate,
             baseline.len(),
-            outcome.estimate,
+            estimate,
             adjusted_alpha,
         )
     } else {
         (None, None)
     };
-
-    let mut comparison = ExperimentComparison {
+    ExperimentComparison {
         sample_size: base.sample_size,
         baseline_mean: base.baseline_mean,
         candidate_mean: base.candidate_mean,
-        // The regression estimate μ̂ = mean(d) − θ(x̄ − μ_x): centered on the
-        // design's known population mean, it moves off the raw delta — that shift
-        // is exactly what makes the variance-reduced CI a valid interval for E[d].
-        delta: outcome.estimate,
+        delta: estimate,
         ci_low: ci.low,
         ci_high: ci.high,
-        p_value: outcome.p_value,
+        p_value,
         decision,
-        // A paired t-test on CUPED-adjusted differences is still a paired t-test;
-        // that CUPED was applied is recorded in the pre-registered `EvalDesign`
-        // (its `variance_reduction` policy is part of the hashed commitment), not
-        // in the wire result — so the `/v1` contract is unchanged.
-        test: StatisticalTest::PairedT,
+        test,
         adjusted_alpha,
         mde,
         required_n,
-    };
+    }
+}
 
-    // Enforce the pre-registration manifest exactly as the plain design path does.
-    let design_ok = design.validate().is_ok() && design.permit_pass().is_ok();
+/// Enforce the pre-registration manifest on a computed comparison: a design
+/// that fails validation/permit-pass — or whose pre-registered requirements the
+/// executor could not honor (`requirements_honored == false`) — can never
+/// certify a `Pass`. Regression failures are preserved.
+fn enforce_design(
+    mut comparison: ExperimentComparison,
+    design: &EvalDesign,
+    requirements_honored: bool,
+) -> ExperimentComparison {
+    let design_ok =
+        design.validate().is_ok() && design.permit_pass().is_ok() && requirements_honored;
     if !design_ok && comparison.decision == GateDecision::Pass {
         comparison.decision = GateDecision::Inconclusive;
         comparison.mde = None;
         comparison.required_n = None;
     }
-    Ok(comparison)
+    comparison
 }
 
 /// Compute the §10.3 #5 power annotations for an inconclusive comparison: the
@@ -2124,5 +2507,223 @@ mod tests {
         assert!(reason.contains("wasm-hash-1"), "{reason}");
         assert!(reason.contains("input-hash-b"), "{reason}");
         assert!(!reason.contains("input-hash-a"), "{reason}");
+    }
+
+    // ── compare_paired_scores_designed: PR-A4 design-honoring dispatch ───────
+
+    #[test]
+    fn auto_dispatch_runs_wilcoxon_on_skewed_differences() {
+        // One huge outlier difference fails the normality screen → Wilcoxon.
+        let baseline = vec![0.0; 12];
+        let candidate = vec![0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 9.0];
+        let policy = GatePolicy::default();
+        let design = conservative_gate_design(&policy, baseline.len());
+        let out = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, StatisticalTest::WilcoxonSignedRank);
+        // The delta is the Hodges-Lehmann pseudo-median, robust to the outlier.
+        assert!(
+            out.delta < 1.0,
+            "HL estimate must not be dragged to the outlier: {}",
+            out.delta
+        );
+        assert!(out.p_value < 0.05, "consistent lift: p = {}", out.p_value);
+    }
+
+    #[test]
+    fn auto_dispatch_runs_bootstrap_below_the_small_n_threshold() {
+        let baseline = vec![0.50, 0.55, 0.48, 0.52, 0.51];
+        let candidate = vec![0.60, 0.66, 0.57, 0.63, 0.61];
+        let policy = GatePolicy {
+            min_sample_size: 3,
+            ..GatePolicy::default()
+        };
+        let design = conservative_gate_design(&policy, baseline.len());
+        let out = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, StatisticalTest::PairedBootstrap);
+        // Deterministic: the gate seed is fixed, so a rerun is identical.
+        let again = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out, again);
+    }
+
+    #[test]
+    fn pinned_wilcoxon_overrides_the_auto_recommendation() {
+        // Normal-ish differences would auto-select the paired t; the design
+        // pinned Wilcoxon, and the executor must honor the pre-registration.
+        let baseline = vec![0.50, 0.55, 0.48, 0.52, 0.51, 0.49, 0.53, 0.47, 0.50, 0.52];
+        let candidate = vec![0.60, 0.64, 0.59, 0.62, 0.61, 0.58, 0.63, 0.57, 0.60, 0.62];
+        let policy = GatePolicy::default();
+        let mut design = conservative_gate_design(&policy, baseline.len());
+        design.test_selection = beater_design::TestSelectionPolicy::WilcoxonSignedRank;
+        let out = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, StatisticalTest::WilcoxonSignedRank);
+        assert_eq!(out.decision, GateDecision::Pass, "consistent lift passes");
+    }
+
+    #[test]
+    fn pinned_mcnemar_on_non_binary_scores_errors_loudly() {
+        let baseline = vec![0.5; 10];
+        let candidate = vec![0.7; 10];
+        let policy = GatePolicy::default();
+        let mut design = conservative_gate_design(&policy, baseline.len());
+        design.test_selection = beater_design::TestSelectionPolicy::McnemarExact;
+        let result = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design);
+        assert!(
+            matches!(result, Err(EvalError::Statistics(_))),
+            "a McNemar pin on continuous scores is a design/executor mismatch: {result:?}"
+        );
+    }
+
+    fn clustered_design(policy: &GatePolicy, n: usize) -> EvalDesign {
+        let mut design = conservative_gate_design(policy, n);
+        design.unit_of_analysis = beater_design::UnitOfAnalysis::Conversation;
+        design.cluster_key = Some(beater_design::ClusterKey::Conversation);
+        design
+    }
+
+    #[test]
+    fn clustered_design_with_ids_runs_the_cluster_robust_test() {
+        let policy = GatePolicy {
+            min_sample_size: 2,
+            ..GatePolicy::default()
+        };
+
+        // All-positive lifts, but only TWO independent conversations: the i.i.d.
+        // paired t would certify a Pass; the cluster-robust test (df = 1) knows
+        // there are really just two observations.
+        let baseline = vec![0.5; 6];
+        let candidate = vec![0.80, 0.81, 0.79, 0.55, 0.54, 0.56];
+        let clusters: Vec<String> = ["a", "a", "a", "b", "b", "b"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let design = clustered_design(&policy, baseline.len());
+
+        let iid = compare_paired_scores(&baseline, &candidate, &policy)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(
+            iid.decision,
+            GateDecision::Pass,
+            "the naive i.i.d. test would have certified this"
+        );
+
+        let out = compare_paired_scores_designed(
+            &DesignedComparisonInputs {
+                baseline: &baseline,
+                candidate: &candidate,
+                covariate: None,
+                cluster_ids: Some(&clusters),
+            },
+            &policy,
+            &design,
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, StatisticalTest::ClusteredPairedT);
+        assert_ne!(
+            out.decision,
+            GateDecision::Pass,
+            "two clusters cannot certify a win: {out:?}"
+        );
+
+        // A consistent lift across many independent clusters DOES pass.
+        let baseline: Vec<f64> = vec![0.5; 24];
+        let candidate: Vec<f64> = (0..24)
+            .map(|i| 0.7 + 0.01 * ((i % 3) as f64 - 1.0))
+            .collect();
+        let clusters: Vec<String> = (0..24).map(|i| format!("c{}", i / 2)).collect();
+        let design = clustered_design(&policy, baseline.len());
+        let out = compare_paired_scores_designed(
+            &DesignedComparisonInputs {
+                baseline: &baseline,
+                candidate: &candidate,
+                covariate: None,
+                cluster_ids: Some(&clusters),
+            },
+            &policy,
+            &design,
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, StatisticalTest::ClusteredPairedT);
+        assert_eq!(out.decision, GateDecision::Pass);
+    }
+
+    #[test]
+    fn clustered_design_without_ids_cannot_certify_a_pass() {
+        // Data that passes under i.i.d. assumptions; the design pre-registered
+        // clustering, but no labels were supplied → the executor must refuse to
+        // certify, not silently fall back to too-small SEs.
+        let baseline = vec![0.5; 12];
+        let candidate = vec![0.7; 12];
+        let policy = GatePolicy::default();
+        let design = clustered_design(&policy, baseline.len());
+        let out = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(
+            out.decision,
+            GateDecision::Inconclusive,
+            "unhonored cluster pre-registration must block Pass: {out:?}"
+        );
+        // A genuine regression is still reported (an unhonored design is no
+        // reason to ship).
+        let regressed = vec![0.2; 12];
+        let out = compare_paired_scores_with_design(&baseline, &regressed, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.decision, GateDecision::FailRegression);
+    }
+
+    fn sequential_design(policy: &GatePolicy, n: usize) -> EvalDesign {
+        let mut design = conservative_gate_design(policy, n);
+        design.monitoring = beater_design::Monitoring::Online;
+        design.stopping_rule = beater_design::StoppingRule::Sequential {
+            method: beater_design::SequentialMethod::ConfidenceSequence,
+        };
+        design
+    }
+
+    #[test]
+    fn sequential_design_runs_the_anytime_valid_path() {
+        // A strong, consistent lift on a bounded metric over a peeked stream.
+        let n = 400;
+        let baseline = vec![0.5; n];
+        let candidate = vec![0.8; n];
+        let policy = GatePolicy::default();
+        let design = sequential_design(&policy, n);
+        let out = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, StatisticalTest::SequentialEValue);
+        assert_eq!(out.decision, GateDecision::Pass, "{out:?}");
+        assert!(out.p_value < 0.05, "p = {}", out.p_value);
+        assert!((out.delta - 0.3).abs() < 1e-12);
+        // The anytime CI is wider than a fixed-horizon one would be — that is
+        // the honest price of continuous peeking.
+        assert!(out.ci_low > 0.0 && out.ci_low < 0.3);
+    }
+
+    #[test]
+    fn sequential_design_on_an_unbounded_metric_cannot_certify_a_pass() {
+        // Latency is not [0,1]-bounded, so the sub-Gaussian scale is unknown and
+        // the sequential path cannot honestly run: the offline result is
+        // computed but a Pass is refused.
+        let n = 400;
+        let baseline = vec![0.5; n];
+        let candidate = vec![0.8; n];
+        let policy = GatePolicy::default();
+        let mut design = sequential_design(&policy, n);
+        design.primary_metric = beater_design::MetricSpec::new(
+            "p95_latency_ms",
+            beater_design::MetricType::Latency,
+            beater_design::MetricDirection::LowerIsBetter,
+        );
+        let out = compare_paired_scores_with_design(&baseline, &candidate, &policy, &design)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_ne!(out.test, StatisticalTest::SequentialEValue);
+        assert_eq!(
+            out.decision,
+            GateDecision::Inconclusive,
+            "an unhonorable sequential pre-registration must block Pass: {out:?}"
+        );
     }
 }
