@@ -139,6 +139,7 @@ Class | Method | HTTP request | Description
 *ReviewsApi* | [**list_review_tasks**](docs/ReviewsApi.md#list_review_tasks) | **GET** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks | 
 *ReviewsApi* | [**promote_review_annotation**](docs/ReviewsApi.md#promote_review_annotation) | **POST** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations/{annotation_id}/promote | 
 *ReviewsApi* | [**submit_review_annotation**](docs/ReviewsApi.md#submit_review_annotation) | **POST** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations | 
+*RsiApi* | [**gate_optimization_candidate**](docs/RsiApi.md#gate_optimization_candidate) | **POST** /v1/rsi/{tenant_id}/{project_id}/gate-candidate | 
 *ScenariosApi* | [**create_scenario**](docs/ScenariosApi.md#create_scenario) | **POST** /v1/scenarios/{tenant_id}/{project_id} | 
 *ScenariosApi* | [**get_scenario**](docs/ScenariosApi.md#get_scenario) | **GET** /v1/scenarios/{tenant_id}/{project_id}/{scenario_id} | 
 *ScenariosApi* | [**list_scenarios**](docs/ScenariosApi.md#list_scenarios) | **GET** /v1/scenarios/{tenant_id}/{project_id} | 
@@ -224,6 +225,11 @@ Class | Method | HTTP request | Description
  - [ExperimentComparison](docs/ExperimentComparison.md)
  - [ExperimentRunReport](docs/ExperimentRunReport.md)
  - [FailureMode](docs/FailureMode.md)
+ - [GateCandidateChangeRequest](docs/GateCandidateChangeRequest.md)
+ - [GateCandidateRequest](docs/GateCandidateRequest.md)
+ - [GateCandidateResponse](docs/GateCandidateResponse.md)
+ - [GateCaseScoreRequest](docs/GateCaseScoreRequest.md)
+ - [GateComparisonResponse](docs/GateComparisonResponse.md)
  - [GateDecision](docs/GateDecision.md)
  - [GateDefinition](docs/GateDefinition.md)
  - [GatePolicy](docs/GatePolicy.md)
@@ -245,6 +251,7 @@ Class | Method | HTTP request | Description
  - [NativeIngestRequest](docs/NativeIngestRequest.md)
  - [OnlineSamplingPolicy](docs/OnlineSamplingPolicy.md)
  - [OtlpIngestOutcome](docs/OtlpIngestOutcome.md)
+ - [OverfitResponse](docs/OverfitResponse.md)
  - [PageRunSummary](docs/PageRunSummary.md)
  - [PageRunSummaryItemsInner](docs/PageRunSummaryItemsInner.md)
  - [PerturbationKnobs](docs/PerturbationKnobs.md)

@@ -708,6 +708,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/rsi/{tenant_id}/{project_id}/gate-candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["gateOptimizationCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/scenarios/{tenant_id}/{project_id}": {
         parameters: {
             query?: never;
@@ -1540,6 +1556,124 @@ export interface components {
          * @enum {string}
          */
         FailureMode: "tool_error" | "timeout" | "guardrail_block" | "wrong_output" | "retrieval_miss" | "other";
+        /**
+         * @description The candidate change being gated. `kind` and `proposed_by` are the RSI
+         *     optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+         */
+        GateCandidateChangeRequest: {
+            /** @description Human-readable description of the proposed change. */
+            description: string;
+            /** @description The policy lever this change touches (e.g. `system_prompt`, `model_params`). */
+            kind: string;
+            /** @description Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`). */
+            proposed_by: string;
+            /** @description Why the proposer believes this change helps (carried for audit). */
+            rationale: string;
+            /** @description The file / symbol / prompt the change targets. */
+            target: string;
+        };
+        /**
+         * @description Request to gate a single optimization candidate (`gateOptimizationCandidate`).
+         *
+         *     The caller supplies the candidate it proposed and the per-case
+         *     baseline-vs-candidate scores it observed, each tagged with its split. The
+         *     server runs the held-out **Test** gate plus the anti-overfitting guardrail and
+         *     returns the accept/reject verdict — the proposer never decides acceptance.
+         */
+        GateCandidateRequest: {
+            /** @description The proposed change under evaluation (provenance for the audit trail). */
+            candidate: components["schemas"]["GateCandidateChangeRequest"];
+            gate_policy?: null | components["schemas"]["GatePolicy"];
+            /**
+             * Format: double
+             * @description Bootstrap confidence for the generalization-gap CI (default `0.95`).
+             */
+            overfit_confidence?: number | null;
+            /** @description Bootstrap resamples for the generalization-gap CI (default `2000`). */
+            overfit_resamples?: number | null;
+            /**
+             * Format: int64
+             * @description Seed for the deterministic generalization-gap bootstrap (default `1`).
+             */
+            overfit_seed?: number | null;
+            /**
+             * Format: double
+             * @description Largest benign generalization gap (default `0.0`).
+             */
+            overfit_tolerance?: number | null;
+            /**
+             * @description Per-case paired scores. Must include at least one `test` case and at least
+             *     one `train`/`val` case so both the gate and the gap check are defined.
+             */
+            scores: components["schemas"]["GateCaseScoreRequest"][];
+        };
+        /**
+         * @description Verdict for `gateOptimizationCandidate`: the held-out Test comparison, the
+         *     generalization-gap assessment, and the combined acceptance decision.
+         */
+        GateCandidateResponse: {
+            /**
+             * @description `true` iff the held-out Test gate `Pass`ed AND no significant
+             *     generalization gap was flagged. This is the only path to acceptance.
+             */
+            accepted: boolean;
+            /** @description The held-out **Test**-split comparison (paired test + CI vs. the regression bound). */
+            gate: components["schemas"]["GateComparisonResponse"];
+            /** @description The generalization-gap assessment (optimization-split lift vs. held-out lift). */
+            overfit: components["schemas"]["OverfitResponse"];
+        };
+        /** @description One case's paired baseline-vs-candidate score, tagged with its split. */
+        GateCaseScoreRequest: {
+            /**
+             * Format: double
+             * @description The baseline policy's score on this case, in `[0, 1]` (higher is better).
+             */
+            baseline_score: number;
+            /**
+             * Format: double
+             * @description The candidate policy's score on the *same* case (paired with baseline).
+             */
+            candidate_score: number;
+            /** @description The split this case belongs to: `train`, `val`, or `test`. */
+            split: string;
+        };
+        /** @description The held-out Test-split gate comparison. */
+        GateComparisonResponse: {
+            /**
+             * Format: double
+             * @description Mean baseline score on the Test split.
+             */
+            baseline_mean: number;
+            /**
+             * Format: double
+             * @description Mean candidate score on the Test split.
+             */
+            candidate_mean: number;
+            /**
+             * Format: double
+             * @description Upper bound of the delta confidence interval.
+             */
+            ci_high: number;
+            /**
+             * Format: double
+             * @description Lower bound of the delta confidence interval.
+             */
+            ci_low: number;
+            /** @description Gate decision: `pass`, `fail_regression`, or `inconclusive`. */
+            decision: string;
+            /**
+             * Format: double
+             * @description `candidate_mean − baseline_mean` on the Test split.
+             */
+            delta: number;
+            /**
+             * Format: double
+             * @description Two-sided p-value of the paired test.
+             */
+            p_value: number;
+            /** @description Number of paired Test cases compared. */
+            sample_size: number;
+        };
         /** @enum {string} */
         GateDecision: "pass" | "fail_regression" | "inconclusive";
         GateDefinition: {
@@ -1716,6 +1850,39 @@ export interface components {
             downstream_queued: boolean;
             duplicate_raw: number;
             duplicate_spans: number;
+        };
+        /** @description The anti-overfitting (generalization-gap) assessment. */
+        OverfitResponse: {
+            /**
+             * Format: double
+             * @description `optimize_lift − holdout_lift`.
+             */
+            gap: number;
+            /**
+             * Format: double
+             * @description Upper bound of the bootstrap CI for `gap`.
+             */
+            gap_ci_high: number;
+            /**
+             * Format: double
+             * @description Lower bound of the bootstrap CI for `gap`.
+             */
+            gap_ci_low: number;
+            /**
+             * Format: double
+             * @description Mean paired lift on the held-out split.
+             */
+            holdout_lift: number;
+            /**
+             * Format: double
+             * @description Mean paired lift `(candidate − baseline)` on the optimization split.
+             */
+            optimize_lift: number;
+            /**
+             * @description `true` when the gap's CI lower bound exceeds tolerance — the candidate's
+             *     optimization-set advantage is significantly not reproduced on held-out data.
+             */
+            overfit: boolean;
         };
         Page_RunSummary: {
             items: {
@@ -5543,6 +5710,71 @@ export interface operations {
             };
             /** @description Resource not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    gateOptimizationCandidate: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Bearer API token for strict auth */
+                authorization?: string | null;
+                /** @description API key alternative for strict auth */
+                "x-beater-api-key"?: string | null;
+                /** @description Strict-auth project scope */
+                "x-beater-project-id"?: string | null;
+                /** @description Strict-auth environment scope */
+                "x-beater-environment-id"?: string | null;
+            };
+            path: {
+                /** @description tenant_id */
+                tenant_id: string;
+                /** @description project_id */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateCandidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Gate an optimization candidate against the held-out Test split and the anti-overfitting guardrail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateCandidateResponse"];
+                };
+            };
+            /** @description Invalid request, scope, or under-powered split */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials lack the required scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

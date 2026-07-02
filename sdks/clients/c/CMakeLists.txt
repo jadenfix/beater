@@ -119,6 +119,11 @@ set(SRCS
     model/experiment_comparison.c
     model/experiment_run_report.c
     model/failure_mode.c
+    model/gate_candidate_change_request.c
+    model/gate_candidate_request.c
+    model/gate_candidate_response.c
+    model/gate_case_score_request.c
+    model/gate_comparison_response.c
     model/gate_decision.c
     model/gate_definition.c
     model/gate_policy.c
@@ -140,6 +145,7 @@ set(SRCS
     model/native_ingest_request.c
     model/online_sampling_policy.c
     model/otlp_ingest_outcome.c
+    model/overfit_response.c
     model/page_run_summary.c
     model/page_run_summary_items_inner.c
     model/perturbation_knobs.c
@@ -219,6 +225,7 @@ set(SRCS
     api/PromptsAPI.c
     api/ProviderSecretsAPI.c
     api/ReviewsAPI.c
+    api/RsiAPI.c
     api/ScenariosAPI.c
     api/SearchAPI.c
     api/SpansAPI.c
@@ -306,6 +313,11 @@ set(HDRS
     model/experiment_comparison.h
     model/experiment_run_report.h
     model/failure_mode.h
+    model/gate_candidate_change_request.h
+    model/gate_candidate_request.h
+    model/gate_candidate_response.h
+    model/gate_case_score_request.h
+    model/gate_comparison_response.h
     model/gate_decision.h
     model/gate_definition.h
     model/gate_policy.h
@@ -327,6 +339,7 @@ set(HDRS
     model/native_ingest_request.h
     model/online_sampling_policy.h
     model/otlp_ingest_outcome.h
+    model/overfit_response.h
     model/page_run_summary.h
     model/page_run_summary_items_inner.h
     model/perturbation_knobs.h
@@ -406,6 +419,7 @@ set(HDRS
     api/PromptsAPI.h
     api/ProviderSecretsAPI.h
     api/ReviewsAPI.h
+    api/RsiAPI.h
     api/ScenariosAPI.h
     api/SearchAPI.h
     api/SpansAPI.h
@@ -509,6 +523,7 @@ set(HDRS "")
 #    unit-tests/manual-PromptsAPI.c
 #    unit-tests/manual-ProviderSecretsAPI.c
 #    unit-tests/manual-ReviewsAPI.c
+#    unit-tests/manual-RsiAPI.c
 #    unit-tests/manual-ScenariosAPI.c
 #    unit-tests/manual-SearchAPI.c
 #    unit-tests/manual-SpansAPI.c

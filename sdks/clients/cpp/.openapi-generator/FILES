@@ -31,6 +31,7 @@ include/beater-client/api/OnlineApi.h
 include/beater-client/api/PromptsApi.h
 include/beater-client/api/ProviderSecretsApi.h
 include/beater-client/api/ReviewsApi.h
+include/beater-client/api/RsiApi.h
 include/beater-client/api/ScenariosApi.h
 include/beater-client/api/SearchApi.h
 include/beater-client/api/SpansApi.h
@@ -107,6 +108,11 @@ include/beater-client/model/EvaluatorSpec.h
 include/beater-client/model/ExperimentComparison.h
 include/beater-client/model/ExperimentRunReport.h
 include/beater-client/model/FailureMode.h
+include/beater-client/model/GateCandidateChangeRequest.h
+include/beater-client/model/GateCandidateRequest.h
+include/beater-client/model/GateCandidateResponse.h
+include/beater-client/model/GateCaseScoreRequest.h
+include/beater-client/model/GateComparisonResponse.h
 include/beater-client/model/GateDecision.h
 include/beater-client/model/GateDefinition.h
 include/beater-client/model/GatePolicy.h
@@ -128,6 +134,7 @@ include/beater-client/model/Money.h
 include/beater-client/model/NativeIngestRequest.h
 include/beater-client/model/OnlineSamplingPolicy.h
 include/beater-client/model/OtlpIngestOutcome.h
+include/beater-client/model/OverfitResponse.h
 include/beater-client/model/Page_RunSummary.h
 include/beater-client/model/Page_RunSummary_items_inner.h
 include/beater-client/model/PerturbationKnobs.h
@@ -216,6 +223,7 @@ src/api/OnlineApi.cpp
 src/api/PromptsApi.cpp
 src/api/ProviderSecretsApi.cpp
 src/api/ReviewsApi.cpp
+src/api/RsiApi.cpp
 src/api/ScenariosApi.cpp
 src/api/SearchApi.cpp
 src/api/SpansApi.cpp
@@ -292,6 +300,11 @@ src/model/EvaluatorSpec.cpp
 src/model/ExperimentComparison.cpp
 src/model/ExperimentRunReport.cpp
 src/model/FailureMode.cpp
+src/model/GateCandidateChangeRequest.cpp
+src/model/GateCandidateRequest.cpp
+src/model/GateCandidateResponse.cpp
+src/model/GateCaseScoreRequest.cpp
+src/model/GateComparisonResponse.cpp
 src/model/GateDecision.cpp
 src/model/GateDefinition.cpp
 src/model/GatePolicy.cpp
@@ -313,6 +326,7 @@ src/model/Money.cpp
 src/model/NativeIngestRequest.cpp
 src/model/OnlineSamplingPolicy.cpp
 src/model/OtlpIngestOutcome.cpp
+src/model/OverfitResponse.cpp
 src/model/Page_RunSummary.cpp
 src/model/Page_RunSummary_items_inner.cpp
 src/model/PerturbationKnobs.cpp

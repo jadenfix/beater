@@ -85,6 +85,11 @@ from beater_client.models.evaluator_spec import EvaluatorSpec
 from beater_client.models.experiment_comparison import ExperimentComparison
 from beater_client.models.experiment_run_report import ExperimentRunReport
 from beater_client.models.failure_mode import FailureMode
+from beater_client.models.gate_candidate_change_request import GateCandidateChangeRequest
+from beater_client.models.gate_candidate_request import GateCandidateRequest
+from beater_client.models.gate_candidate_response import GateCandidateResponse
+from beater_client.models.gate_case_score_request import GateCaseScoreRequest
+from beater_client.models.gate_comparison_response import GateComparisonResponse
 from beater_client.models.gate_decision import GateDecision
 from beater_client.models.gate_definition import GateDefinition
 from beater_client.models.gate_policy import GatePolicy
@@ -106,6 +111,7 @@ from beater_client.models.money import Money
 from beater_client.models.native_ingest_request import NativeIngestRequest
 from beater_client.models.online_sampling_policy import OnlineSamplingPolicy
 from beater_client.models.otlp_ingest_outcome import OtlpIngestOutcome
+from beater_client.models.overfit_response import OverfitResponse
 from beater_client.models.page_run_summary import PageRunSummary
 from beater_client.models.page_run_summary_items_inner import PageRunSummaryItemsInner
 from beater_client.models.perturbation_knobs import PerturbationKnobs

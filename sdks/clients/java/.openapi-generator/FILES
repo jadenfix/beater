@@ -86,6 +86,11 @@ docs/ExperimentComparison.md
 docs/ExperimentRunReport.md
 docs/ExperimentsApi.md
 docs/FailureMode.md
+docs/GateCandidateChangeRequest.md
+docs/GateCandidateRequest.md
+docs/GateCandidateResponse.md
+docs/GateCaseScoreRequest.md
+docs/GateComparisonResponse.md
 docs/GateDecision.md
 docs/GateDefinition.md
 docs/GatePolicy.md
@@ -112,6 +117,7 @@ docs/NativeIngestRequest.md
 docs/OnlineApi.md
 docs/OnlineSamplingPolicy.md
 docs/OtlpIngestOutcome.md
+docs/OverfitResponse.md
 docs/PageRunSummary.md
 docs/PageRunSummaryItemsInner.md
 docs/PerturbationKnobs.md
@@ -140,6 +146,7 @@ docs/ReviewVerdict.md
 docs/ReviewsApi.md
 docs/RevokedApiKey.md
 docs/RevokedProviderSecret.md
+docs/RsiApi.md
 docs/RunCalibrationHttpRequest.md
 docs/RunDeterministicEvalRequest.md
 docs/RunExperimentRequest.md
@@ -217,6 +224,7 @@ src/main/java/ai/beater/client/api/OnlineApi.java
 src/main/java/ai/beater/client/api/PromptsApi.java
 src/main/java/ai/beater/client/api/ProviderSecretsApi.java
 src/main/java/ai/beater/client/api/ReviewsApi.java
+src/main/java/ai/beater/client/api/RsiApi.java
 src/main/java/ai/beater/client/api/ScenariosApi.java
 src/main/java/ai/beater/client/api/SearchApi.java
 src/main/java/ai/beater/client/api/SpansApi.java
@@ -294,6 +302,11 @@ src/main/java/ai/beater/client/model/EvaluatorSpec.java
 src/main/java/ai/beater/client/model/ExperimentComparison.java
 src/main/java/ai/beater/client/model/ExperimentRunReport.java
 src/main/java/ai/beater/client/model/FailureMode.java
+src/main/java/ai/beater/client/model/GateCandidateChangeRequest.java
+src/main/java/ai/beater/client/model/GateCandidateRequest.java
+src/main/java/ai/beater/client/model/GateCandidateResponse.java
+src/main/java/ai/beater/client/model/GateCaseScoreRequest.java
+src/main/java/ai/beater/client/model/GateComparisonResponse.java
 src/main/java/ai/beater/client/model/GateDecision.java
 src/main/java/ai/beater/client/model/GateDefinition.java
 src/main/java/ai/beater/client/model/GatePolicy.java
@@ -315,6 +328,7 @@ src/main/java/ai/beater/client/model/Money.java
 src/main/java/ai/beater/client/model/NativeIngestRequest.java
 src/main/java/ai/beater/client/model/OnlineSamplingPolicy.java
 src/main/java/ai/beater/client/model/OtlpIngestOutcome.java
+src/main/java/ai/beater/client/model/OverfitResponse.java
 src/main/java/ai/beater/client/model/PageRunSummary.java
 src/main/java/ai/beater/client/model/PageRunSummaryItemsInner.java
 src/main/java/ai/beater/client/model/PerturbationKnobs.java
@@ -394,6 +408,7 @@ src/test/java/ai/beater/client/api/OnlineApiTest.java
 src/test/java/ai/beater/client/api/PromptsApiTest.java
 src/test/java/ai/beater/client/api/ProviderSecretsApiTest.java
 src/test/java/ai/beater/client/api/ReviewsApiTest.java
+src/test/java/ai/beater/client/api/RsiApiTest.java
 src/test/java/ai/beater/client/api/ScenariosApiTest.java
 src/test/java/ai/beater/client/api/SearchApiTest.java
 src/test/java/ai/beater/client/api/SpansApiTest.java
@@ -470,6 +485,11 @@ src/test/java/ai/beater/client/model/EvaluatorSpecTest.java
 src/test/java/ai/beater/client/model/ExperimentComparisonTest.java
 src/test/java/ai/beater/client/model/ExperimentRunReportTest.java
 src/test/java/ai/beater/client/model/FailureModeTest.java
+src/test/java/ai/beater/client/model/GateCandidateChangeRequestTest.java
+src/test/java/ai/beater/client/model/GateCandidateRequestTest.java
+src/test/java/ai/beater/client/model/GateCandidateResponseTest.java
+src/test/java/ai/beater/client/model/GateCaseScoreRequestTest.java
+src/test/java/ai/beater/client/model/GateComparisonResponseTest.java
 src/test/java/ai/beater/client/model/GateDecisionTest.java
 src/test/java/ai/beater/client/model/GateDefinitionTest.java
 src/test/java/ai/beater/client/model/GatePolicyTest.java
@@ -491,6 +511,7 @@ src/test/java/ai/beater/client/model/MoneyTest.java
 src/test/java/ai/beater/client/model/NativeIngestRequestTest.java
 src/test/java/ai/beater/client/model/OnlineSamplingPolicyTest.java
 src/test/java/ai/beater/client/model/OtlpIngestOutcomeTest.java
+src/test/java/ai/beater/client/model/OverfitResponseTest.java
 src/test/java/ai/beater/client/model/PageRunSummaryItemsInnerTest.java
 src/test/java/ai/beater/client/model/PageRunSummaryTest.java
 src/test/java/ai/beater/client/model/PerturbationKnobsTest.java

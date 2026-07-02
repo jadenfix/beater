@@ -20,6 +20,7 @@ api_online.go
 api_prompts.go
 api_provider_secrets.go
 api_reviews.go
+api_rsi.go
 api_scenarios.go
 api_search.go
 api_spans.go
@@ -107,6 +108,11 @@ docs/ExperimentComparison.md
 docs/ExperimentRunReport.md
 docs/ExperimentsAPI.md
 docs/FailureMode.md
+docs/GateCandidateChangeRequest.md
+docs/GateCandidateRequest.md
+docs/GateCandidateResponse.md
+docs/GateCaseScoreRequest.md
+docs/GateComparisonResponse.md
 docs/GateDecision.md
 docs/GateDefinition.md
 docs/GatePolicy.md
@@ -133,6 +139,7 @@ docs/NativeIngestRequest.md
 docs/OnlineAPI.md
 docs/OnlineSamplingPolicy.md
 docs/OtlpIngestOutcome.md
+docs/OverfitResponse.md
 docs/PageRunSummary.md
 docs/PageRunSummaryItemsInner.md
 docs/PerturbationKnobs.md
@@ -161,6 +168,7 @@ docs/ReviewVerdict.md
 docs/ReviewsAPI.md
 docs/RevokedApiKey.md
 docs/RevokedProviderSecret.md
+docs/RsiAPI.md
 docs/RunCalibrationHttpRequest.md
 docs/RunDeterministicEvalRequest.md
 docs/RunExperimentRequest.md
@@ -277,6 +285,11 @@ model_evaluator_spec.go
 model_experiment_comparison.go
 model_experiment_run_report.go
 model_failure_mode.go
+model_gate_candidate_change_request.go
+model_gate_candidate_request.go
+model_gate_candidate_response.go
+model_gate_case_score_request.go
+model_gate_comparison_response.go
 model_gate_decision.go
 model_gate_definition.go
 model_gate_policy.go
@@ -298,6 +311,7 @@ model_money.go
 model_native_ingest_request.go
 model_online_sampling_policy.go
 model_otlp_ingest_outcome.go
+model_overfit_response.go
 model_page_run_summary.go
 model_page_run_summary_items_inner.go
 model_perturbation_knobs.go
@@ -378,6 +392,7 @@ test/api_online_test.go
 test/api_prompts_test.go
 test/api_provider_secrets_test.go
 test/api_reviews_test.go
+test/api_rsi_test.go
 test/api_scenarios_test.go
 test/api_search_test.go
 test/api_spans_test.go

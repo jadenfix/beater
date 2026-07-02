@@ -113,6 +113,7 @@ Category | Method | HTTP request | Description
 *ReviewsAPI* | [**ReviewsAPI_listReviewTasks**](docs/ReviewsAPI.md#ReviewsAPI_listReviewTasks) | **GET** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks | 
 *ReviewsAPI* | [**ReviewsAPI_promoteReviewAnnotation**](docs/ReviewsAPI.md#ReviewsAPI_promoteReviewAnnotation) | **POST** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations/{annotation_id}/promote | 
 *ReviewsAPI* | [**ReviewsAPI_submitReviewAnnotation**](docs/ReviewsAPI.md#ReviewsAPI_submitReviewAnnotation) | **POST** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations | 
+*RsiAPI* | [**RsiAPI_gateOptimizationCandidate**](docs/RsiAPI.md#RsiAPI_gateOptimizationCandidate) | **POST** /v1/rsi/{tenant_id}/{project_id}/gate-candidate | 
 *ScenariosAPI* | [**ScenariosAPI_createScenario**](docs/ScenariosAPI.md#ScenariosAPI_createScenario) | **POST** /v1/scenarios/{tenant_id}/{project_id} | 
 *ScenariosAPI* | [**ScenariosAPI_getScenario**](docs/ScenariosAPI.md#ScenariosAPI_getScenario) | **GET** /v1/scenarios/{tenant_id}/{project_id}/{scenario_id} | 
 *ScenariosAPI* | [**ScenariosAPI_listScenarios**](docs/ScenariosAPI.md#ScenariosAPI_listScenarios) | **GET** /v1/scenarios/{tenant_id}/{project_id} | 
@@ -198,6 +199,11 @@ Category | Method | HTTP request | Description
  - [experiment_comparison_t](docs/experiment_comparison.md)
  - [experiment_run_report_t](docs/experiment_run_report.md)
  - [failure_mode_t](docs/failure_mode.md)
+ - [gate_candidate_change_request_t](docs/gate_candidate_change_request.md)
+ - [gate_candidate_request_t](docs/gate_candidate_request.md)
+ - [gate_candidate_response_t](docs/gate_candidate_response.md)
+ - [gate_case_score_request_t](docs/gate_case_score_request.md)
+ - [gate_comparison_response_t](docs/gate_comparison_response.md)
  - [gate_decision_t](docs/gate_decision.md)
  - [gate_definition_t](docs/gate_definition.md)
  - [gate_policy_t](docs/gate_policy.md)
@@ -219,6 +225,7 @@ Category | Method | HTTP request | Description
  - [native_ingest_request_t](docs/native_ingest_request.md)
  - [online_sampling_policy_t](docs/online_sampling_policy.md)
  - [otlp_ingest_outcome_t](docs/otlp_ingest_outcome.md)
+ - [overfit_response_t](docs/overfit_response.md)
  - [page_run_summary_t](docs/page_run_summary.md)
  - [page_run_summary_items_inner_t](docs/page_run_summary_items_inner.md)
  - [perturbation_knobs_t](docs/perturbation_knobs.md)

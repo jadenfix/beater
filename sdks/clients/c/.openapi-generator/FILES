@@ -37,6 +37,8 @@ api/ProviderSecretsAPI.c
 api/ProviderSecretsAPI.h
 api/ReviewsAPI.c
 api/ReviewsAPI.h
+api/RsiAPI.c
+api/RsiAPI.h
 api/ScenariosAPI.c
 api/ScenariosAPI.h
 api/SearchAPI.c
@@ -64,6 +66,7 @@ docs/OnlineAPI.md
 docs/PromptsAPI.md
 docs/ProviderSecretsAPI.md
 docs/ReviewsAPI.md
+docs/RsiAPI.md
 docs/ScenariosAPI.md
 docs/SearchAPI.md
 docs/SpansAPI.md
@@ -140,6 +143,11 @@ docs/evaluator_spec.md
 docs/experiment_comparison.md
 docs/experiment_run_report.md
 docs/failure_mode.md
+docs/gate_candidate_change_request.md
+docs/gate_candidate_request.md
+docs/gate_candidate_response.md
+docs/gate_case_score_request.md
+docs/gate_comparison_response.md
 docs/gate_decision.md
 docs/gate_definition.md
 docs/gate_policy.md
@@ -161,6 +169,7 @@ docs/money.md
 docs/native_ingest_request.md
 docs/online_sampling_policy.md
 docs/otlp_ingest_outcome.md
+docs/overfit_response.md
 docs/page_run_summary.md
 docs/page_run_summary_items_inner.md
 docs/perturbation_knobs.md
@@ -374,6 +383,16 @@ model/experiment_run_report.c
 model/experiment_run_report.h
 model/failure_mode.c
 model/failure_mode.h
+model/gate_candidate_change_request.c
+model/gate_candidate_change_request.h
+model/gate_candidate_request.c
+model/gate_candidate_request.h
+model/gate_candidate_response.c
+model/gate_candidate_response.h
+model/gate_case_score_request.c
+model/gate_case_score_request.h
+model/gate_comparison_response.c
+model/gate_comparison_response.h
 model/gate_decision.c
 model/gate_decision.h
 model/gate_definition.c
@@ -418,6 +437,8 @@ model/online_sampling_policy.c
 model/online_sampling_policy.h
 model/otlp_ingest_outcome.c
 model/otlp_ingest_outcome.h
+model/overfit_response.c
+model/overfit_response.h
 model/page_run_summary.c
 model/page_run_summary.h
 model/page_run_summary_items_inner.c
@@ -618,6 +639,11 @@ unit-test/test_evaluator_spec.c
 unit-test/test_experiment_comparison.c
 unit-test/test_experiment_run_report.c
 unit-test/test_failure_mode.c
+unit-test/test_gate_candidate_change_request.c
+unit-test/test_gate_candidate_request.c
+unit-test/test_gate_candidate_response.c
+unit-test/test_gate_case_score_request.c
+unit-test/test_gate_comparison_response.c
 unit-test/test_gate_decision.c
 unit-test/test_gate_definition.c
 unit-test/test_gate_policy.c
@@ -639,6 +665,7 @@ unit-test/test_money.c
 unit-test/test_native_ingest_request.c
 unit-test/test_online_sampling_policy.c
 unit-test/test_otlp_ingest_outcome.c
+unit-test/test_overfit_response.c
 unit-test/test_page_run_summary.c
 unit-test/test_page_run_summary_items_inner.c
 unit-test/test_perturbation_knobs.c

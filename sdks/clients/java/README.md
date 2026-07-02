@@ -210,6 +210,8 @@ Class | Method | HTTP request | Description
 *ReviewsApi* | [**promoteReviewAnnotationWithHttpInfo**](docs/ReviewsApi.md#promoteReviewAnnotationWithHttpInfo) | **POST** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations/{annotation_id}/promote | 
 *ReviewsApi* | [**submitReviewAnnotation**](docs/ReviewsApi.md#submitReviewAnnotation) | **POST** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations | 
 *ReviewsApi* | [**submitReviewAnnotationWithHttpInfo**](docs/ReviewsApi.md#submitReviewAnnotationWithHttpInfo) | **POST** /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations | 
+*RsiApi* | [**gateOptimizationCandidate**](docs/RsiApi.md#gateOptimizationCandidate) | **POST** /v1/rsi/{tenant_id}/{project_id}/gate-candidate | 
+*RsiApi* | [**gateOptimizationCandidateWithHttpInfo**](docs/RsiApi.md#gateOptimizationCandidateWithHttpInfo) | **POST** /v1/rsi/{tenant_id}/{project_id}/gate-candidate | 
 *ScenariosApi* | [**createScenario**](docs/ScenariosApi.md#createScenario) | **POST** /v1/scenarios/{tenant_id}/{project_id} | 
 *ScenariosApi* | [**createScenarioWithHttpInfo**](docs/ScenariosApi.md#createScenarioWithHttpInfo) | **POST** /v1/scenarios/{tenant_id}/{project_id} | 
 *ScenariosApi* | [**getScenario**](docs/ScenariosApi.md#getScenario) | **GET** /v1/scenarios/{tenant_id}/{project_id}/{scenario_id} | 
@@ -305,6 +307,11 @@ Class | Method | HTTP request | Description
  - [ExperimentComparison](docs/ExperimentComparison.md)
  - [ExperimentRunReport](docs/ExperimentRunReport.md)
  - [FailureMode](docs/FailureMode.md)
+ - [GateCandidateChangeRequest](docs/GateCandidateChangeRequest.md)
+ - [GateCandidateRequest](docs/GateCandidateRequest.md)
+ - [GateCandidateResponse](docs/GateCandidateResponse.md)
+ - [GateCaseScoreRequest](docs/GateCaseScoreRequest.md)
+ - [GateComparisonResponse](docs/GateComparisonResponse.md)
  - [GateDecision](docs/GateDecision.md)
  - [GateDefinition](docs/GateDefinition.md)
  - [GatePolicy](docs/GatePolicy.md)
@@ -326,6 +333,7 @@ Class | Method | HTTP request | Description
  - [NativeIngestRequest](docs/NativeIngestRequest.md)
  - [OnlineSamplingPolicy](docs/OnlineSamplingPolicy.md)
  - [OtlpIngestOutcome](docs/OtlpIngestOutcome.md)
+ - [OverfitResponse](docs/OverfitResponse.md)
  - [PageRunSummary](docs/PageRunSummary.md)
  - [PageRunSummaryItemsInner](docs/PageRunSummaryItemsInner.md)
  - [PerturbationKnobs](docs/PerturbationKnobs.md)

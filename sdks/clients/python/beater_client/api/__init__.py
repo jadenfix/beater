@@ -18,6 +18,7 @@ from beater_client.api.online_api import OnlineApi
 from beater_client.api.prompts_api import PromptsApi
 from beater_client.api.provider_secrets_api import ProviderSecretsApi
 from beater_client.api.reviews_api import ReviewsApi
+from beater_client.api.rsi_api import RsiApi
 from beater_client.api.scenarios_api import ScenariosApi
 from beater_client.api.search_api import SearchApi
 from beater_client.api.spans_api import SpansApi

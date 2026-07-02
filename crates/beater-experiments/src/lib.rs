@@ -1853,13 +1853,58 @@ fn apply_best_arm_race(
     Ok(())
 }
 
-/// Route one candidate's per-case scores through the held-out Test gate and the
-/// generalization-gap guardrail, returning the combined verdict. Pure plumbing
-/// over `compare_paired_scores` + `assess_generalization_gap` — no bespoke stats.
-fn gate_candidate(
+/// The gate-relevant subset of [`OptimizationRoundConfig`]: the held-out Test
+/// gate policy plus the §21.4 anti-overfit guardrail knobs. Lets a caller gate a
+/// candidate it proposed and executed itself (e.g. the HTTP / MCP / CLI layer)
+/// without constructing a full round config.
+#[derive(Clone, Debug)]
+pub struct GateParams {
+    /// Gate policy applied to the held-out **Test** split via `compare_paired_scores`.
+    pub gate_policy: GatePolicy,
+    /// CUPED variance-reduction design for the held-out Test gate, mirroring the
+    /// round's [`OptimizationRoundConfig::variance_reduction`]; `None` keeps the
+    /// plain paired gate.
+    pub variance_reduction: VarianceReduction,
+    /// Largest benign generalization gap for [`assess_generalization_gap`].
+    pub overfit_tolerance: f64,
+    /// Bootstrap confidence level for the generalization-gap CI.
+    pub overfit_confidence: f64,
+    /// Number of bootstrap resamples for the generalization-gap CI.
+    pub overfit_resamples: usize,
+    /// Seed for the (deterministic) generalization-gap bootstrap.
+    pub overfit_seed: u64,
+}
+
+impl GateParams {
+    /// Anti-overfit defaults matching [`OptimizationRoundConfig::new`]:
+    /// zero-tolerance gap, 95% bootstrap CI, 2000 resamples, fixed seed.
+    pub fn new(gate_policy: GatePolicy) -> Self {
+        Self {
+            gate_policy,
+            variance_reduction: VarianceReduction::None,
+            overfit_tolerance: 0.0,
+            overfit_confidence: 0.95,
+            overfit_resamples: 2000,
+            overfit_seed: 1,
+        }
+    }
+}
+
+/// Gate one already-scored candidate: run the held-out **Test** gate and the
+/// §21.4 generalization-gap guardrail over precomputed per-case [`CaseScore`]s,
+/// returning the combined [`CandidateEvaluation`].
+///
+/// This is the acceptance decision of [`run_optimization_round`] exposed on its
+/// own, so a caller that proposed and executed a candidate itself (the HTTP / MCP
+/// / CLI layer) can route its scores through the *same* gate — **proposal is
+/// still never acceptance**. Like the round, it does no bespoke statistics: it
+/// reuses `compare_paired_scores` (held-out Test) and `assess_generalization_gap`
+/// (§21.4), and accepts only when the Test gate `Pass`es AND no significant
+/// generalization gap is flagged.
+pub fn gate_scored_candidate(
     candidate: &CandidateChange,
     scores: &[CaseScore],
-    cfg: &OptimizationRoundConfig,
+    params: &GateParams,
 ) -> Result<CandidateEvaluation, OptimizerError> {
     // Held-out Test split: the only split that can grant acceptance.
     let (test_baseline, test_candidate) = split_scores(scores, Split::Test);
@@ -1887,8 +1932,8 @@ fn gate_candidate(
     // enforces `EvalDesign::permit_pass` too (a structurally-invalid design can
     // never certify a Pass). The conservative default design always permits pass,
     // so this changes no accept/reject outcome (§1 #9, §10.3).
-    let mut gate_design = conservative_gate_design(&cfg.gate_policy, test_baseline.len());
-    gate_design.variance_reduction = cfg.variance_reduction.clone();
+    let mut gate_design = conservative_gate_design(&params.gate_policy, test_baseline.len());
+    gate_design.variance_reduction = params.variance_reduction.clone();
     // Pre-experiment covariate for CUPED, only when *every* Test case carries one
     // (a partial covariate is a data bug — fall back to the unadjusted gate rather
     // than impute). `compare_paired_scores_cuped` further no-ops unless the design
@@ -1898,7 +1943,7 @@ fn gate_candidate(
         &test_baseline,
         &test_candidate,
         test_covariate.as_deref(),
-        &cfg.gate_policy,
+        &params.gate_policy,
         &gate_design,
     )
     .map_err(|err| OptimizerError::GateFailed(err.to_string()))?;
@@ -1909,10 +1954,10 @@ fn gate_candidate(
         &optimize_candidate,
         &test_baseline,
         &test_candidate,
-        cfg.overfit_tolerance,
-        cfg.overfit_confidence,
-        cfg.overfit_resamples,
-        cfg.overfit_seed,
+        params.overfit_tolerance,
+        params.overfit_confidence,
+        params.overfit_resamples,
+        params.overfit_seed,
     )
     .map_err(|err| OptimizerError::GateFailed(err.to_string()))?;
 
@@ -1925,6 +1970,29 @@ fn gate_candidate(
         overfit,
         accepted,
     })
+}
+
+/// Route one candidate's per-case scores through the held-out Test gate and the
+/// generalization-gap guardrail using a round's config. Thin adapter over
+/// [`gate_scored_candidate`] so [`run_optimization_round`] and the standalone
+/// gate share one implementation.
+fn gate_candidate(
+    candidate: &CandidateChange,
+    scores: &[CaseScore],
+    cfg: &OptimizationRoundConfig,
+) -> Result<CandidateEvaluation, OptimizerError> {
+    gate_scored_candidate(
+        candidate,
+        scores,
+        &GateParams {
+            gate_policy: cfg.gate_policy.clone(),
+            variance_reduction: cfg.variance_reduction.clone(),
+            overfit_tolerance: cfg.overfit_tolerance,
+            overfit_confidence: cfg.overfit_confidence,
+            overfit_resamples: cfg.overfit_resamples,
+            overfit_seed: cfg.overfit_seed,
+        },
+    )
 }
 
 /// Collect the paired (baseline, candidate) score vectors for a single [`Split`],
@@ -2301,6 +2369,16 @@ mod tests {
         )
     }
 
+    fn gate_candidate_fixture() -> CandidateChange {
+        CandidateChange {
+            kind: ChangeKind::SystemPrompt,
+            target: "You are a meticulous assistant.".to_string(),
+            description: "tighten the system prompt".to_string(),
+            rationale: "the gate decides".to_string(),
+            proposed_by: OptimizerStrategy::LlmRewrite,
+        }
+    }
+
     /// A candidate + per-case scores where the held-out Test lift is a fixed
     /// +0.05 buried under noise that a pre-experiment covariate almost fully
     /// explains, plus a clean matching optimization-split lift (so there is no
@@ -2344,6 +2422,81 @@ mod tests {
             rationale: "reduce variance on hard cases".to_string(),
             proposed_by: OptimizerStrategy::LlmRewrite,
         }
+    }
+
+    fn gate_params_fixture() -> GateParams {
+        GateParams::new(GatePolicy {
+            min_sample_size: 6,
+            max_regression: 0.0,
+            alpha: 0.05,
+            comparison_count: 1,
+        })
+    }
+
+    fn split_scores_fixture(optimize: (f64, f64), test: (f64, f64)) -> Vec<CaseScore> {
+        let mut out = Vec::new();
+        for i in 0..6 {
+            out.push(CaseScore {
+                split: if i % 2 == 0 { Split::Train } else { Split::Val },
+                baseline_score: optimize.0,
+                candidate_score: optimize.1,
+                covariate: None,
+            });
+        }
+        for _ in 0..6 {
+            out.push(CaseScore {
+                split: Split::Test,
+                baseline_score: test.0,
+                candidate_score: test.1,
+                covariate: None,
+            });
+        }
+        out
+    }
+
+    /// The standalone gate (the `gateOptimizationCandidate` endpoint's core)
+    /// accepts a uniformly-improving candidate, rejects one that only improves the
+    /// optimization split (generalization gap), and errors — never silently
+    /// accepts — when the held-out Test split is missing.
+    #[test]
+    fn gate_scored_candidate_enforces_test_gate_and_overfit_guardrail() {
+        let candidate = gate_candidate_fixture();
+        let params = gate_params_fixture();
+
+        // Uniform lift on optimization AND held-out splits → accepted.
+        let good = split_scores_fixture((0.2, 0.9), (0.2, 0.9));
+        let accepted =
+            gate_scored_candidate(&candidate, &good, &params).unwrap_or_else(|err| panic!("{err}"));
+        assert!(accepted.accepted, "uniform held-out lift must be accepted");
+        assert_eq!(accepted.gate.decision, GateDecision::Pass);
+        assert!(!accepted.overfit.overfit);
+
+        // Big lift the proposer could see, none on held-out → overfit → rejected.
+        let overfit = split_scores_fixture((0.2, 0.95), (0.2, 0.2));
+        let rejected = gate_scored_candidate(&candidate, &overfit, &params)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(
+            !rejected.accepted,
+            "a candidate that only improves optimization-split data must be rejected",
+        );
+        assert!(
+            rejected.overfit.overfit,
+            "the generalization gap must be flagged"
+        );
+
+        // No held-out Test cases → the gate cannot grant acceptance → typed error.
+        let no_test: Vec<CaseScore> = (0..6)
+            .map(|i| CaseScore {
+                split: if i % 2 == 0 { Split::Train } else { Split::Val },
+                baseline_score: 0.2,
+                candidate_score: 0.9,
+                covariate: None,
+            })
+            .collect();
+        assert!(matches!(
+            gate_scored_candidate(&candidate, &no_test, &params),
+            Err(OptimizerError::GateFailed(_)),
+        ));
     }
 
     /// The load-bearing wiring test: the SAME held-out scores are `Inconclusive`

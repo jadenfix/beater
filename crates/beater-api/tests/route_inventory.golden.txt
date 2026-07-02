@@ -52,6 +52,7 @@ POST /v1/review-queues/{tenant_id}/{project_id}
 POST /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/from-trace
 POST /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations
 POST /v1/review-queues/{tenant_id}/{project_id}/{queue_id}/tasks/{task_id}/annotations/{annotation_id}/promote
+POST /v1/rsi/{tenant_id}/{project_id}/gate-candidate
 POST /v1/scenarios/{tenant_id}/{project_id}
 POST /v1/scenarios/{tenant_id}/{project_id}/mine
 POST /v1/traces/native

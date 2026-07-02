@@ -35,6 +35,8 @@ tags:
   name: calibrations
 - description: Release gates
   name: gates
+- description: "Recursive self-improvement: gate optimization candidates"
+  name: rsi
 - description: Ad-hoc judge evaluation and ledger
   name: judge
 - description: Human review queues and annotations
@@ -4642,6 +4644,96 @@ paths:
           description: Resource not found
       tags:
       - reviews
+  /v1/rsi/{tenant_id}/{project_id}/gate-candidate:
+    post:
+      operationId: gateOptimizationCandidate
+      parameters:
+      - description: tenant_id
+        explode: false
+        in: path
+        name: tenant_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      - description: project_id
+        explode: false
+        in: path
+        name: project_id
+        required: true
+        schema:
+          type: string
+        style: simple
+      - description: Bearer API token for strict auth
+        explode: false
+        in: header
+        name: authorization
+        required: false
+        schema:
+          nullable: true
+          type: string
+        style: simple
+      - description: API key alternative for strict auth
+        explode: false
+        in: header
+        name: x-beater-api-key
+        required: false
+        schema:
+          nullable: true
+          type: string
+        style: simple
+      - description: Strict-auth project scope
+        explode: false
+        in: header
+        name: x-beater-project-id
+        required: false
+        schema:
+          nullable: true
+          type: string
+        style: simple
+      - description: Strict-auth environment scope
+        explode: false
+        in: header
+        name: x-beater-environment-id
+        required: false
+        schema:
+          nullable: true
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GateCandidateRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GateCandidateResponse'
+          description: Gate an optimization candidate against the held-out Test split
+            and the anti-overfitting guardrail
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: "Invalid request, scope, or under-powered split"
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Missing or invalid credentials
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Credentials lack the required scope
+      tags:
+      - rsi
   /v1/scenarios/{tenant_id}/{project_id}:
     get:
       operationId: listScenarios
@@ -8049,6 +8141,222 @@ components:
       - retrieval_miss
       - other
       type: string
+    GateCandidateChangeRequest:
+      description: |-
+        The candidate change being gated. `kind` and `proposed_by` are the RSI
+        optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+      example:
+        proposed_by: proposed_by
+        kind: kind
+        description: description
+        rationale: rationale
+        target: target
+      properties:
+        description:
+          description: Human-readable description of the proposed change.
+          type: string
+        kind:
+          description: "The policy lever this change touches (e.g. `system_prompt`,\
+            \ `model_params`)."
+          type: string
+        proposed_by:
+          description: Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).
+          type: string
+        rationale:
+          description: Why the proposer believes this change helps (carried for audit).
+          type: string
+        target:
+          description: The file / symbol / prompt the change targets.
+          type: string
+      required:
+      - description
+      - kind
+      - proposed_by
+      - rationale
+      - target
+    GateCandidateRequest:
+      description: |-
+        Request to gate a single optimization candidate (`gateOptimizationCandidate`).
+
+        The caller supplies the candidate it proposed and the per-case
+        baseline-vs-candidate scores it observed, each tagged with its split. The
+        server runs the held-out **Test** gate plus the anti-overfitting guardrail and
+        returns the accept/reject verdict — the proposer never decides acceptance.
+      example:
+        candidate:
+          proposed_by: proposed_by
+          kind: kind
+          description: description
+          rationale: rationale
+          target: target
+        overfit_tolerance: 5.962133916683182
+        scores:
+        - baseline_score: 5.637376656633329
+          split: split
+          candidate_score: 2.3021358869347655
+        - baseline_score: 5.637376656633329
+          split: split
+          candidate_score: 2.3021358869347655
+        overfit_resamples: 0
+        gate_policy:
+          max_regression: 6.84685269835264
+          min_sample_size: 0
+          alpha: 1.0246457001441578
+          comparison_count: 0
+        overfit_confidence: 0.8008281904610115
+        overfit_seed: 0
+      properties:
+        candidate:
+          $ref: '#/components/schemas/GateCandidateChangeRequest'
+        gate_policy:
+          $ref: '#/components/schemas/GatePolicy'
+        overfit_confidence:
+          description: Bootstrap confidence for the generalization-gap CI (default
+            `0.95`).
+          format: double
+          nullable: true
+          type: number
+        overfit_resamples:
+          description: Bootstrap resamples for the generalization-gap CI (default
+            `2000`).
+          minimum: 0
+          nullable: true
+          type: integer
+        overfit_seed:
+          description: Seed for the deterministic generalization-gap bootstrap (default
+            `1`).
+          format: int64
+          minimum: 0
+          nullable: true
+          type: integer
+        overfit_tolerance:
+          description: Largest benign generalization gap (default `0.0`).
+          format: double
+          nullable: true
+          type: number
+        scores:
+          description: |-
+            Per-case paired scores. Must include at least one `test` case and at least
+            one `train`/`val` case so both the gate and the gap check are defined.
+          items:
+            $ref: '#/components/schemas/GateCaseScoreRequest'
+          type: array
+      required:
+      - candidate
+      - scores
+    GateCandidateResponse:
+      description: |-
+        Verdict for `gateOptimizationCandidate`: the held-out Test comparison, the
+        generalization-gap assessment, and the combined acceptance decision.
+      example:
+        accepted: true
+        overfit:
+          gap_ci_low: 2.027123023002322
+          gap: 9.301444243932576
+          overfit: true
+          gap_ci_high: 3.616076749251911
+          optimize_lift: 7.386281948385884
+          holdout_lift: 4.145608029883936
+        gate:
+          p_value: 2.3021358869347655
+          baseline_mean: 0.8008281904610115
+          decision: decision
+          sample_size: 0
+          delta: 5.637376656633329
+          ci_high: 1.4658129805029452
+          candidate_mean: 6.027456183070403
+          ci_low: 5.962133916683182
+      properties:
+        accepted:
+          description: |-
+            `true` iff the held-out Test gate `Pass`ed AND no significant
+            generalization gap was flagged. This is the only path to acceptance.
+          type: boolean
+        gate:
+          $ref: '#/components/schemas/GateComparisonResponse'
+        overfit:
+          $ref: '#/components/schemas/OverfitResponse'
+      required:
+      - accepted
+      - gate
+      - overfit
+    GateCaseScoreRequest:
+      description: "One case's paired baseline-vs-candidate score, tagged with its\
+        \ split."
+      example:
+        baseline_score: 5.637376656633329
+        split: split
+        candidate_score: 2.3021358869347655
+      properties:
+        baseline_score:
+          description: "The baseline policy's score on this case, in `[0, 1]` (higher\
+            \ is better)."
+          format: double
+          type: number
+        candidate_score:
+          description: The candidate policy's score on the *same* case (paired with
+            baseline).
+          format: double
+          type: number
+        split:
+          description: "The split this case belongs to: `train`, `val`, or `test`."
+          type: string
+      required:
+      - baseline_score
+      - candidate_score
+      - split
+    GateComparisonResponse:
+      description: The held-out Test-split gate comparison.
+      example:
+        p_value: 2.3021358869347655
+        baseline_mean: 0.8008281904610115
+        decision: decision
+        sample_size: 0
+        delta: 5.637376656633329
+        ci_high: 1.4658129805029452
+        candidate_mean: 6.027456183070403
+        ci_low: 5.962133916683182
+      properties:
+        baseline_mean:
+          description: Mean baseline score on the Test split.
+          format: double
+          type: number
+        candidate_mean:
+          description: Mean candidate score on the Test split.
+          format: double
+          type: number
+        ci_high:
+          description: Upper bound of the delta confidence interval.
+          format: double
+          type: number
+        ci_low:
+          description: Lower bound of the delta confidence interval.
+          format: double
+          type: number
+        decision:
+          description: "Gate decision: `pass`, `fail_regression`, or `inconclusive`."
+          type: string
+        delta:
+          description: '`candidate_mean − baseline_mean` on the Test split.'
+          format: double
+          type: number
+        p_value:
+          description: Two-sided p-value of the paired test.
+          format: double
+          type: number
+        sample_size:
+          description: Number of paired Test cases compared.
+          minimum: 0
+          type: integer
+      required:
+      - baseline_mean
+      - candidate_mean
+      - ci_high
+      - ci_low
+      - decision
+      - delta
+      - p_value
+      - sample_size
     GateDecision:
       enum:
       - pass
@@ -8736,6 +9044,49 @@ components:
       - downstream_queued
       - duplicate_raw
       - duplicate_spans
+    OverfitResponse:
+      description: The anti-overfitting (generalization-gap) assessment.
+      example:
+        gap_ci_low: 2.027123023002322
+        gap: 9.301444243932576
+        overfit: true
+        gap_ci_high: 3.616076749251911
+        optimize_lift: 7.386281948385884
+        holdout_lift: 4.145608029883936
+      properties:
+        gap:
+          description: '`optimize_lift − holdout_lift`.'
+          format: double
+          type: number
+        gap_ci_high:
+          description: Upper bound of the bootstrap CI for `gap`.
+          format: double
+          type: number
+        gap_ci_low:
+          description: Lower bound of the bootstrap CI for `gap`.
+          format: double
+          type: number
+        holdout_lift:
+          description: Mean paired lift on the held-out split.
+          format: double
+          type: number
+        optimize_lift:
+          description: Mean paired lift `(candidate − baseline)` on the optimization
+            split.
+          format: double
+          type: number
+        overfit:
+          description: |-
+            `true` when the gap's CI lower bound exceeds tolerance — the candidate's
+            optimization-set advantage is significantly not reproduced on held-out data.
+          type: boolean
+      required:
+      - gap
+      - gap_ci_high
+      - gap_ci_low
+      - holdout_lift
+      - optimize_lift
+      - overfit
     Page_RunSummary:
       example:
         next_cursor: next_cursor

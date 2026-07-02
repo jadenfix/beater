@@ -43,8 +43,9 @@ use beater_datasets::{
 };
 use beater_eval::{EvaluationCase, EvaluatorKind, EvaluatorSpec};
 use beater_experiments::{
-    run_deterministic_experiment, run_judge_experiment, CaseOutputOverride, ExperimentRunReport,
-    ExperimentRunSpec, ExperimentStore, JudgeExperimentRunSpec,
+    gate_scored_candidate, run_deterministic_experiment, run_judge_experiment, CandidateChange,
+    CaseOutputOverride, CaseScore, ChangeKind, ExperimentRunReport, ExperimentRunSpec,
+    ExperimentStore, GateParams, JudgeExperimentRunSpec, OptimizerStrategy, Split,
 };
 use beater_gates::{run_gate, GateDefinition, GateRunReport, GateStore, InconclusivePolicy};
 use beater_human::{
@@ -368,10 +369,10 @@ impl ApiState {
 ///
 /// Billing/Stripe routes are hosted-only and compiled in only under the
 /// `billing` feature, so the count is feature-aware: the open-source default
-/// build registers 57 `/v1` routes (41 base + 6 always-on `/v1/connectors`
-/// routes + 6 `/v1/prompts` routes + 4 `/v1/scenarios` routes); the hosted
-/// `billing` build adds 8.
-pub const V1_ROUTE_COUNT: usize = if cfg!(feature = "billing") { 65 } else { 57 };
+/// build registers 58 `/v1` routes (41 base + 6 always-on `/v1/connectors`
+/// routes + 6 `/v1/prompts` routes + 4 `/v1/scenarios` routes + 1 `/v1/rsi`
+/// route); the hosted `billing` build adds 8.
+pub const V1_ROUTE_COUNT: usize = if cfg!(feature = "billing") { 66 } else { 58 };
 
 /// See [`V1_ROUTE_COUNT`].
 pub fn v1_route_count() -> usize {
@@ -532,6 +533,10 @@ pub fn router(state: ApiState) -> Router {
         .route(
             "/v1/gates/:tenant_id/:project_id/:gate_id/run",
             post(run_gate_route),
+        )
+        .route(
+            "/v1/rsi/:tenant_id/:project_id/gate-candidate",
+            post(gate_optimization_candidate_route),
         )
         .route(
             "/v1/review-queues/:tenant_id/:project_id",
@@ -3807,6 +3812,120 @@ async fn run_gate_route(
     Ok(Json(report))
 }
 
+/// Parse a snake_case enum tag from an untrusted request string via serde,
+/// turning an unknown variant into a 400 rather than a deserialize error deep in
+/// the body. Used for the RSI-internal `Split` / `ChangeKind` / `OptimizerStrategy`
+/// enums, which are intentionally *not* first-class `/v1` contract types.
+fn parse_enum_tag<T: serde::de::DeserializeOwned>(kind: &str, value: &str) -> Result<T, ApiError> {
+    serde_json::from_value(serde_json::Value::String(value.to_string()))
+        .map_err(|_| ApiError::bad_request(format!("unknown {kind}: {value}")))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/rsi/{tenant_id}/{project_id}/gate-candidate",
+    tag = "rsi",
+    operation_id = "gateOptimizationCandidate",
+    params(
+        ("tenant_id" = String, Path, description = "tenant_id"),
+        ("project_id" = String, Path, description = "project_id"),
+        ("authorization" = Option<String>, Header, description = "Bearer API token for strict auth"),
+        ("x-beater-api-key" = Option<String>, Header, description = "API key alternative for strict auth"),
+        ("x-beater-project-id" = Option<String>, Header, description = "Strict-auth project scope"),
+        ("x-beater-environment-id" = Option<String>, Header, description = "Strict-auth environment scope"),
+    ),
+    request_body = GateCandidateRequest,
+    responses(
+        (status = 200, description = "Gate an optimization candidate against the held-out Test split and the anti-overfitting guardrail", body = GateCandidateResponse),
+        (status = 400, description = "Invalid request, scope, or under-powered split", body = ErrorResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ErrorResponse),
+        (status = 403, description = "Credentials lack the required scope", body = ErrorResponse),
+    )
+)]
+async fn gate_optimization_candidate_route(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((tenant_id, project_id)): Path<(String, String)>,
+    Json(request): Json<GateCandidateRequest>,
+) -> Result<Json<GateCandidateResponse>, ApiError> {
+    let tenant_id = TenantId::new(tenant_id)?;
+    let project_id = ProjectId::new(project_id)?;
+    authorize_project_route(&state, &headers, &tenant_id, &project_id, ApiScope::EvalRun).await?;
+
+    // Provenance only — the candidate's identity does not influence the decision;
+    // the scores do. `kind` / `proposed_by` are the RSI-internal enums, parsed
+    // from their snake_case tags.
+    let candidate = CandidateChange {
+        kind: parse_enum_tag::<ChangeKind>("change kind", &request.candidate.kind)?,
+        target: request.candidate.target,
+        description: request.candidate.description,
+        rationale: request.candidate.rationale,
+        proposed_by: parse_enum_tag::<OptimizerStrategy>(
+            "optimizer strategy",
+            &request.candidate.proposed_by,
+        )?,
+    };
+
+    let scores = request
+        .scores
+        .into_iter()
+        .map(|s| {
+            Ok(CaseScore {
+                split: parse_enum_tag::<Split>("split", &s.split)?,
+                baseline_score: s.baseline_score,
+                candidate_score: s.candidate_score,
+                // This endpoint gates precomputed scores without exposing CUPED
+                // covariates; the guardrail no-ops without them (params default to
+                // VarianceReduction::None), matching the plain held-out gate.
+                covariate: None,
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+
+    // Start from the round defaults, then apply any explicit overrides.
+    let mut params = GateParams::new(request.gate_policy.unwrap_or_default());
+    if let Some(v) = request.overfit_tolerance {
+        params.overfit_tolerance = v;
+    }
+    if let Some(v) = request.overfit_confidence {
+        params.overfit_confidence = v;
+    }
+    if let Some(v) = request.overfit_resamples {
+        params.overfit_resamples = v;
+    }
+    if let Some(v) = request.overfit_seed {
+        params.overfit_seed = v;
+    }
+
+    // The gate is reused, not reinvented: same held-out Test comparison + §21.4
+    // guardrail the optimizer round uses. A candidate the gate cannot judge (e.g.
+    // an under-powered or missing split) surfaces as a 400, never a silent accept.
+    let evaluation = gate_scored_candidate(&candidate, &scores, &params)
+        .map_err(|err| ApiError::bad_request(err.to_string()))?;
+
+    Ok(Json(GateCandidateResponse {
+        accepted: evaluation.accepted,
+        gate: GateComparisonResponse {
+            decision: evaluation.gate.decision.name().to_string(),
+            sample_size: evaluation.gate.sample_size,
+            baseline_mean: evaluation.gate.baseline_mean,
+            candidate_mean: evaluation.gate.candidate_mean,
+            delta: evaluation.gate.delta,
+            ci_low: evaluation.gate.ci_low,
+            ci_high: evaluation.gate.ci_high,
+            p_value: evaluation.gate.p_value,
+        },
+        overfit: OverfitResponse {
+            optimize_lift: evaluation.overfit.optimize_lift,
+            holdout_lift: evaluation.overfit.holdout_lift,
+            gap: evaluation.overfit.gap,
+            gap_ci_low: evaluation.overfit.gap_ci_low,
+            gap_ci_high: evaluation.overfit.gap_ci_high,
+            overfit: evaluation.overfit.overfit,
+        },
+    }))
+}
+
 #[utoipa::path(
     post,
     path = "/v1/review-queues/{tenant_id}/{project_id}",
@@ -4498,6 +4617,110 @@ struct CreateGateRequest {
 #[derive(Clone, Debug, Deserialize, ToSchema)]
 struct RunGateRequest {
     experiment_run_id: Option<String>,
+}
+
+/// Request to gate a single optimization candidate (`gateOptimizationCandidate`).
+///
+/// The caller supplies the candidate it proposed and the per-case
+/// baseline-vs-candidate scores it observed, each tagged with its split. The
+/// server runs the held-out **Test** gate plus the anti-overfitting guardrail and
+/// returns the accept/reject verdict — the proposer never decides acceptance.
+#[derive(Clone, Debug, Deserialize, ToSchema)]
+struct GateCandidateRequest {
+    /// The proposed change under evaluation (provenance for the audit trail).
+    candidate: GateCandidateChangeRequest,
+    /// Per-case paired scores. Must include at least one `test` case and at least
+    /// one `train`/`val` case so both the gate and the gap check are defined.
+    scores: Vec<GateCaseScoreRequest>,
+    /// Held-out Test gate policy. Defaults to the standard `GatePolicy`.
+    gate_policy: Option<beater_eval::GatePolicy>,
+    /// Largest benign generalization gap (default `0.0`).
+    overfit_tolerance: Option<f64>,
+    /// Bootstrap confidence for the generalization-gap CI (default `0.95`).
+    overfit_confidence: Option<f64>,
+    /// Bootstrap resamples for the generalization-gap CI (default `2000`).
+    overfit_resamples: Option<usize>,
+    /// Seed for the deterministic generalization-gap bootstrap (default `1`).
+    overfit_seed: Option<u64>,
+}
+
+/// The candidate change being gated. `kind` and `proposed_by` are the RSI
+/// optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+#[derive(Clone, Debug, Deserialize, ToSchema)]
+struct GateCandidateChangeRequest {
+    /// The policy lever this change touches (e.g. `system_prompt`, `model_params`).
+    kind: String,
+    /// The file / symbol / prompt the change targets.
+    target: String,
+    /// Human-readable description of the proposed change.
+    description: String,
+    /// Why the proposer believes this change helps (carried for audit).
+    rationale: String,
+    /// Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).
+    proposed_by: String,
+}
+
+/// One case's paired baseline-vs-candidate score, tagged with its split.
+#[derive(Clone, Debug, Deserialize, ToSchema)]
+struct GateCaseScoreRequest {
+    /// The split this case belongs to: `train`, `val`, or `test`.
+    split: String,
+    /// The baseline policy's score on this case, in `[0, 1]` (higher is better).
+    baseline_score: f64,
+    /// The candidate policy's score on the *same* case (paired with baseline).
+    candidate_score: f64,
+}
+
+/// Verdict for `gateOptimizationCandidate`: the held-out Test comparison, the
+/// generalization-gap assessment, and the combined acceptance decision.
+#[derive(Clone, Debug, Serialize, ToSchema)]
+struct GateCandidateResponse {
+    /// `true` iff the held-out Test gate `Pass`ed AND no significant
+    /// generalization gap was flagged. This is the only path to acceptance.
+    accepted: bool,
+    /// The held-out **Test**-split comparison (paired test + CI vs. the regression bound).
+    gate: GateComparisonResponse,
+    /// The generalization-gap assessment (optimization-split lift vs. held-out lift).
+    overfit: OverfitResponse,
+}
+
+/// The held-out Test-split gate comparison.
+#[derive(Clone, Debug, Serialize, ToSchema)]
+struct GateComparisonResponse {
+    /// Gate decision: `pass`, `fail_regression`, or `inconclusive`.
+    decision: String,
+    /// Number of paired Test cases compared.
+    sample_size: usize,
+    /// Mean baseline score on the Test split.
+    baseline_mean: f64,
+    /// Mean candidate score on the Test split.
+    candidate_mean: f64,
+    /// `candidate_mean − baseline_mean` on the Test split.
+    delta: f64,
+    /// Lower bound of the delta confidence interval.
+    ci_low: f64,
+    /// Upper bound of the delta confidence interval.
+    ci_high: f64,
+    /// Two-sided p-value of the paired test.
+    p_value: f64,
+}
+
+/// The anti-overfitting (generalization-gap) assessment.
+#[derive(Clone, Debug, Serialize, ToSchema)]
+struct OverfitResponse {
+    /// Mean paired lift `(candidate − baseline)` on the optimization split.
+    optimize_lift: f64,
+    /// Mean paired lift on the held-out split.
+    holdout_lift: f64,
+    /// `optimize_lift − holdout_lift`.
+    gap: f64,
+    /// Lower bound of the bootstrap CI for `gap`.
+    gap_ci_low: f64,
+    /// Upper bound of the bootstrap CI for `gap`.
+    gap_ci_high: f64,
+    /// `true` when the gap's CI lower bound exceeds tolerance — the candidate's
+    /// optimization-set advantage is significantly not reproduced on held-out data.
+    overfit: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, ToSchema)]

@@ -20,6 +20,7 @@ src/apis/OnlineApi.ts
 src/apis/PromptsApi.ts
 src/apis/ProviderSecretsApi.ts
 src/apis/ReviewsApi.ts
+src/apis/RsiApi.ts
 src/apis/ScenariosApi.ts
 src/apis/SearchApi.ts
 src/apis/SpansApi.ts
@@ -98,6 +99,11 @@ src/models/EvaluatorSpec.ts
 src/models/ExperimentComparison.ts
 src/models/ExperimentRunReport.ts
 src/models/FailureMode.ts
+src/models/GateCandidateChangeRequest.ts
+src/models/GateCandidateRequest.ts
+src/models/GateCandidateResponse.ts
+src/models/GateCaseScoreRequest.ts
+src/models/GateComparisonResponse.ts
 src/models/GateDecision.ts
 src/models/GateDefinition.ts
 src/models/GatePolicy.ts
@@ -119,6 +125,7 @@ src/models/Money.ts
 src/models/NativeIngestRequest.ts
 src/models/OnlineSamplingPolicy.ts
 src/models/OtlpIngestOutcome.ts
+src/models/OverfitResponse.ts
 src/models/PageRunSummary.ts
 src/models/PageRunSummaryItemsInner.ts
 src/models/PerturbationKnobs.ts
