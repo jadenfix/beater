@@ -1901,7 +1901,8 @@ impl GateParams {
 /// reuses `compare_paired_scores` (held-out Test) and `assess_generalization_gap`
 /// (§21.4), and accepts only when the Test gate `Pass`es AND no significant
 /// generalization gap is flagged.
-pub fn gate_scored_candidate(    candidate: &CandidateChange,
+pub fn gate_scored_candidate(
+    candidate: &CandidateChange,
     scores: &[CaseScore],
     params: &GateParams,
 ) -> Result<CandidateEvaluation, OptimizerError> {
@@ -1942,7 +1943,8 @@ pub fn gate_scored_candidate(    candidate: &CandidateChange,
         &test_baseline,
         &test_candidate,
         test_covariate.as_deref(),
-        &params.gate_policy,        &gate_design,
+        &params.gate_policy,
+        &gate_design,
     )
     .map_err(|err| OptimizerError::GateFailed(err.to_string()))?;
 
@@ -2417,7 +2419,8 @@ mod tests {
             kind: ChangeKind::SystemPrompt,
             target: "system_prompt".to_string(),
             description: "tighten the instructions".to_string(),
-            rationale: "reduce variance on hard cases".to_string(),            proposed_by: OptimizerStrategy::LlmRewrite,
+            rationale: "reduce variance on hard cases".to_string(),
+            proposed_by: OptimizerStrategy::LlmRewrite,
         }
     }
 
@@ -2476,7 +2479,10 @@ mod tests {
             !rejected.accepted,
             "a candidate that only improves optimization-split data must be rejected",
         );
-        assert!(rejected.overfit.overfit, "the generalization gap must be flagged");
+        assert!(
+            rejected.overfit.overfit,
+            "the generalization gap must be flagged"
+        );
 
         // No held-out Test cases → the gate cannot grant acceptance → typed error.
         let no_test: Vec<CaseScore> = (0..6)
@@ -2567,7 +2573,8 @@ mod tests {
             gate_candidate(&candidate, &scores, &cfg).unwrap_or_else(|err| panic!("{err}"));
         // Fell back to the plain paired-t, so still Inconclusive on the raw noise.
         assert_eq!(evaluated.gate.decision, GateDecision::Inconclusive);
-        assert_eq!(evaluated.gate.test, beater_eval::StatisticalTest::PairedT);    }
+        assert_eq!(evaluated.gate.test, beater_eval::StatisticalTest::PairedT);
+    }
 
     /// Test A: a candidate that improves uniformly across every split clears the
     /// held-out Test gate AND the anti-overfit guardrail → accepted.
