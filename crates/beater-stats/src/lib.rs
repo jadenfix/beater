@@ -55,8 +55,10 @@
 //!   quickselects only the two percentile endpoints it needs instead of fully
 //!   sorting the resample distribution.
 
+mod agreement;
 mod bca;
 mod clustered;
+mod confseq;
 mod cuped;
 mod mcnemar;
 mod multiplicity;
@@ -69,10 +71,15 @@ mod resampling;
 mod sequential;
 mod wilcoxon;
 
+pub use agreement::{
+    brier_score, cohen_kappa_binary, cohen_kappa_ci, expected_calibration_error, AgreementCounts,
+};
 pub use bca::{bootstrap_bca_ci, paired_bootstrap_test, PairedBootstrapOutcome};
 pub use clustered::{
-    clustered_bootstrap_ci, clustered_standard_error, iid_standard_error, ClusteredStandardError,
+    clustered_bootstrap_ci, clustered_paired_t_test, clustered_standard_error, iid_standard_error,
+    ClusteredStandardError,
 };
+pub use confseq::{confidence_sequence_mean, ConfidenceSequenceOutcome};
 pub use cuped::{cuped_adjust, cuped_paired_t_test, CupedOutcome};
 pub use mcnemar::mcnemar_exact_p;
 pub use multiplicity::{benjamini_hochberg, holm_bonferroni, MultiplicityDecision};
@@ -183,6 +190,9 @@ pub enum TestKind {
     PairedT,
     /// Exact McNemar test (paired binary outcome).
     McnemarExact,
+    /// Cluster-robust paired t-test (CR1 sandwich SE, `G − 1` df) for
+    /// non-independent paired observations (§10.3 #1).
+    ClusteredPairedT,
 }
 
 /// The result of a hypothesis test: the point estimate (always the mean

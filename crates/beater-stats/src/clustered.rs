@@ -8,7 +8,8 @@
 //! `cluster_key` (`beater-design`); this module only consumes the resolved
 //! per-observation cluster labels.
 
-use crate::{mean, StatsError};
+use crate::numerics::{students_t_quantile, students_t_two_sided_p};
+use crate::{mean, ConfidenceInterval, StatsError, TestKind, TestOutcome};
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -112,6 +113,69 @@ pub fn clustered_standard_error<T: Eq + Hash>(
         standard_error: variance.sqrt(),
         n_clusters: g,
         n,
+    })
+}
+
+/// Cluster-robust paired t-test over per-pair `differences`, with
+/// `cluster_ids[i]` the cluster label of pair `i` (§10.3 #1).
+///
+/// The estimate is the plain mean difference; its standard error is the CR1
+/// sandwich from [`clustered_standard_error`], and the reference distribution is
+/// a Student's *t* with **`G − 1` degrees of freedom** (`G` = number of
+/// clusters), the standard finite-cluster reference for a cluster-robust mean.
+/// Using `n − 1` would pretend every observation is independent — exactly the
+/// too-small-SE failure mode clustering exists to prevent.
+///
+/// Degenerate case: when every cluster sum of residuals is zero (all clusters
+/// agree exactly), the SE is 0 and the test mirrors [`crate::paired_t_test`]'s
+/// degenerate convention (p = 1 at zero estimate, else 0; point CI).
+///
+/// # Errors
+///
+/// Same input validation as [`clustered_standard_error`] (including fewer than
+/// two clusters), plus [`StatsError::InvalidAlpha`].
+pub fn clustered_paired_t_test<T: Eq + Hash>(
+    differences: &[f64],
+    cluster_ids: &[T],
+    alpha: f64,
+) -> Result<TestOutcome, StatsError> {
+    crate::validate_alpha(alpha)?;
+    let cr = clustered_standard_error(differences, cluster_ids)?;
+    let estimate = mean(differences);
+    let df = cr.n_clusters as f64 - 1.0;
+
+    let (p_value, ci) = if cr.standard_error == 0.0 {
+        let p = if estimate == 0.0 { 1.0 } else { 0.0 };
+        (
+            p,
+            ConfidenceInterval {
+                low: estimate,
+                high: estimate,
+                confidence: 1.0 - alpha,
+            },
+        )
+    } else {
+        let t = estimate / cr.standard_error;
+        let p = students_t_two_sided_p(t, df);
+        let crit = students_t_quantile(1.0 - alpha / 2.0, df);
+        let half = crit * cr.standard_error;
+        (
+            p,
+            ConfidenceInterval {
+                low: estimate - half,
+                high: estimate + half,
+                confidence: 1.0 - alpha,
+            },
+        )
+    };
+
+    Ok(TestOutcome {
+        estimate,
+        ci: Some(ci),
+        p_value,
+        test: TestKind::ClusteredPairedT,
+        df: Some(df),
+        sample_size: differences.len(),
     })
 }
 
@@ -281,6 +345,68 @@ mod tests {
             cr.standard_error,
             iid
         );
+    }
+
+    #[test]
+    fn clustered_paired_t_uses_g_minus_1_df_and_cr_se() {
+        // Two tight clusters that disagree: 6 observations but only 2 independent
+        // units. The clustered test must be far more cautious than the naive
+        // paired t over 6 "independent" points.
+        let diffs = [0.30, 0.31, 0.29, -0.30, -0.31, -0.29];
+        let clusters = ["a", "a", "a", "b", "b", "b"];
+        let out =
+            clustered_paired_t_test(&diffs, &clusters, 0.05).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.test, crate::TestKind::ClusteredPairedT);
+        assert_eq!(out.df, Some(1.0), "df must be G − 1 = 1");
+        assert_eq!(out.sample_size, 6);
+        assert!(
+            out.p_value > 0.3,
+            "2 disagreeing clusters cannot be significant: p = {}",
+            out.p_value
+        );
+        // The naive i.i.d. paired t would (wrongly) see nothing close to this
+        // uncertainty; its CI is far narrower.
+        let naive = crate::paired_t_test(&diffs, 0.05).unwrap_or_else(|err| panic!("{err}"));
+        let (naive_ci, cluster_ci) = (
+            naive.ci.unwrap_or_else(|| panic!("ci")),
+            out.ci.unwrap_or_else(|| panic!("ci")),
+        );
+        assert!(
+            (cluster_ci.high - cluster_ci.low) > 2.0 * (naive_ci.high - naive_ci.low),
+            "clustered CI must be much wider: {cluster_ci:?} vs {naive_ci:?}"
+        );
+    }
+
+    #[test]
+    fn clustered_paired_t_consistent_shift_across_many_clusters() {
+        // A consistent +0.2 shift across 12 independent clusters is significant.
+        let diffs: Vec<f64> = (0..24)
+            .map(|i| 0.2 + 0.01 * ((i % 3) as f64 - 1.0))
+            .collect();
+        let clusters: Vec<usize> = (0..24).map(|i| i / 2).collect();
+        let out =
+            clustered_paired_t_test(&diffs, &clusters, 0.05).unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.df, Some(11.0));
+        assert!(out.p_value < 1e-6, "p = {}", out.p_value);
+        let ci = out.ci.unwrap_or_else(|| panic!("ci"));
+        assert!(ci.low > 0.0, "CI must exclude zero: {ci:?}");
+        assert!((out.estimate - 0.2).abs() < 1e-9);
+    }
+
+    #[test]
+    fn clustered_paired_t_degenerate_and_errors() {
+        // All cluster residual sums zero (identical clusters): degenerate SE.
+        let out = clustered_paired_t_test(&[0.1, 0.1, 0.1, 0.1], &["a", "a", "b", "b"], 0.05)
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(out.p_value, 0.0, "constant non-zero shift is a sure effect");
+        assert!(matches!(
+            clustered_paired_t_test(&[0.1, 0.2], &["a", "a"], 0.05),
+            Err(StatsError::TooFewSamples { .. })
+        ));
+        assert!(matches!(
+            clustered_paired_t_test(&[0.1, 0.2], &["a", "b"], 1.5),
+            Err(StatsError::InvalidAlpha(_))
+        ));
     }
 
     #[test]
