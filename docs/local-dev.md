@@ -61,13 +61,13 @@ examples).
 
 ## The one rule: regenerate from the contract
 
-The HTTP API, the 8 SDK clients, the MCP tools, the CLI, and the docs are all
+The HTTP API, the 9 SDK clients, the MCP tools, the CLI, and the docs are all
 generated from `sdks/openapi/beater-api.json`. If you change a `/v1` endpoint,
 request/response type, span kind, or attribute, regenerate in the same change:
 
 ```sh
 cargo xtask regen-spec      # OpenAPI spec + dashboard snapshot
-scripts/regen-sdks.sh       # all 8 generated clients
+scripts/regen-sdks.sh       # all 9 generated clients
 cargo xtask regen-semconv   # conventions.json (if conventions changed)
 ```
 

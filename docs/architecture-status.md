@@ -57,7 +57,7 @@
 
 | Component | ARCH § | Claimed status | Actual (verified) | Notes / Discrepancy |
 |---|---|---|---|---|
-| 8 generated SDK clients (Python, TypeScript, Go, Java, C, C++, Rust, Ruby) | §3.3, §15 | clients built; registry publish planned | **Built (in-repo)** — `sdks/clients/python/`, `typescript/`, `go/`, `java/`, `c/`, `cpp/`, `rust/`, `ruby/` all present | `scripts/regen-sdks.sh` re-generates; `scripts/publish-sdk.sh` publishes to registries (planned) |
+| 9 generated SDK clients (Python, TypeScript, Go, Java, C, C++, Rust, Ruby, PHP) | §3.3, §15 | clients built; registry publish planned | **Built (in-repo)** — `sdks/clients/python/`, `typescript/`, `go/`, `java/`, `c/`, `cpp/`, `rust/`, `ruby/`, `php/` all present | `scripts/regen-sdks.sh` re-generates; `scripts/publish-sdk.sh` publishes to registries (planned) |
 | Native Rust SDK (`sdks/rust/`) | §3.3 | built in-repo; crates.io publish planned | **Built (in-repo)** — `sdks/rust/` present; excluded from workspace | `cargo add beater` is the planned user path; not yet on crates.io |
 | `sdks/semconv/` (conventions SDK) | §3.3 | built | **Built** — `sdks/semconv/conventions.json` present | |
 | Python browser-use SDK (`sdks/python-browser-use/`) | §3.3 | unverified | **Built** — `sdks/python-browser-use/` present (top-level, NOT under `sdks/clients/`) | Completeness unverified |
@@ -268,7 +268,7 @@ in a material way:
    under `bins/` exists for either.
 
 6. **Overall readiness ≈ 33%.** ARCH §20.1 states this honestly. The built
-   primitives are strong (OTLP, normalizer, WASI sandbox, OAuth 2.1, crypto, 8 SDKs,
+   primitives are strong (OTLP, normalizer, WASI sandbox, OAuth 2.1, crypto, 9 SDKs,
    MCP streamable-HTTP, contract-drift CI; `beater-stats` Phase 1 and the
    `beater-bench` skeleton have since landed). The largest unbuilt pillars are:
    `beater-stats` wiring into eval/gates plus its sequential/FWER-FDR layers, MCP

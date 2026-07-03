@@ -12,7 +12,7 @@ client is generated from one artifact: `sdks/openapi/beater-api.json` (itself
 generated from the Rust handlers in `crates/beater-api`). The drift gate
 (`scripts/check-contract-sync.sh`) and `oasdiff` in
 `.github/workflows/sdk-contract.yml` block any change that is not regenerated
-across the spec, all 8 SDK clients, the MCP tools, and the docs.
+across the spec, all 9 SDK clients, the MCP tools, and the docs.
 
 ## Pre-1.0 caveat
 

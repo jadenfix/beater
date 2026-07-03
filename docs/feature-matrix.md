@@ -8,7 +8,7 @@ requirement **R12.1** (license + open-core boundary are public before launch).
 
 ## License
 
-The entire repository — the `beaterd` server, all 8 SDK clients, the MCP tools,
+The entire repository — the `beaterd` server, all 9 SDK clients, the MCP tools,
 the CLI, and the dashboard — is licensed under **Apache-2.0**. There is no
 "open core that quietly relicenses." See [`GOVERNANCE.md`](../GOVERNANCE.md) for
 the durability promise.
@@ -27,7 +27,7 @@ never a fork of the data model or a paywall on the SDK protocol.
 | Capability | Open-source core (Apache-2.0, self-host) | Beater Cloud (future, hosted) |
 | --- | --- | --- |
 | All-in-one `beaterd` server | Yes | Yes (managed) |
-| OpenAPI `/v1` contract + 8 SDK clients | Yes | Yes (identical contract) |
+| OpenAPI `/v1` contract + 9 SDK clients | Yes | Yes (identical contract) |
 | MCP tools + `beater` CLI | Yes | Yes |
 | Zero-SDK OTLP ingest (HTTP + gRPC) | Yes | Yes |
 | SQLite + filesystem local backends | Yes | n/a (managed storage) |

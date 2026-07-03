@@ -29,7 +29,7 @@ DOC_TOKENS = {
     ],
     "required OSS capabilities": [
         "| All-in-one `beaterd` server | Yes | Yes (managed) |",
-        "| OpenAPI `/v1` contract + 8 SDK clients | Yes | Yes (identical contract) |",
+        "| OpenAPI `/v1` contract + 9 SDK clients | Yes | Yes (identical contract) |",
         "| Zero-SDK OTLP ingest (HTTP + gRPC) | Yes | Yes |",
         "| Eval / judge / gates / calibration | Yes | Yes |",
         "| Security primitives (scoped keys, audit events, redaction) | Yes | Yes (managed governance/export UX) |",

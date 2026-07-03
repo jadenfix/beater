@@ -16,7 +16,7 @@ cd "$root"
 GENERATOR_VERSION="7.11.0"
 GENERATOR_IMAGE="openapitools/openapi-generator-cli:v${GENERATOR_VERSION}"
 SPEC="sdks/openapi/beater-api.json"
-LANGS=(rust python typescript go java c cpp ruby)
+LANGS=(rust python typescript go java c cpp ruby php)
 
 # Generator backend: by default the pinned Docker image (CI path). When
 # BEATER_OPENAPI_GENERATOR_JAR points at the matching openapi-generator-cli JAR,

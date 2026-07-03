@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "sdks/conformance/surface-manifest.json"
-EXPECTED_GENERATED = ["c", "cpp", "go", "java", "python", "ruby", "rust", "typescript"]
+EXPECTED_GENERATED = ["c", "cpp", "go", "java", "php", "python", "ruby", "rust", "typescript"]
 EXPECTED_ERGONOMIC = ["go", "java", "python", "rust", "typescript"]
 
 

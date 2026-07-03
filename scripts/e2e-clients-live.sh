@@ -65,6 +65,7 @@ run_lang c "cmake --version"
 run_lang java "command -v mvn"
 run_lang cpp "cpprest_present"
 run_lang ruby "ruby --version"
+run_lang php "command -v composer"
 
 echo
 echo "================ live conformance summary ================"

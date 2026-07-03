@@ -19,7 +19,7 @@ so it runs against the queue's merged-result branch:
 
 - `backend.yml` — workspace tests + clippy/fmt (the gate that caught the original
   #343 break)
-- `sdk-contract.yml` — zero-drift contract gate (spec + 8 SDKs + semconv)
+- `sdk-contract.yml` — zero-drift contract gate (spec + 9 SDKs + semconv)
 - `frontend.yml` — dashboard tests/build + generated-client drift
 - `browser.yml` — browser-agent suite
 
@@ -36,7 +36,7 @@ admin (Settings → Branches → `main`, or via the API):
    queue*). Suggested settings: merge method **Squash**, build concurrency **5**,
    only merge if checks pass, group size 1–5.
 2. **Require status checks to pass before merging**, and mark these as required:
-   `backend tests`, `backend lint`, `contract in sync (semconv + 8 SDKs +
+   `backend tests`, `backend lint`, `contract in sync (semconv + 9 SDKs +
    additive-only)`, `frontend tests`, `frontend lint`, `browser tests`.
 3. **Require branches to be up to date before merging** — the belt-and-suspenders
    companion to the queue; with the queue on, GitHub enforces the up-to-date

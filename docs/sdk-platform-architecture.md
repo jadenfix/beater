@@ -11,7 +11,7 @@ crates/beater-api handlers  ──#[utoipa::path] + ToSchema on the REAL types�
                                        sdks/openapi/beater-api.json  (OpenAPI 3.1)
         +------------------+------------------+------------------+-----------------+
         v                  v                  v                  v                 v
-  8 SDK clients        /mcp tools          beater CLI         docs site      conformance
+  9 SDK clients        /mcp tools          beater CLI         docs site      conformance
   (openapi-generator)  (1 per operation)   (shared client)   (renders spec)  (live, per lang)
 ```
 
@@ -58,7 +58,7 @@ same auth -- so all four surfaces are literally the same operations.
   client against a running `beaterd`; MCP has parity tests vs direct HTTP; the
   ergonomic SDKs have unit + live E2E.
 - **Scalable:** adding an endpoint = annotate one handler + `regen-sdks.sh`; all
-  8 SDKs, MCP tools, CLI commands, and docs update from that single change.
+  9 SDKs, MCP tools, CLI commands, and docs update from that single change.
   Adding a language = one `sdks/config/<lang>.yaml`.
 
 ## Easy to use

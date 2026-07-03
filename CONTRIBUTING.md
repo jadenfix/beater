@@ -61,7 +61,7 @@ the affected docs in the same PR — most often:
 - [ARCHITECTURE.md](ARCHITECTURE.md) (the build-ready plan + §22 tests/verification),
 - [README.md](README.md) and this file (if a workflow or rule changes),
 - [SECURITY.md](SECURITY.md) (if the security surface changes),
-- the regenerated contract (spec → 8 SDKs → MCP → CLI → docs) for any `/v1` change.
+- the regenerated contract (spec → 9 SDKs → MCP → CLI → docs) for any `/v1` change.
 
 A crucial change that leaves the docs stale is **incomplete** and will be sent
 back. Docs are not a follow-up.
@@ -74,7 +74,7 @@ A PR cannot merge until **every** required CI gate passes. The gates (under
 | Workflow | What it guards |
 | --- | --- |
 | `backend` | `cargo fmt`, `cargo clippy -D warnings` (unwrap/expect denied), `cargo test --workspace` |
-| `sdk-contract` | spec ↔ served routes, spec ↔ all 8 SDK clients, semconv ↔ SDKs, `oasdiff` breaking-change check — **single-source-of-truth contract must show zero drift** |
+| `sdk-contract` | spec ↔ served routes, spec ↔ all 9 SDK clients, semconv ↔ SDKs, `oasdiff` breaking-change check — **single-source-of-truth contract must show zero drift** |
 | `storage-backends` | trait-conformance suite across SQLite / in-memory (and the wired columnar backends as they land) |
 | `browser` | browser-agent observability crates and the Playwright/CDP/WebDriver harness |
 | `frontend` | `web/dashboard` build, lint, and generated-OpenAPI-client checks |
@@ -83,7 +83,7 @@ A PR cannot merge until **every** required CI gate passes. The gates (under
 | `container-images` | multi-arch GHCR image build/publish for `beaterd`, dashboard, and demo runners |
 
 The **single-source-of-truth contract** — `sdks/openapi/beater-api.json` →
-8 SDK clients → MCP tools → CLI → docs (and `sdks/semconv/conventions.json` for
+9 SDK clients → MCP tools → CLI → docs (and `sdks/semconv/conventions.json` for
 span kinds/attributes) — must regenerate to **zero drift**. Run the full local
 check before you push:
 
@@ -125,7 +125,7 @@ the per-component test plan and the "how to verify it's running" commands, and
 
 ## The one rule: the OpenAPI contract is the single source of truth
 
-The HTTP API, the 8 SDK clients, the MCP tools, the CLI, and the docs are **all
+The HTTP API, the 9 SDK clients, the MCP tools, the CLI, and the docs are **all
 generated from one artifact** — `sdks/openapi/beater-api.json`, which is itself
 generated from the Rust handlers in `crates/beater-api`. Never hand-edit a
 generated client, the spec snapshot, or `sdks/semconv/conventions.json`.
@@ -143,7 +143,7 @@ Do all of this in the same change (CI enforces it — see below):
 2. **Regenerate everything from the contract** — one command:
    ```bash
    cargo xtask regen-spec      # spec + dashboard snapshot
-   scripts/regen-sdks.sh       # 7 clients (+ reproducible C/C++ patches)
+   scripts/regen-sdks.sh       # 9 clients (+ reproducible C/C++ patches)
    cargo xtask regen-semconv   # sdks/semconv/conventions.json (if conventions changed)
    ```
 3. **If you touched span kinds / attribute keys**, change them ONLY in
@@ -157,7 +157,7 @@ Do all of this in the same change (CI enforces it — see below):
 scripts/check-contract-sync.sh
 ```
 
-This runs every drift gate: spec ↔ served routes, spec ↔ all 8 SDK clients,
+This runs every drift gate: spec ↔ served routes, spec ↔ all 9 SDK clients,
 the API-shape audit, and semantic-conventions ↔ all 5 SDKs. CI runs the same
 gates in `.github/workflows/sdk-contract.yml`, so **a handler change that isn't
 regenerated into the spec, SDKs, MCP tools, and docs cannot merge**, and

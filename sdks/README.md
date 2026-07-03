@@ -9,7 +9,7 @@ crates/beater-api handlers  (#[utoipa::path] + ToSchema on the real types)
             │  cargo run --example dump_openapi
             ▼
    sdks/openapi/beater-api.json   ← THE single source of truth
-   ├── sdks/clients/<lang>/   8 generated control-plane clients (Layer 1)
+   ├── sdks/clients/<lang>/   9 generated control-plane clients (Layer 1)
    ├── /mcp tools             one tool per operationId
    ├── beater api <op>        CLI generic invoker
    └── web/dashboard /docs    rendered API reference + tool catalog
@@ -20,7 +20,7 @@ crates/beater-api handlers  (#[utoipa::path] + ToSchema on the real types)
 **Layer 1 — generated control-plane clients** (`sdks/clients/<lang>/`): typed
 CRUD against `/v1` (datasets, experiments, gates, evals, judge, usage, audit,
 api-keys, traces read, …). Generated for **rust, python, typescript, go, java,
-c, cpp, ruby** by [`openapi-generator`](https://openapi-generator.tech) from the
+c, cpp, ruby, php** by [`openapi-generator`](https://openapi-generator.tech) from the
 spec.
 Resource **tags** become API classes and `removeOperationIdPrefix` yields clean
 methods — e.g. `datasets_create` → `DatasetsApi.create()`.
@@ -41,19 +41,19 @@ language that mirrors the server normalizer (`crates/beater-otlp`).
 
 ## Generation status
 
-All 8 Layer-1 clients **generate** from the spec, with correct tag-namespaced
+All 9 Layer-1 clients **generate** from the spec, with correct tag-namespaced
 shapes (verified: Go emits `DatasetsAPIService.Create()`, one API class per tag).
 Compile-clean status per toolchain:
 
 | Target | Generates | Compiles clean | Note |
 | --- | --- | --- | --- |
-| go, typescript, python, java, ruby | ✅ | ✅ (expected) | permissive `oneOf` handling |
+| go, typescript, python, java, ruby, php | ✅ | ✅ (expected) | permissive `oneOf` handling |
 | rust, cpp | ✅ | ⚠️ needs polish | the `EvaluatorKind` mixed `oneOf` (string + object variants) trips the Rust/C++ enum templates; the committed C/C++ `sdks/patches/*.patch` re-apply the fix reproducibly after each regen |
 
 ## Regenerating (zero-drift)
 
 ```bash
-scripts/regen-sdks.sh          # regenerate spec + all 8 clients
+scripts/regen-sdks.sh          # regenerate spec + all 9 clients
 scripts/regen-sdks.sh --check  # CI mode: fail if anything is stale
 ```
 

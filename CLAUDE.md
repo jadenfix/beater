@@ -5,7 +5,7 @@ file keeps the non-negotiable contract-generation rule close to Claude Code.
 
 ## The contract is the single source of truth (do not break this)
 
-The HTTP API, the 8 SDK clients (`sdks/clients/*`), the MCP tools (`/mcp`), the
+The HTTP API, the 9 SDK clients (`sdks/clients/*`), the MCP tools (`/mcp`), the
 CLI (`beater api`), and the docs are ALL generated from one artifact —
 `sdks/openapi/beater-api.json`, generated from the Rust handlers in
 `crates/beater-api`. Span kinds + attribute keys come from one source too
@@ -16,7 +16,7 @@ span kind/attribute), you MUST regenerate everything in the same change:
 
 ```bash
 cargo xtask regen-spec      # OpenAPI spec + dashboard snapshot
-scripts/regen-sdks.sh       # all 8 generated clients (+ reproducible C/C++ patches)
+scripts/regen-sdks.sh       # all 9 generated clients (+ reproducible C/C++ patches)
 cargo xtask regen-semconv   # sdks/semconv/conventions.json (if conventions changed)
 ```
 

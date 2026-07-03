@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   contract:
-    name: contract in sync (semconv + 8 SDKs + additive-only)
+    name: contract in sync (semconv + 9 SDKs + additive-only)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,7 +46,7 @@ jobs:
           git diff --exit-code -- sdks/semconv/conventions.json
           python3 scripts/check-semconv-drift.py
 
-      - name: Spec + all 8 SDK clients in sync
+      - name: Spec + all 9 SDK clients in sync
         run: scripts/regen-sdks.sh --check
 
       - name: API shape consistency audit

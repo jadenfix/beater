@@ -28,7 +28,7 @@ instrument agent → inspect trace/span tree → promote failure to dataset
 ```
 
 Ingest is plain OpenTelemetry, so a stock OTEL exporter works with no Beater-specific
-code. The HTTP API, 8 SDK clients, MCP tools, and CLI are all generated from one
+code. The HTTP API, 9 SDK clients, MCP tools, and CLI are all generated from one
 OpenAPI contract, so they never drift.
 
 ## Quickstart

@@ -15,7 +15,7 @@ pipeline (see [CLAUDE.md](../CLAUDE.md)):
 crates/beater-composio          → typed Composio v3 client (ComposioClient trait)
 crates/beater-api  /v1/connectors → 6 handlers (#[utoipa::path])
    → cargo xtask regen-spec      → OpenAPI + dashboard snapshot
-   → scripts/regen-sdks.sh       → 8 SDK clients
+   → scripts/regen-sdks.sh       → 9 SDK clients
    → beater-mcp build_tools()    → 6 MCP tools (auto, no hand-mirror)
 ```
 

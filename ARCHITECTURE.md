@@ -192,9 +192,9 @@ Primary source links:
 - https://vercel.com/docs/queues
 - https://vercel.com/docs/queues/poll-mode
 
-### 3.3 Deployment & Distribution (server, docs, 8 SDKs, MCP, CLI)
+### 3.3 Deployment & Distribution (server, docs, 9 SDKs, MCP, CLI)
 
-Beater is not one artifact — it is a server, a documentation site, eight
+Beater is not one artifact — it is a server, a documentation site, nine
 generated SDK clients plus a native Rust SDK, an MCP server, and a CLI. Each is
 built, versioned, published, and deployed differently, but they all derive from
 the same contract (the `CLAUDE.md` single-source-of-truth rule), so they cannot
@@ -205,7 +205,7 @@ drift. What is **[built]** today vs **[planned]** is marked.
 | **`beaterd` server** (+ `beaterctl`) | Rust workspace, multi-stage `cargo-chef` Dockerfile | multi-arch GHCR image (`container-images` workflow); also a raw binary | git SHA tag per build; semver tag at release | OSS: `docker compose up`. Hosted: Rust cells (§3.2). | [built] |
 | **Dashboard** | `web/dashboard` (Next.js) consuming the generated TS client | GHCR image (`container-images`); Vercel deploy for hosted | git SHA / release tag | OSS: compose service on `:3000`. Hosted: Vercel (§3.2). | [built] |
 | **Docs site** | renders the committed `sdks/openapi/beater-api.json` | static site / hosted docs | tracks the spec version | published from `main`; the committed spec is the source so docs never drift | [planned site; spec is built] |
-| **8 generated SDK clients** (`sdks/clients/*`: py, ts, go, java, c, cpp, ruby, …) | OpenAPI spec via `scripts/regen-sdks.sh` (+ reproducible C/C++ patches) | committed in-repo; published to each language registry (PyPI / npm / pkg.go.dev / Maven / RubyGems, etc.) by `scripts/publish-sdk.sh` | spec/contract version; per-language package version | `pip`/`npm`/`go get`/Maven/`gem` by users; `sdk-contract` CI blocks any drift from the spec | clients [built]; registry publish [planned] |
+| **9 generated SDK clients** (`sdks/clients/*`: py, ts, go, java, c, cpp, ruby, php, …) | OpenAPI spec via `scripts/regen-sdks.sh` (+ reproducible C/C++ patches) | committed in-repo; published to each language registry (PyPI / npm / pkg.go.dev / Maven / RubyGems / Packagist, etc.) by `scripts/publish-sdk.sh` | spec/contract version; per-language package version | `pip`/`npm`/`go get`/Maven/`gem`/`composer` by users; `sdk-contract` CI blocks any drift from the spec | clients [built]; registry publish [planned] |
 | **Native Rust SDK** (`sdks/rust`) | hand-written, `tracing`/OTel layers; **excluded** from the cargo workspace | crates.io package | semver | `cargo add beater` (accelerator, not the adoption gate, §1 #2, §15) | [built in-repo; crates.io publish planned] |
 | **MCP server** (`beater-mcp`) | every `/v1` operation resolved from the spec at runtime, + composite recipes + RSI tools (§21) | served by `beaterd` at `POST /mcp`; local stdio via `beaterd mcp --stdio` | tracks the spec (operations resolved at runtime → auto-in-sync) | **stdio** for local clients (Claude Code/Cursor/Codex) and **streamable-HTTP + OAuth 2.1** for hosted (§21). | streamable-HTTP [built]; stdio tools/list smoke [built] |
 | **CLI** (`beaterctl`) | resolves `/v1` operations from the spec at runtime (`beater api`), plus local fixtures/smoke | the server image, and a standalone binary | tracks server/spec | `cargo run -p beaterctl` or the released binary; used in CI smoke + local dev | [built] |
@@ -405,7 +405,7 @@ beater/
   sdks/
     rust/                 # native Rust SDK + tracing layers (a standalone package,
                           #   excluded from the workspace; there is no beater-sdk crate)
-    clients/*             # 8 generated SDK clients (py/ts/go/java/c/cpp/ruby/...) from the OpenAPI spec
+    clients/*             # 9 generated SDK clients (py/ts/go/java/c/cpp/ruby/php/...) from the OpenAPI spec
     openapi/, semconv/    # single-source contract artifacts
   api/
     *.rs                  # [planned] Vercel Rust Function entrypoints where needed

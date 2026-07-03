@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-command drift test: proves the API contract, the 8 SDK clients, the MCP
+# One-command drift test: proves the API contract, the 9 SDK clients, the MCP
 # tools, the docs, and the semantic conventions are all in sync with the Rust
 # handlers. Run before pushing; CI (sdk-contract.yml) runs the same gates.
 #
@@ -14,7 +14,7 @@ step() { echo; echo "==> $1"; }
 step "1/5 spec == served routes (openapi_coverage)"
 cargo test -q -p beater-api --test openapi_coverage || fail=1
 
-step "2/5 spec + all 8 SDK clients are current (regen --check)"
+step "2/5 spec + all 9 SDK clients are current (regen --check)"
 # Needs the generator: Docker by default, or a local JAR via
 # BEATER_OPENAPI_GENERATOR_JAR. Skip with a loud message if neither is available
 # so local runs don't silently pass. CI always has Docker.
@@ -42,4 +42,4 @@ if [ "$fail" -ne 0 ]; then
   echo "CONTRACT DRIFT DETECTED -- regenerate (see CONTRIBUTING.md) and commit." >&2
   exit 1
 fi
-echo "No drift: API, 8 SDKs, MCP tools, docs, and conventions are all in sync."
+echo "No drift: API, 9 SDKs, MCP tools, docs, and conventions are all in sync."

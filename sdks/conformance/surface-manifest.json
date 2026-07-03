@@ -41,6 +41,15 @@
       ]
     },
     {
+      "language": "php",
+      "client_path": "sdks/clients/php",
+      "conformance_script": "sdks/conformance/php/run.sh",
+      "required_files": [
+        "sdks/conformance/php/composer.json",
+        "sdks/conformance/php/conformance.php"
+      ]
+    },
+    {
       "language": "python",
       "client_path": "sdks/clients/python",
       "conformance_script": "sdks/conformance/python/run.sh",

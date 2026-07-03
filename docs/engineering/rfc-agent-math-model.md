@@ -120,7 +120,7 @@ need more data" instead of a false green.
 
 ## Delivery note (unchanged, and still good)
 
-Per `CLAUDE.md`, any `/v1` endpoint auto-projects into MCP tools + 8 SDKs + CLI
+Per `CLAUDE.md`, any `/v1` endpoint auto-projects into MCP tools + 9 SDKs + CLI
 from one OpenAPI artifact. So the build-now items, once they're handlers in
 `crates/beater-api`, become agent-callable MCP tools for free — no separate math
 service, staying offline/self-hostable (R11). Item #1 has since crossed that

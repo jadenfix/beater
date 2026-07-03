@@ -1,0 +1,9 @@
+{
+    "description": "Live conformance harness for the generated PHP client",
+    "repositories": [
+        { "type": "path", "url": "../../clients/php", "options": { "symlink": false } }
+    ],
+    "require": {
+        "beater/client": "*"
+    }
+}

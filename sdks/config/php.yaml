@@ -1,0 +1,10 @@
+# openapi-generator config: PHP control-plane client (Layer 1).
+# hideGenerationTimestamp keeps output deterministic for the zero-drift gate.
+generatorName: php
+additionalProperties:
+  invokerPackage: Beater\Client
+  composerPackageName: beater/client
+  packageName: beater-client
+  artifactVersion: 0.1.0
+  licenseName: Apache-2.0
+  hideGenerationTimestamp: true
