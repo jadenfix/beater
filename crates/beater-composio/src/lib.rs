@@ -243,8 +243,24 @@ impl HttpComposioClient {
         }
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}/{}", self.base_url, path.trim_start_matches('/'))
+    /// Build an absolute endpoint URL, percent-encoding every path segment and
+    /// query parameter. Untrusted slugs / ids / limits go through the `url`
+    /// crate's segment and form encoders, so special characters (spaces, `&`,
+    /// `/`, `#`, unicode) can't inject into the path or query string.
+    fn endpoint(
+        &self,
+        segments: &[&str],
+        query: &[(&str, &str)],
+    ) -> Result<reqwest::Url, ComposioError> {
+        let mut url = reqwest::Url::parse(&self.base_url)
+            .map_err(|e| ComposioError::Transport(format!("invalid base url: {e}")))?;
+        url.path_segments_mut()
+            .map_err(|_| ComposioError::Transport("base url cannot be a base".to_string()))?
+            .extend(segments);
+        if !query.is_empty() {
+            url.query_pairs_mut().extend_pairs(query.iter().copied());
+        }
+        Ok(url)
     }
 
     /// Send a request and decode the JSON body into `T`, mapping Composio's
@@ -272,21 +288,22 @@ impl HttpComposioClient {
         serde_json::from_str(&body).map_err(|e| ComposioError::Decode(e.to_string()))
     }
 
-    fn get(&self, path: &str) -> reqwest::RequestBuilder {
-        self.http.get(self.url(path))
+    fn get(&self, url: reqwest::Url) -> reqwest::RequestBuilder {
+        self.http.get(url)
     }
 
-    fn post_json(&self, path: &str, body: &Value) -> reqwest::RequestBuilder {
-        self.http.post(self.url(path)).json(body)
+    fn post_json(&self, url: reqwest::Url, body: &Value) -> reqwest::RequestBuilder {
+        self.http.post(url).json(body)
     }
 
     /// Find an existing Composio-managed auth config for a toolkit, or create
     /// one. Returns the auth config id (`ac_…`).
     async fn ensure_auth_config(&self, toolkit_slug: &str) -> Result<String, ComposioError> {
         let existing: AuthConfigList = self
-            .send(self.get(&format!(
-                "auth_configs?toolkit_slug={toolkit_slug}&limit=10"
-            )))
+            .send(self.get(self.endpoint(
+                &["auth_configs"],
+                &[("toolkit_slug", toolkit_slug), ("limit", "10")],
+            )?))
             .await?;
         if let Some(id) = existing
             .items
@@ -298,7 +315,7 @@ impl HttpComposioClient {
         }
         let created: CreateAuthConfigResponse = self
             .send(self.post_json(
-                "auth_configs",
+                self.endpoint(&["auth_configs"], &[])?,
                 &serde_json::json!({
                     "toolkit": { "slug": toolkit_slug },
                     "auth_config": { "type": "use_composio_managed_auth" },
@@ -313,7 +330,7 @@ impl HttpComposioClient {
 impl ComposioClient for HttpComposioClient {
     async fn list_toolkits(&self, limit: u32) -> Result<Vec<Toolkit>, ComposioError> {
         let list: ToolkitList = self
-            .send(self.get(&format!("toolkits?limit={limit}")))
+            .send(self.get(self.endpoint(&["toolkits"], &[("limit", &limit.to_string())])?))
             .await?;
         Ok(list.items.into_iter().map(Toolkit::from).collect())
     }
@@ -324,13 +341,18 @@ impl ComposioClient for HttpComposioClient {
         limit: u32,
     ) -> Result<Vec<ConnectorTool>, ComposioError> {
         let list: ToolList = self
-            .send(self.get(&format!("tools?toolkit_slug={toolkit_slug}&limit={limit}")))
+            .send(self.get(self.endpoint(
+                &["tools"],
+                &[("toolkit_slug", toolkit_slug), ("limit", &limit.to_string())],
+            )?))
             .await?;
         Ok(list.items.into_iter().map(ConnectorTool::from).collect())
     }
 
     async fn get_tool(&self, tool_slug: &str) -> Result<ConnectorTool, ComposioError> {
-        let tool: WireTool = self.send(self.get(&format!("tools/{tool_slug}"))).await?;
+        let tool: WireTool = self
+            .send(self.get(self.endpoint(&["tools", tool_slug], &[])?))
+            .await?;
         Ok(ConnectorTool::from(tool))
     }
 
@@ -342,7 +364,7 @@ impl ComposioClient for HttpComposioClient {
         let auth_config_id = self.ensure_auth_config(toolkit_slug).await?;
         let link: ConnectionLink = self
             .send(self.post_json(
-                "connected_accounts/link",
+                self.endpoint(&["connected_accounts", "link"], &[])?,
                 &serde_json::json!({
                     "auth_config_id": auth_config_id,
                     "user_id": user_id,
@@ -358,9 +380,10 @@ impl ComposioClient for HttpComposioClient {
         user_id: &str,
     ) -> Result<ConnectionStatus, ComposioError> {
         let list: ConnectedAccountList = self
-            .send(self.get(&format!(
-                "connected_accounts?user_ids={user_id}&toolkit_slugs={toolkit_slug}"
-            )))
+            .send(self.get(self.endpoint(
+                &["connected_accounts"],
+                &[("user_ids", user_id), ("toolkit_slugs", toolkit_slug)],
+            )?))
             .await?;
         match list.items.into_iter().next() {
             Some(acct) => Ok(ConnectionStatus {
@@ -381,7 +404,7 @@ impl ComposioClient for HttpComposioClient {
     ) -> Result<ToolExecution, ComposioError> {
         let exec: ToolExecution = self
             .send(self.post_json(
-                &format!("tools/execute/{tool_slug}"),
+                self.endpoint(&["tools", "execute", tool_slug], &[])?,
                 &serde_json::json!({ "user_id": user_id, "arguments": arguments }),
             ))
             .await?;
@@ -613,6 +636,43 @@ mod tests {
         assert!(!not.connected);
         assert_eq!(not.status, "not_connected");
         assert_eq!(not.connected_account_id, None);
+    }
+
+    #[test]
+    fn endpoint_percent_encodes_path_segments() {
+        let client = HttpComposioClient::with_base_url("k", "https://example.com/api/v3");
+        // Special characters in a tool/toolkit slug must not escape the segment.
+        let url = client
+            .endpoint(&["tools", "a b/c#世界"], &[])
+            .expect("build url");
+        let s = url.as_str();
+        assert!(s.starts_with("https://example.com/api/v3/tools/"));
+        // space -> %20, / -> %2F, # -> %23 (no path injection).
+        assert!(s.contains("a%20b%2Fc%23"), "unexpected encoding: {s}");
+        assert!(!s.contains("a b/c#"));
+        // Unicode is percent-encoded, never left raw in the path.
+        assert!(!url.path().contains('世'));
+    }
+
+    #[test]
+    fn endpoint_percent_encodes_query_params() {
+        let client = HttpComposioClient::with_base_url("k", "https://example.com/api/v3");
+        let url = client
+            .endpoint(
+                &["tools"],
+                &[("toolkit_slug", "a b&c/#世"), ("user_id", "x&y=z")],
+            )
+            .expect("build url");
+        let s = url.as_str();
+        // Raw space + separator can't leak: the only literal '&' is our pair
+        // separator, so a value containing '&' can't inject a new parameter.
+        assert!(!s.contains("a b&c"));
+        assert_eq!(s.matches('&').count(), 1, "query injection possible: {s}");
+        // Values round-trip exactly through the encoder/decoder.
+        let q: std::collections::HashMap<String, String> =
+            url.query_pairs().into_owned().collect();
+        assert_eq!(q.get("toolkit_slug").map(String::as_str), Some("a b&c/#世"));
+        assert_eq!(q.get("user_id").map(String::as_str), Some("x&y=z"));
     }
 
     #[test]
