@@ -13,7 +13,7 @@ use tantivy::schema::{
     Field, IndexRecordOption, Schema, TantivyDocument, Value, STORED, STRING, TEXT,
 };
 use tantivy::tokenizer::TokenStream;
-use tantivy::{doc, Index, IndexWriter, Term};
+use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
 
 #[async_trait]
 pub trait SearchIndex: Send + Sync {
@@ -109,21 +109,61 @@ impl SearchIndex for NoopSearchIndex {
     }
 }
 
+/// Tunables for indexing and query behaviour.  `Default` reproduces the
+/// historical hardcoded constants exactly, so existing callers are unchanged.
+#[derive(Clone, Debug)]
+pub struct SearchIndexConfig {
+    /// Heap budget (bytes) handed to the Tantivy writer.
+    pub writer_heap_bytes: usize,
+    /// Result limit used when a request omits one.
+    pub default_limit: u32,
+    /// Upper bound the requested/default limit is clamped to.
+    pub max_limit: u32,
+    /// When `true`, `index_spans` commits on every call (historical behaviour).
+    /// When `false`, callers must invoke [`TantivySearchIndex::commit`] to make
+    /// added documents searchable, amortising commit cost across batches.
+    pub commit_on_index: bool,
+}
+
+impl Default for SearchIndexConfig {
+    fn default() -> Self {
+        Self {
+            writer_heap_bytes: 50_000_000,
+            default_limit: 50,
+            max_limit: 200,
+            commit_on_index: true,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct TantivySearchIndex {
     index: Index,
     fields: SearchFields,
     writer: Arc<Mutex<IndexWriter>>,
+    reader: IndexReader,
+    config: SearchIndexConfig,
 }
 
 impl TantivySearchIndex {
     pub fn in_memory() -> anyhow::Result<Self> {
+        Self::in_memory_with_config(SearchIndexConfig::default())
+    }
+
+    pub fn in_memory_with_config(config: SearchIndexConfig) -> anyhow::Result<Self> {
         let (schema, fields) = build_schema();
         let index = Index::create_in_ram(schema);
-        Self::from_index(index, fields)
+        Self::from_index(index, fields, config)
     }
 
     pub fn open_or_create(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        Self::open_or_create_with_config(path, SearchIndexConfig::default())
+    }
+
+    pub fn open_or_create_with_config(
+        path: impl AsRef<Path>,
+        config: SearchIndexConfig,
+    ) -> anyhow::Result<Self> {
         let path = path.as_ref();
         std::fs::create_dir_all(path)
             .with_context(|| format!("create search index dir {}", path.display()))?;
@@ -133,16 +173,49 @@ impl TantivySearchIndex {
             Err(_) => Index::create_in_dir(path, schema)
                 .with_context(|| format!("create tantivy search index in {}", path.display()))?,
         };
-        Self::from_index(index, fields)
+        Self::from_index(index, fields, config)
     }
 
-    fn from_index(index: Index, fields: SearchFields) -> anyhow::Result<Self> {
-        let writer = index.writer(50_000_000).context("create tantivy writer")?;
+    fn from_index(
+        index: Index,
+        fields: SearchFields,
+        config: SearchIndexConfig,
+    ) -> anyhow::Result<Self> {
+        let writer = index
+            .writer(config.writer_heap_bytes)
+            .context("create tantivy writer")?;
+        let reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::OnCommitWithDelay)
+            .try_into()
+            .context("create tantivy reader")?;
         Ok(Self {
             index,
             fields,
             writer: Arc::new(Mutex::new(writer)),
+            reader,
+            config,
         })
+    }
+
+    /// Commit any buffered document changes and reload the retained reader so
+    /// newly-committed documents are immediately searchable.  Used directly by
+    /// callers running with `commit_on_index == false`.
+    pub fn commit(&self) -> StoreResult<()> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|err| StoreError::backend(format!("search writer mutex poisoned: {err}")))?;
+        self.commit_locked(&mut writer)
+    }
+
+    fn commit_locked(&self, writer: &mut IndexWriter) -> StoreResult<()> {
+        writer.commit().context("commit search index").into_store()?;
+        self.reader
+            .reload()
+            .context("reload search reader")
+            .into_store()?;
+        Ok(())
     }
 }
 
@@ -176,22 +249,19 @@ impl SearchIndex for TantivySearchIndex {
                 ))
                 .map_err(StoreError::backend)?;
         }
-        writer
-            .commit()
-            .context("commit search index")
-            .into_store()?;
+        if self.config.commit_on_index {
+            self.commit_locked(&mut writer)?;
+        }
         Ok(())
     }
 
     async fn search(&self, query: SearchRequest) -> StoreResult<SearchResponse> {
-        let reader = self
-            .index
-            .reader()
-            .context("open search reader")
-            .into_store()?;
-        let searcher = reader.searcher();
+        let searcher = self.reader.searcher();
         let parsed = self.filtered_query(&query)?;
-        let limit = query.limit.unwrap_or(50).clamp(1, 200);
+        let limit = query
+            .limit
+            .unwrap_or(self.config.default_limit)
+            .clamp(1, self.config.max_limit);
         let top_docs = searcher
             .search(
                 parsed.as_ref(),
@@ -1720,6 +1790,152 @@ mod tests {
         assert_eq!(response.hits.len(), 1);
         assert_eq!(response.hits[0].trace_id, "helper-trace");
         assert_eq!(response.hits[0].span_id, "helper-span");
+    }
+
+    /// A custom `SearchIndexConfig` is honoured: `max_limit` clamps an
+    /// over-large requested limit, and `default_limit` applies when the request
+    /// omits a limit.
+    #[tokio::test]
+    async fn custom_config_limits_are_honored() {
+        let config = SearchIndexConfig {
+            default_limit: 3,
+            max_limit: 5,
+            ..SearchIndexConfig::default()
+        };
+        let index = TantivySearchIndex::in_memory_with_config(config)
+            .unwrap_or_else(|err| panic!("{err}"));
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        let spans: Vec<_> = (0..20)
+            .map(|i| {
+                fixture_span(
+                    &tenant,
+                    &format!("trace-{i}"),
+                    &format!("span-{i}"),
+                    "needle",
+                    SpanStatus::Ok,
+                )
+            })
+            .collect();
+        index
+            .index_spans(&spans)
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        // Requested limit above max_limit clamps to max_limit.
+        let clamped = index
+            .search(SearchRequest {
+                text: "needle".to_string(),
+                limit: Some(9_999),
+                ..SearchRequest::default_for_tenant(tenant.clone())
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(clamped.hits.len(), 5);
+
+        // No limit supplied falls back to default_limit.
+        let defaulted = index
+            .search(SearchRequest {
+                text: "needle".to_string(),
+                limit: None,
+                ..SearchRequest::default_for_tenant(tenant)
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(defaulted.hits.len(), 3);
+    }
+
+    /// The retained reader is reused across searches and still reflects
+    /// documents committed after an earlier search (default immediate commit).
+    #[tokio::test]
+    async fn reader_reuse_sees_freshly_committed_docs() {
+        let index = TantivySearchIndex::in_memory().unwrap_or_else(|err| panic!("{err}"));
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        index
+            .index_spans(&[fixture_span(
+                &tenant,
+                "trace-first",
+                "span-first",
+                "needle",
+                SpanStatus::Ok,
+            )])
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let first = index
+            .search(SearchRequest {
+                text: "needle".to_string(),
+                limit: Some(10),
+                ..SearchRequest::default_for_tenant(tenant.clone())
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(first.hits.len(), 1);
+
+        index
+            .index_spans(&[fixture_span(
+                &tenant,
+                "trace-second",
+                "span-second",
+                "needle",
+                SpanStatus::Ok,
+            )])
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let second = index
+            .search(SearchRequest {
+                text: "needle".to_string(),
+                limit: Some(10),
+                ..SearchRequest::default_for_tenant(tenant)
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(second.hits.len(), 2);
+    }
+
+    /// With `commit_on_index == false`, indexed documents are not searchable
+    /// until an explicit `commit()`; after committing they appear.
+    #[tokio::test]
+    async fn deferred_commit_defers_visibility_until_commit() {
+        let config = SearchIndexConfig {
+            commit_on_index: false,
+            ..SearchIndexConfig::default()
+        };
+        let index = TantivySearchIndex::in_memory_with_config(config)
+            .unwrap_or_else(|err| panic!("{err}"));
+        let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
+        index
+            .index_spans(&[fixture_span(
+                &tenant,
+                "trace-deferred",
+                "span-deferred",
+                "needle",
+                SpanStatus::Ok,
+            )])
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        let before = index
+            .search(SearchRequest {
+                text: "needle".to_string(),
+                limit: Some(10),
+                ..SearchRequest::default_for_tenant(tenant.clone())
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert!(before.hits.is_empty());
+
+        index.commit().unwrap_or_else(|err| panic!("{err}"));
+
+        let after = index
+            .search(SearchRequest {
+                text: "needle".to_string(),
+                limit: Some(10),
+                ..SearchRequest::default_for_tenant(tenant)
+            })
+            .await
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(after.hits.len(), 1);
     }
 
     impl SearchRequest {
