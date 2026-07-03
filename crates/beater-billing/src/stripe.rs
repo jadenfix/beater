@@ -201,11 +201,14 @@ impl<C: Clock> StripeSync<C> {
             serde_json::from_slice(raw).map_err(|err| StripeError::Malformed(err.to_string()))?;
         let object_id = event.data.object.id.clone();
 
-        // 2. Dedup by event id (UNIQUE). The insert still guards against
-        //    concurrent double-processing, but a repeat delivery is only a true
-        //    duplicate once the event was actually *applied*. If a prior
-        //    `apply_effect` failed the event is recorded-but-unapplied, so we
-        //    fall through and retry rather than silently dropping the effect.
+        // 2. Dedup by event id. A repeat delivery is only a true duplicate once
+        //    the event was actually *applied*. If a prior `apply_effect` failed
+        //    the event is recorded-but-unapplied, so we fall through and retry
+        //    rather than silently dropping the effect. This is safe because
+        //    `apply_effect` is idempotent — lifecycle status writes are no-ops
+        //    on unchanged state and the adjustment insert is `INSERT OR IGNORE`
+        //    on a deterministic id — so retrying, or a concurrent redelivery
+        //    that races between record and mark, cannot double-apply.
         let newly_recorded = self
             .store
             .record_stripe_event(&event.id, &object_id, event.created)
@@ -269,8 +272,10 @@ impl<C: Clock> StripeSync<C> {
         }
 
         // Always record an append-only adjustment capturing the synced event, so
-        // the local ledger reflects exactly the events Stripe applied. Exactly
-        // one is written per event id thanks to the dedup guard above.
+        // the local ledger reflects exactly the events Stripe applied. The id is
+        // deterministic (`adj_stripe_{event_id}`) and the store uses
+        // `INSERT OR IGNORE`, so exactly one row exists per event id even under
+        // apply retries or concurrent redelivery.
         let amount = Money::usd_micros(object.amount_micros.unwrap_or(0));
         let kind = match event.event_type.as_str() {
             "invoice.payment_succeeded" => AdjustmentKind::Charge,
@@ -340,6 +345,7 @@ mod tests {
     struct FailingAppendStore {
         inner: SqliteBillingStore,
         remaining_failures: Mutex<u32>,
+        remaining_mark_failures: Mutex<u32>,
     }
 
     impl FailingAppendStore {
@@ -347,6 +353,18 @@ mod tests {
             Self {
                 inner,
                 remaining_failures: Mutex::new(failures),
+                remaining_mark_failures: Mutex::new(0),
+            }
+        }
+
+        /// Let `append_adjustment` succeed but fail the first `failures`
+        /// `mark_stripe_event_applied` calls — the window where the adjustment
+        /// row is already written but the event is not yet marked applied.
+        fn failing_mark(inner: SqliteBillingStore, failures: u32) -> Self {
+            Self {
+                inner,
+                remaining_failures: Mutex::new(0),
+                remaining_mark_failures: Mutex::new(failures),
             }
         }
     }
@@ -472,6 +490,18 @@ mod tests {
             self.inner.last_applied_stripe_created(object_id).await
         }
         async fn mark_stripe_event_applied(&self, event_id: &str) -> beater_store::StoreResult<()> {
+            {
+                let mut remaining = self
+                    .remaining_mark_failures
+                    .lock()
+                    .map_err(|err| beater_store::StoreError::backend(err.to_string()))?;
+                if *remaining > 0 {
+                    *remaining -= 1;
+                    return Err(beater_store::StoreError::backend(
+                        "simulated transient mark-applied failure",
+                    ));
+                }
+            }
             self.inner.mark_stripe_event_applied(event_id).await
         }
         async fn stripe_event_applied(&self, event_id: &str) -> beater_store::StoreResult<bool> {
@@ -698,6 +728,55 @@ mod tests {
             inner.list_adjustments(&org).await?.len(),
             1,
             "the charge is recovered, not lost"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn adjustment_written_then_mark_fails_recovers_without_poison_pill() -> anyhow::Result<()>
+    {
+        // The dangerous window: apply_effect fully succeeds (adjustment row is
+        // written) but the subsequent mark_stripe_event_applied fails/crashes.
+        // The event is recorded-but-unapplied AND the deterministic adjustment
+        // row already exists. Redelivery re-runs apply_effect, so the adjustment
+        // insert must be idempotent (INSERT OR IGNORE) rather than a PRIMARY KEY
+        // violation that would 500 on every future redelivery (a poison pill).
+        let inner = SqliteBillingStore::in_memory()?;
+        let store = Arc::new(FailingAppendStore::failing_mark(inner.clone(), 1));
+        let sync = sync(store)?;
+        let org = OrganizationId::new("org-1").map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+        let body = event_json("evt_mark", 1000, "invoice.payment_succeeded", "org-1");
+        let header = signed_header(&body)?;
+
+        // First delivery: adjustment is written, then mark fails -> error.
+        let first = sync.apply_event(&body, &header).await;
+        assert!(first.is_err(), "first delivery fails at mark-applied");
+        assert_eq!(
+            inner.list_adjustments(&org).await?.len(),
+            1,
+            "the adjustment row was written before mark failed"
+        );
+        assert!(
+            !inner.stripe_event_applied("evt_mark").await?,
+            "event recorded but not yet marked applied"
+        );
+
+        // Redelivery must recover, not permanently 500 on the PRIMARY KEY.
+        let second = sync.apply_event(&body, &header).await?;
+        assert_eq!(
+            second,
+            EventApplication::Applied,
+            "redelivery recovers instead of poisoning on the duplicate adjustment id"
+        );
+        assert_eq!(
+            inner.list_adjustments(&org).await?.len(),
+            1,
+            "idempotent insert keeps exactly one adjustment"
+        );
+        assert!(
+            inner.stripe_event_applied("evt_mark").await?,
+            "event is now marked applied"
         );
         Ok(())
     }

@@ -210,7 +210,10 @@ impl TantivySearchIndex {
     }
 
     fn commit_locked(&self, writer: &mut IndexWriter) -> StoreResult<()> {
-        writer.commit().context("commit search index").into_store()?;
+        writer
+            .commit()
+            .context("commit search index")
+            .into_store()?;
         self.reader
             .reload()
             .context("reload search reader")
@@ -1802,8 +1805,8 @@ mod tests {
             max_limit: 5,
             ..SearchIndexConfig::default()
         };
-        let index = TantivySearchIndex::in_memory_with_config(config)
-            .unwrap_or_else(|err| panic!("{err}"));
+        let index =
+            TantivySearchIndex::in_memory_with_config(config).unwrap_or_else(|err| panic!("{err}"));
         let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
         let spans: Vec<_> = (0..20)
             .map(|i| {
@@ -1901,8 +1904,8 @@ mod tests {
             commit_on_index: false,
             ..SearchIndexConfig::default()
         };
-        let index = TantivySearchIndex::in_memory_with_config(config)
-            .unwrap_or_else(|err| panic!("{err}"));
+        let index =
+            TantivySearchIndex::in_memory_with_config(config).unwrap_or_else(|err| panic!("{err}"));
         let tenant = TenantId::new("tenant").unwrap_or_else(|err| panic!("{err}"));
         index
             .index_spans(&[fixture_span(

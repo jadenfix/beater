@@ -575,9 +575,15 @@ impl BillingStore for SqliteBillingStore {
     ) -> StoreResult<BillingAdjustment> {
         let adjustment_json = encode(&adjustment, "adjustment")?;
         let connection = self.lock()?;
+        // `INSERT OR IGNORE`: adjustment_id is the PRIMARY KEY and, on the Stripe
+        // sync path, a deterministic function of the event id
+        // (`adj_stripe_{event_id}`). Re-appending the same adjustment — e.g. a
+        // webhook redelivery whose prior apply inserted the row but then failed
+        // to mark the event applied — is therefore an idempotent no-op instead
+        // of a PRIMARY KEY violation that would poison every future redelivery.
         connection
             .execute(
-                "INSERT INTO billing_adjustments
+                "INSERT OR IGNORE INTO billing_adjustments
                    (adjustment_id, org_id, kind, created_at, adjustment_json)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![

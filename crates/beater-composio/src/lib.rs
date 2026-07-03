@@ -343,7 +343,10 @@ impl ComposioClient for HttpComposioClient {
         let list: ToolList = self
             .send(self.get(self.endpoint(
                 &["tools"],
-                &[("toolkit_slug", toolkit_slug), ("limit", &limit.to_string())],
+                &[
+                    ("toolkit_slug", toolkit_slug),
+                    ("limit", &limit.to_string()),
+                ],
             )?))
             .await?;
         Ok(list.items.into_iter().map(ConnectorTool::from).collect())
@@ -669,8 +672,7 @@ mod tests {
         assert!(!s.contains("a b&c"));
         assert_eq!(s.matches('&').count(), 1, "query injection possible: {s}");
         // Values round-trip exactly through the encoder/decoder.
-        let q: std::collections::HashMap<String, String> =
-            url.query_pairs().into_owned().collect();
+        let q: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
         assert_eq!(q.get("toolkit_slug").map(String::as_str), Some("a b&c/#世"));
         assert_eq!(q.get("user_id").map(String::as_str), Some("x&y=z"));
     }
