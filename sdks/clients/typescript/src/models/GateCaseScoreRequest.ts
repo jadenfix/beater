@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { Split } from './Split';
+import {
+    SplitFromJSON,
+    SplitFromJSONTyped,
+    SplitToJSON,
+    SplitToJSONTyped,
+} from './Split';
+
 /**
  * One case's paired baseline-vs-candidate score, tagged with its split.
  * @export
@@ -33,11 +41,13 @@ export interface GateCaseScoreRequest {
     candidateScore: number;
     /**
      * The split this case belongs to: `train`, `val`, or `test`.
-     * @type {string}
+     * @type {Split}
      * @memberof GateCaseScoreRequest
      */
-    split: string;
+    split: Split;
 }
+
+
 
 /**
  * Check if a given object implements the GateCaseScoreRequest interface.
@@ -61,7 +71,7 @@ export function GateCaseScoreRequestFromJSONTyped(json: any, ignoreDiscriminator
         
         'baselineScore': json['baseline_score'],
         'candidateScore': json['candidate_score'],
-        'split': json['split'],
+        'split': SplitFromJSON(json['split']),
     };
 }
 
@@ -78,7 +88,7 @@ export function GateCaseScoreRequestToJSONTyped(value?: GateCaseScoreRequest | n
         
         'baseline_score': value['baselineScore'],
         'candidate_score': value['candidateScore'],
-        'split': value['split'],
+        'split': SplitToJSON(value['split']),
     };
 }
 

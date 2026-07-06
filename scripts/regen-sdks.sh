@@ -71,13 +71,55 @@ for lang in "${LANGS[@]}"; do
     fi
   fi
 
-  # The Java generator emits a trailing space in this regenerated enum header.
-  # Normalize the touched file so `regen --check` and `git diff --check` agree.
-  if [[ "$lang" == "java" ]]; then
-    java_audit_action="$out/src/main/java/ai/beater/client/model/AuditAction.java"
-    if [[ -f "$java_audit_action" ]]; then
-      perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "$java_audit_action"
-    fi
+  # The generators emit incidental trailing spaces in a few regenerated docs /
+  # sample tests for enum-valued RSI gate fields. Normalize only those known
+  # files so `regen --check` and `git diff --check` agree without rewriting the
+  # rest of the checked-in clients.
+  whitespace_files=()
+  case "$lang" in
+    c)
+      whitespace_files=(
+        "$out/docs/gate_candidate_change_request.md"
+        "$out/docs/gate_case_score_request.md"
+        "$out/docs/gate_comparison_response.md"
+      )
+      ;;
+    go)
+      whitespace_files=(
+        "$out/docs/GateCandidateChangeRequest.md"
+        "$out/docs/GateCaseScoreRequest.md"
+        "$out/docs/GateComparisonResponse.md"
+        "$out/docs/RsiAPI.md"
+      )
+      ;;
+    java)
+      whitespace_files=(
+        "$out/src/main/java/ai/beater/client/model/AuditAction.java"
+      )
+      ;;
+    python)
+      whitespace_files=(
+        "$out/docs/GateCandidateChangeRequest.md"
+        "$out/docs/GateCaseScoreRequest.md"
+        "$out/docs/GateComparisonResponse.md"
+        "$out/test/test_gate_candidate_request.py"
+        "$out/test/test_gate_candidate_response.py"
+      )
+      ;;
+    rust)
+      whitespace_files=(
+        "$out/docs/GateCandidateChangeRequest.md"
+        "$out/docs/GateCaseScoreRequest.md"
+        "$out/docs/GateComparisonResponse.md"
+      )
+      ;;
+  esac
+  if (( ${#whitespace_files[@]} > 0 )); then
+    for generated_file in "${whitespace_files[@]}"; do
+      if [[ -f "$generated_file" ]]; then
+        perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "$generated_file"
+      fi
+    done
   fi
 done
 

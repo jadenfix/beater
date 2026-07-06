@@ -17,9 +17,10 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
 from typing import Any, ClassVar, Dict, List, Union
 from typing_extensions import Annotated
+from beater_client.models.gate_decision import GateDecision
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -31,7 +32,7 @@ class GateComparisonResponse(BaseModel):
     candidate_mean: Union[StrictFloat, StrictInt] = Field(description="Mean candidate score on the Test split.")
     ci_high: Union[StrictFloat, StrictInt] = Field(description="Upper bound of the delta confidence interval.")
     ci_low: Union[StrictFloat, StrictInt] = Field(description="Lower bound of the delta confidence interval.")
-    decision: StrictStr = Field(description="Gate decision: `pass`, `fail_regression`, or `inconclusive`.")
+    decision: GateDecision = Field(description="Gate decision: `pass`, `fail_regression`, or `inconclusive`.")
     delta: Union[StrictFloat, StrictInt] = Field(description="`candidate_mean − baseline_mean` on the Test split.")
     p_value: Union[StrictFloat, StrictInt] = Field(description="Two-sided p-value of the paired test.")
     sample_size: Annotated[int, Field(strict=True, ge=0)] = Field(description="Number of paired Test cases compared.")

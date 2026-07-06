@@ -19,14 +19,14 @@ import (
 // checks if the GateCandidateChangeRequest type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &GateCandidateChangeRequest{}
 
-// GateCandidateChangeRequest The candidate change being gated. `kind` and `proposed_by` are the RSI optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+// GateCandidateChangeRequest The candidate change being gated.
 type GateCandidateChangeRequest struct {
 	// Human-readable description of the proposed change.
 	Description string `json:"description"`
 	// The policy lever this change touches (e.g. `system_prompt`, `model_params`).
-	Kind string `json:"kind"`
+	Kind ChangeKind `json:"kind"`
 	// Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).
-	ProposedBy string `json:"proposed_by"`
+	ProposedBy OptimizerStrategy `json:"proposed_by"`
 	// Why the proposer believes this change helps (carried for audit).
 	Rationale string `json:"rationale"`
 	// The file / symbol / prompt the change targets.
@@ -39,7 +39,7 @@ type _GateCandidateChangeRequest GateCandidateChangeRequest
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewGateCandidateChangeRequest(description string, kind string, proposedBy string, rationale string, target string) *GateCandidateChangeRequest {
+func NewGateCandidateChangeRequest(description string, kind ChangeKind, proposedBy OptimizerStrategy, rationale string, target string) *GateCandidateChangeRequest {
 	this := GateCandidateChangeRequest{}
 	this.Description = description
 	this.Kind = kind
@@ -82,9 +82,9 @@ func (o *GateCandidateChangeRequest) SetDescription(v string) {
 }
 
 // GetKind returns the Kind field value
-func (o *GateCandidateChangeRequest) GetKind() string {
+func (o *GateCandidateChangeRequest) GetKind() ChangeKind {
 	if o == nil {
-		var ret string
+		var ret ChangeKind
 		return ret
 	}
 
@@ -93,7 +93,7 @@ func (o *GateCandidateChangeRequest) GetKind() string {
 
 // GetKindOk returns a tuple with the Kind field value
 // and a boolean to check if the value has been set.
-func (o *GateCandidateChangeRequest) GetKindOk() (*string, bool) {
+func (o *GateCandidateChangeRequest) GetKindOk() (*ChangeKind, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -101,14 +101,14 @@ func (o *GateCandidateChangeRequest) GetKindOk() (*string, bool) {
 }
 
 // SetKind sets field value
-func (o *GateCandidateChangeRequest) SetKind(v string) {
+func (o *GateCandidateChangeRequest) SetKind(v ChangeKind) {
 	o.Kind = v
 }
 
 // GetProposedBy returns the ProposedBy field value
-func (o *GateCandidateChangeRequest) GetProposedBy() string {
+func (o *GateCandidateChangeRequest) GetProposedBy() OptimizerStrategy {
 	if o == nil {
-		var ret string
+		var ret OptimizerStrategy
 		return ret
 	}
 
@@ -117,7 +117,7 @@ func (o *GateCandidateChangeRequest) GetProposedBy() string {
 
 // GetProposedByOk returns a tuple with the ProposedBy field value
 // and a boolean to check if the value has been set.
-func (o *GateCandidateChangeRequest) GetProposedByOk() (*string, bool) {
+func (o *GateCandidateChangeRequest) GetProposedByOk() (*OptimizerStrategy, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -125,7 +125,7 @@ func (o *GateCandidateChangeRequest) GetProposedByOk() (*string, bool) {
 }
 
 // SetProposedBy sets field value
-func (o *GateCandidateChangeRequest) SetProposedBy(v string) {
+func (o *GateCandidateChangeRequest) SetProposedBy(v OptimizerStrategy) {
 	o.ProposedBy = v
 }
 

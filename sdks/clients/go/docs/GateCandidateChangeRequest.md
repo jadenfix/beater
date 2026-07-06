@@ -4,17 +4,17 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**Description** | **string** | Human-readable description of the proposed change. | 
-**Kind** | **string** | The policy lever this change touches (e.g. &#x60;system_prompt&#x60;, &#x60;model_params&#x60;). | 
-**ProposedBy** | **string** | Which optimizer strategy emitted the candidate (e.g. &#x60;llm_rewrite&#x60;). | 
-**Rationale** | **string** | Why the proposer believes this change helps (carried for audit). | 
-**Target** | **string** | The file / symbol / prompt the change targets. | 
+**Description** | **string** | Human-readable description of the proposed change. |
+**Kind** | [**ChangeKind**](ChangeKind.md) | The policy lever this change touches (e.g. &#x60;system_prompt&#x60;, &#x60;model_params&#x60;). |
+**ProposedBy** | [**OptimizerStrategy**](OptimizerStrategy.md) | Which optimizer strategy emitted the candidate (e.g. &#x60;llm_rewrite&#x60;). |
+**Rationale** | **string** | Why the proposer believes this change helps (carried for audit). |
+**Target** | **string** | The file / symbol / prompt the change targets. |
 
 ## Methods
 
 ### NewGateCandidateChangeRequest
 
-`func NewGateCandidateChangeRequest(description string, kind string, proposedBy string, rationale string, target string, ) *GateCandidateChangeRequest`
+`func NewGateCandidateChangeRequest(description string, kind ChangeKind, proposedBy OptimizerStrategy, rationale string, target string, ) *GateCandidateChangeRequest`
 
 NewGateCandidateChangeRequest instantiates a new GateCandidateChangeRequest object
 This constructor will assign default values to properties that have it defined,
@@ -51,40 +51,40 @@ SetDescription sets Description field to given value.
 
 ### GetKind
 
-`func (o *GateCandidateChangeRequest) GetKind() string`
+`func (o *GateCandidateChangeRequest) GetKind() ChangeKind`
 
 GetKind returns the Kind field if non-nil, zero value otherwise.
 
 ### GetKindOk
 
-`func (o *GateCandidateChangeRequest) GetKindOk() (*string, bool)`
+`func (o *GateCandidateChangeRequest) GetKindOk() (*ChangeKind, bool)`
 
 GetKindOk returns a tuple with the Kind field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetKind
 
-`func (o *GateCandidateChangeRequest) SetKind(v string)`
+`func (o *GateCandidateChangeRequest) SetKind(v ChangeKind)`
 
 SetKind sets Kind field to given value.
 
 
 ### GetProposedBy
 
-`func (o *GateCandidateChangeRequest) GetProposedBy() string`
+`func (o *GateCandidateChangeRequest) GetProposedBy() OptimizerStrategy`
 
 GetProposedBy returns the ProposedBy field if non-nil, zero value otherwise.
 
 ### GetProposedByOk
 
-`func (o *GateCandidateChangeRequest) GetProposedByOk() (*string, bool)`
+`func (o *GateCandidateChangeRequest) GetProposedByOk() (*OptimizerStrategy, bool)`
 
 GetProposedByOk returns a tuple with the ProposedBy field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetProposedBy
 
-`func (o *GateCandidateChangeRequest) SetProposedBy(v string)`
+`func (o *GateCandidateChangeRequest) SetProposedBy(v OptimizerStrategy)`
 
 SetProposedBy sets ProposedBy field to given value.
 
@@ -131,5 +131,3 @@ SetTarget sets Target field to given value.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
-
-

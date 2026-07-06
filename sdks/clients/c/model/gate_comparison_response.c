@@ -10,7 +10,7 @@ static gate_comparison_response_t *gate_comparison_response_create_internal(
     double candidate_mean,
     double ci_high,
     double ci_low,
-    char *decision,
+    beater_api_gate_decision__e decision,
     double delta,
     double p_value,
     int sample_size
@@ -37,7 +37,7 @@ __attribute__((deprecated)) gate_comparison_response_t *gate_comparison_response
     double candidate_mean,
     double ci_high,
     double ci_low,
-    char *decision,
+    beater_api_gate_decision__e decision,
     double delta,
     double p_value,
     int sample_size
@@ -63,10 +63,6 @@ void gate_comparison_response_free(gate_comparison_response_t *gate_comparison_r
         return ;
     }
     listEntry_t *listEntry;
-    if (gate_comparison_response->decision) {
-        free(gate_comparison_response->decision);
-        gate_comparison_response->decision = NULL;
-    }
     free(gate_comparison_response);
 }
 
@@ -110,11 +106,16 @@ cJSON *gate_comparison_response_convertToJSON(gate_comparison_response_t *gate_c
 
 
     // gate_comparison_response->decision
-    if (!gate_comparison_response->decision) {
+    if (beater_api_gate_decision__NULL == gate_comparison_response->decision) {
         goto fail;
     }
-    if(cJSON_AddStringToObject(item, "decision", gate_comparison_response->decision) == NULL) {
-    goto fail; //String
+    cJSON *decision_local_JSON = gate_decision_convertToJSON(gate_comparison_response->decision);
+    if(decision_local_JSON == NULL) {
+        goto fail; // custom
+    }
+    cJSON_AddItemToObject(item, "decision", decision_local_JSON);
+    if(item->child == NULL) {
+        goto fail;
     }
 
 
@@ -155,6 +156,9 @@ fail:
 gate_comparison_response_t *gate_comparison_response_parseFromJSON(cJSON *gate_comparison_responseJSON){
 
     gate_comparison_response_t *gate_comparison_response_local_var = NULL;
+
+    // define the local variable for gate_comparison_response->decision
+    beater_api_gate_decision__e decision_local_nonprim = 0;
 
     // gate_comparison_response->baseline_mean
     cJSON *baseline_mean = cJSON_GetObjectItemCaseSensitive(gate_comparison_responseJSON, "baseline_mean");
@@ -226,10 +230,7 @@ gate_comparison_response_t *gate_comparison_response_parseFromJSON(cJSON *gate_c
     }
 
     
-    if(!cJSON_IsString(decision))
-    {
-    goto end; //String
-    }
+    decision_local_nonprim = gate_decision_parseFromJSON(decision); //custom
 
     // gate_comparison_response->delta
     cJSON *delta = cJSON_GetObjectItemCaseSensitive(gate_comparison_responseJSON, "delta");
@@ -282,7 +283,7 @@ gate_comparison_response_t *gate_comparison_response_parseFromJSON(cJSON *gate_c
         candidate_mean->valuedouble,
         ci_high->valuedouble,
         ci_low->valuedouble,
-        strdup(decision->valuestring),
+        decision_local_nonprim,
         delta->valuedouble,
         p_value->valuedouble,
         sample_size->valuedouble
@@ -290,6 +291,9 @@ gate_comparison_response_t *gate_comparison_response_parseFromJSON(cJSON *gate_c
 
     return gate_comparison_response_local_var;
 end:
+    if (decision_local_nonprim) {
+        decision_local_nonprim = 0;
+    }
     return NULL;
 
 }

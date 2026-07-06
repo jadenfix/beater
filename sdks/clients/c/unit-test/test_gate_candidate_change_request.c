@@ -23,16 +23,16 @@ gate_candidate_change_request_t* instantiate_gate_candidate_change_request(int i
   if (include_optional) {
     gate_candidate_change_request = gate_candidate_change_request_create(
       "0",
-      "0",
-      "0",
+      beater_api_gate_candidate_change_request__system_prompt,
+      beater_api_gate_candidate_change_request__llm_rewrite,
       "0",
       "0"
     );
   } else {
     gate_candidate_change_request = gate_candidate_change_request_create(
       "0",
-      "0",
-      "0",
+      beater_api_gate_candidate_change_request__system_prompt,
+      beater_api_gate_candidate_change_request__llm_rewrite,
       "0",
       "0"
     );

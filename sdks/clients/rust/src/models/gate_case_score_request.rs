@@ -22,12 +22,12 @@ pub struct GateCaseScoreRequest {
     pub candidate_score: f64,
     /// The split this case belongs to: `train`, `val`, or `test`.
     #[serde(rename = "split")]
-    pub split: String,
+    pub split: models::Split,
 }
 
 impl GateCaseScoreRequest {
     /// One case's paired baseline-vs-candidate score, tagged with its split.
-    pub fn new(baseline_score: f64, candidate_score: f64, split: String) -> GateCaseScoreRequest {
+    pub fn new(baseline_score: f64, candidate_score: f64, split: models::Split) -> GateCaseScoreRequest {
         GateCaseScoreRequest {
             baseline_score,
             candidate_score,

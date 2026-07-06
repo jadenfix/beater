@@ -36,6 +36,7 @@ docs/CalibrationsApi.md
 docs/CanonicalSpan.md
 docs/CaseExperimentScore.md
 docs/CaseOutputOverrideRequest.md
+docs/ChangeKind.md
 docs/ConnectConnectorRequest.md
 docs/ConnectionLink.md
 docs/ConnectionStatus.md
@@ -116,6 +117,7 @@ docs/Money.md
 docs/NativeIngestRequest.md
 docs/OnlineApi.md
 docs/OnlineSamplingPolicy.md
+docs/OptimizerStrategy.md
 docs/OtlpIngestOutcome.md
 docs/OverfitResponse.md
 docs/PageRunSummary.md
@@ -173,6 +175,7 @@ docs/SpanIoValueOneOf2.md
 docs/SpanIoValueOneOf3.md
 docs/SpanStatus.md
 docs/SpansApi.md
+docs/Split.md
 docs/StatisticalTest.md
 docs/SubmitReviewAnnotationHttpRequest.md
 docs/TenantScope.md
@@ -256,6 +259,7 @@ src/main/java/ai/beater/client/model/CalibrationReport.java
 src/main/java/ai/beater/client/model/CanonicalSpan.java
 src/main/java/ai/beater/client/model/CaseExperimentScore.java
 src/main/java/ai/beater/client/model/CaseOutputOverrideRequest.java
+src/main/java/ai/beater/client/model/ChangeKind.java
 src/main/java/ai/beater/client/model/ConnectConnectorRequest.java
 src/main/java/ai/beater/client/model/ConnectionLink.java
 src/main/java/ai/beater/client/model/ConnectionStatus.java
@@ -327,6 +331,7 @@ src/main/java/ai/beater/client/model/ModelRef.java
 src/main/java/ai/beater/client/model/Money.java
 src/main/java/ai/beater/client/model/NativeIngestRequest.java
 src/main/java/ai/beater/client/model/OnlineSamplingPolicy.java
+src/main/java/ai/beater/client/model/OptimizerStrategy.java
 src/main/java/ai/beater/client/model/OtlpIngestOutcome.java
 src/main/java/ai/beater/client/model/OverfitResponse.java
 src/main/java/ai/beater/client/model/PageRunSummary.java
@@ -377,6 +382,7 @@ src/main/java/ai/beater/client/model/SpanIoValueOneOf1.java
 src/main/java/ai/beater/client/model/SpanIoValueOneOf2.java
 src/main/java/ai/beater/client/model/SpanIoValueOneOf3.java
 src/main/java/ai/beater/client/model/SpanStatus.java
+src/main/java/ai/beater/client/model/Split.java
 src/main/java/ai/beater/client/model/StatisticalTest.java
 src/main/java/ai/beater/client/model/SubmitReviewAnnotationHttpRequest.java
 src/main/java/ai/beater/client/model/TenantScope.java
@@ -439,6 +445,7 @@ src/test/java/ai/beater/client/model/CalibrationReportTest.java
 src/test/java/ai/beater/client/model/CanonicalSpanTest.java
 src/test/java/ai/beater/client/model/CaseExperimentScoreTest.java
 src/test/java/ai/beater/client/model/CaseOutputOverrideRequestTest.java
+src/test/java/ai/beater/client/model/ChangeKindTest.java
 src/test/java/ai/beater/client/model/ConnectConnectorRequestTest.java
 src/test/java/ai/beater/client/model/ConnectionLinkTest.java
 src/test/java/ai/beater/client/model/ConnectionStatusTest.java
@@ -510,6 +517,7 @@ src/test/java/ai/beater/client/model/ModelRefTest.java
 src/test/java/ai/beater/client/model/MoneyTest.java
 src/test/java/ai/beater/client/model/NativeIngestRequestTest.java
 src/test/java/ai/beater/client/model/OnlineSamplingPolicyTest.java
+src/test/java/ai/beater/client/model/OptimizerStrategyTest.java
 src/test/java/ai/beater/client/model/OtlpIngestOutcomeTest.java
 src/test/java/ai/beater/client/model/OverfitResponseTest.java
 src/test/java/ai/beater/client/model/PageRunSummaryItemsInnerTest.java
@@ -560,6 +568,7 @@ src/test/java/ai/beater/client/model/SpanIoValueOneOf3Test.java
 src/test/java/ai/beater/client/model/SpanIoValueOneOfTest.java
 src/test/java/ai/beater/client/model/SpanIoValueTest.java
 src/test/java/ai/beater/client/model/SpanStatusTest.java
+src/test/java/ai/beater/client/model/SplitTest.java
 src/test/java/ai/beater/client/model/StatisticalTestTest.java
 src/test/java/ai/beater/client/model/SubmitReviewAnnotationHttpRequestTest.java
 src/test/java/ai/beater/client/model/TenantScopeTest.java

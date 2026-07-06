@@ -12,16 +12,19 @@
 /*
  * GateCandidateChangeRequest.h
  *
- * The candidate change being gated. &#x60;kind&#x60; and &#x60;proposed_by&#x60; are the RSI optimizer&#39;s snake_case enum tags (e.g. &#x60;system_prompt&#x60;, &#x60;llm_rewrite&#x60;).
+ * The candidate change being gated.
  */
 
 #ifndef ORG_OPENAPITOOLS_CLIENT_MODEL_GateCandidateChangeRequest_H_
 #define ORG_OPENAPITOOLS_CLIENT_MODEL_GateCandidateChangeRequest_H_
 
+#include <stdexcept>
 
 #include "beater-client/ModelBase.h"
 
+#include "beater-client/model/OptimizerStrategy.h"
 #include <cpprest/details/basic_types.h>
+#include "beater-client/model/ChangeKind.h"
 
 namespace org {
 namespace openapitools {
@@ -31,7 +34,7 @@ namespace model {
 
 
 /// <summary>
-/// The candidate change being gated. &#x60;kind&#x60; and &#x60;proposed_by&#x60; are the RSI optimizer&#39;s snake_case enum tags (e.g. &#x60;system_prompt&#x60;, &#x60;llm_rewrite&#x60;).
+/// The candidate change being gated.
 /// </summary>
 class  GateCandidateChangeRequest
     : public ModelBase
@@ -67,18 +70,18 @@ public:
     /// <summary>
     /// The policy lever this change touches (e.g. &#x60;system_prompt&#x60;, &#x60;model_params&#x60;).
     /// </summary>
-    utility::string_t getKind() const;
+    std::shared_ptr<ChangeKind> getKind() const;
     bool kindIsSet() const;
     void unsetKind();
-    void setKind(const utility::string_t& value);
+    void setKind(const std::shared_ptr<ChangeKind>& value);
 
     /// <summary>
     /// Which optimizer strategy emitted the candidate (e.g. &#x60;llm_rewrite&#x60;).
     /// </summary>
-    utility::string_t getProposedBy() const;
+    std::shared_ptr<OptimizerStrategy> getProposedBy() const;
     bool proposedByIsSet() const;
     void unsetProposed_by();
-    void setProposedBy(const utility::string_t& value);
+    void setProposedBy(const std::shared_ptr<OptimizerStrategy>& value);
 
     /// <summary>
     /// Why the proposer believes this change helps (carried for audit).
@@ -101,10 +104,10 @@ protected:
     utility::string_t m_Description;
     bool m_DescriptionIsSet;
 
-    utility::string_t m_Kind;
+    std::shared_ptr<ChangeKind> m_Kind;
     bool m_KindIsSet;
 
-    utility::string_t m_Proposed_by;
+    std::shared_ptr<OptimizerStrategy> m_Proposed_by;
     bool m_Proposed_byIsSet;
 
     utility::string_t m_Rationale;

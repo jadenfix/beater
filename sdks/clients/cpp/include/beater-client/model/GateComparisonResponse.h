@@ -18,10 +18,11 @@
 #ifndef ORG_OPENAPITOOLS_CLIENT_MODEL_GateComparisonResponse_H_
 #define ORG_OPENAPITOOLS_CLIENT_MODEL_GateComparisonResponse_H_
 
+#include <stdexcept>
 
 #include "beater-client/ModelBase.h"
 
-#include <cpprest/details/basic_types.h>
+#include "beater-client/model/GateDecision.h"
 
 namespace org {
 namespace openapitools {
@@ -91,10 +92,10 @@ public:
     /// <summary>
     /// Gate decision: &#x60;pass&#x60;, &#x60;fail_regression&#x60;, or &#x60;inconclusive&#x60;.
     /// </summary>
-    utility::string_t getDecision() const;
+    std::shared_ptr<GateDecision> getDecision() const;
     bool decisionIsSet() const;
     void unsetDecision();
-    void setDecision(const utility::string_t& value);
+    void setDecision(const std::shared_ptr<GateDecision>& value);
 
     /// <summary>
     /// &#x60;candidate_mean − baseline_mean&#x60; on the Test split.
@@ -134,7 +135,7 @@ protected:
     double m_Ci_low;
     bool m_Ci_lowIsSet;
 
-    utility::string_t m_Decision;
+    std::shared_ptr<GateDecision> m_Decision;
     bool m_DecisionIsSet;
 
     double m_Delta;

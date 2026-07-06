@@ -19,6 +19,7 @@ import java.util.StringJoiner;
 import java.util.Objects;
 import java.util.Map;
 import java.util.HashMap;
+import ai.beater.client.model.Split;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -49,7 +50,7 @@ public class GateCaseScoreRequest {
 
   public static final String JSON_PROPERTY_SPLIT = "split";
   @javax.annotation.Nonnull
-  private String split;
+  private Split split;
 
   public GateCaseScoreRequest() { 
   }
@@ -102,7 +103,7 @@ public class GateCaseScoreRequest {
   }
 
 
-  public GateCaseScoreRequest split(@javax.annotation.Nonnull String split) {
+  public GateCaseScoreRequest split(@javax.annotation.Nonnull Split split) {
     this.split = split;
     return this;
   }
@@ -114,14 +115,14 @@ public class GateCaseScoreRequest {
   @javax.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_SPLIT)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public String getSplit() {
+  public Split getSplit() {
     return split;
   }
 
 
   @JsonProperty(JSON_PROPERTY_SPLIT)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setSplit(@javax.annotation.Nonnull String split) {
+  public void setSplit(@javax.annotation.Nonnull Split split) {
     this.split = split;
   }
 

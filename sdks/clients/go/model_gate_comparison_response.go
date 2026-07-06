@@ -30,7 +30,7 @@ type GateComparisonResponse struct {
 	// Lower bound of the delta confidence interval.
 	CiLow float64 `json:"ci_low"`
 	// Gate decision: `pass`, `fail_regression`, or `inconclusive`.
-	Decision string `json:"decision"`
+	Decision GateDecision `json:"decision"`
 	// `candidate_mean − baseline_mean` on the Test split.
 	Delta float64 `json:"delta"`
 	// Two-sided p-value of the paired test.
@@ -45,7 +45,7 @@ type _GateComparisonResponse GateComparisonResponse
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewGateComparisonResponse(baselineMean float64, candidateMean float64, ciHigh float64, ciLow float64, decision string, delta float64, pValue float64, sampleSize int32) *GateComparisonResponse {
+func NewGateComparisonResponse(baselineMean float64, candidateMean float64, ciHigh float64, ciLow float64, decision GateDecision, delta float64, pValue float64, sampleSize int32) *GateComparisonResponse {
 	this := GateComparisonResponse{}
 	this.BaselineMean = baselineMean
 	this.CandidateMean = candidateMean
@@ -163,9 +163,9 @@ func (o *GateComparisonResponse) SetCiLow(v float64) {
 }
 
 // GetDecision returns the Decision field value
-func (o *GateComparisonResponse) GetDecision() string {
+func (o *GateComparisonResponse) GetDecision() GateDecision {
 	if o == nil {
-		var ret string
+		var ret GateDecision
 		return ret
 	}
 
@@ -174,7 +174,7 @@ func (o *GateComparisonResponse) GetDecision() string {
 
 // GetDecisionOk returns a tuple with the Decision field value
 // and a boolean to check if the value has been set.
-func (o *GateComparisonResponse) GetDecisionOk() (*string, bool) {
+func (o *GateComparisonResponse) GetDecisionOk() (*GateDecision, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -182,7 +182,7 @@ func (o *GateComparisonResponse) GetDecisionOk() (*string, bool) {
 }
 
 // SetDecision sets field value
-func (o *GateComparisonResponse) SetDecision(v string) {
+func (o *GateComparisonResponse) SetDecision(v GateDecision) {
 	o.Decision = v
 }
 

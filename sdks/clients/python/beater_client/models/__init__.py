@@ -39,6 +39,7 @@ from beater_client.models.calibration_report import CalibrationReport
 from beater_client.models.canonical_span import CanonicalSpan
 from beater_client.models.case_experiment_score import CaseExperimentScore
 from beater_client.models.case_output_override_request import CaseOutputOverrideRequest
+from beater_client.models.change_kind import ChangeKind
 from beater_client.models.connect_connector_request import ConnectConnectorRequest
 from beater_client.models.connection_link import ConnectionLink
 from beater_client.models.connection_status import ConnectionStatus
@@ -110,6 +111,7 @@ from beater_client.models.model_ref import ModelRef
 from beater_client.models.money import Money
 from beater_client.models.native_ingest_request import NativeIngestRequest
 from beater_client.models.online_sampling_policy import OnlineSamplingPolicy
+from beater_client.models.optimizer_strategy import OptimizerStrategy
 from beater_client.models.otlp_ingest_outcome import OtlpIngestOutcome
 from beater_client.models.overfit_response import OverfitResponse
 from beater_client.models.page_run_summary import PageRunSummary
@@ -160,6 +162,7 @@ from beater_client.models.span_io_value_one_of1 import SpanIoValueOneOf1
 from beater_client.models.span_io_value_one_of2 import SpanIoValueOneOf2
 from beater_client.models.span_io_value_one_of3 import SpanIoValueOneOf3
 from beater_client.models.span_status import SpanStatus
+from beater_client.models.split import Split
 from beater_client.models.statistical_test import StatisticalTest
 from beater_client.models.submit_review_annotation_http_request import SubmitReviewAnnotationHttpRequest
 from beater_client.models.tenant_scope import TenantScope

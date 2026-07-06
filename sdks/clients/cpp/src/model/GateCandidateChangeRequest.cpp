@@ -22,9 +22,7 @@ GateCandidateChangeRequest::GateCandidateChangeRequest()
 {
     m_Description = utility::conversions::to_string_t("");
     m_DescriptionIsSet = false;
-    m_Kind = utility::conversions::to_string_t("");
     m_KindIsSet = false;
-    m_Proposed_by = utility::conversions::to_string_t("");
     m_Proposed_byIsSet = false;
     m_Rationale = utility::conversions::to_string_t("");
     m_RationaleIsSet = false;
@@ -92,7 +90,7 @@ bool GateCandidateChangeRequest::fromJson(const web::json::value& val)
         const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("kind")));
         if(!fieldValue.is_null())
         {
-            utility::string_t refVal_setKind;
+            std::shared_ptr<ChangeKind> refVal_setKind;
             ok &= ModelBase::fromJson(fieldValue, refVal_setKind);
             setKind(refVal_setKind);
             
@@ -103,7 +101,7 @@ bool GateCandidateChangeRequest::fromJson(const web::json::value& val)
         const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("proposed_by")));
         if(!fieldValue.is_null())
         {
-            utility::string_t refVal_setProposedBy;
+            std::shared_ptr<OptimizerStrategy> refVal_setProposedBy;
             ok &= ModelBase::fromJson(fieldValue, refVal_setProposedBy);
             setProposedBy(refVal_setProposedBy);
             
@@ -180,13 +178,13 @@ bool GateCandidateChangeRequest::fromMultiPart(std::shared_ptr<MultipartFormData
     }
     if(multipart->hasContent(utility::conversions::to_string_t(U("kind"))))
     {
-        utility::string_t refVal_setKind;
+        std::shared_ptr<ChangeKind> refVal_setKind;
         ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("kind"))), refVal_setKind );
         setKind(refVal_setKind);
     }
     if(multipart->hasContent(utility::conversions::to_string_t(U("proposed_by"))))
     {
-        utility::string_t refVal_setProposedBy;
+        std::shared_ptr<OptimizerStrategy> refVal_setProposedBy;
         ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("proposed_by"))), refVal_setProposedBy );
         setProposedBy(refVal_setProposedBy);
     }
@@ -227,13 +225,13 @@ void GateCandidateChangeRequest::unsetDescription()
 {
     m_DescriptionIsSet = false;
 }
-utility::string_t GateCandidateChangeRequest::getKind() const
+std::shared_ptr<ChangeKind> GateCandidateChangeRequest::getKind() const
 {
     return m_Kind;
 }
 
 
-void GateCandidateChangeRequest::setKind(const utility::string_t& value)
+void GateCandidateChangeRequest::setKind(const std::shared_ptr<ChangeKind>& value)
 {
     m_Kind = value;
     m_KindIsSet = true;
@@ -248,13 +246,13 @@ void GateCandidateChangeRequest::unsetKind()
 {
     m_KindIsSet = false;
 }
-utility::string_t GateCandidateChangeRequest::getProposedBy() const
+std::shared_ptr<OptimizerStrategy> GateCandidateChangeRequest::getProposedBy() const
 {
     return m_Proposed_by;
 }
 
 
-void GateCandidateChangeRequest::setProposedBy(const utility::string_t& value)
+void GateCandidateChangeRequest::setProposedBy(const std::shared_ptr<OptimizerStrategy>& value)
 {
     m_Proposed_by = value;
     m_Proposed_byIsSet = true;

@@ -19,6 +19,7 @@ import java.util.StringJoiner;
 import java.util.Objects;
 import java.util.Map;
 import java.util.HashMap;
+import ai.beater.client.model.GateDecision;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -62,7 +63,7 @@ public class GateComparisonResponse {
 
   public static final String JSON_PROPERTY_DECISION = "decision";
   @javax.annotation.Nonnull
-  private String decision;
+  private GateDecision decision;
 
   public static final String JSON_PROPERTY_DELTA = "delta";
   @javax.annotation.Nonnull
@@ -175,7 +176,7 @@ public class GateComparisonResponse {
   }
 
 
-  public GateComparisonResponse decision(@javax.annotation.Nonnull String decision) {
+  public GateComparisonResponse decision(@javax.annotation.Nonnull GateDecision decision) {
     this.decision = decision;
     return this;
   }
@@ -187,14 +188,14 @@ public class GateComparisonResponse {
   @javax.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_DECISION)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public String getDecision() {
+  public GateDecision getDecision() {
     return decision;
   }
 
 
   @JsonProperty(JSON_PROPERTY_DECISION)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setDecision(@javax.annotation.Nonnull String decision) {
+  public void setDecision(@javax.annotation.Nonnull GateDecision decision) {
     this.decision = decision;
   }
 

@@ -13,6 +13,7 @@
 
 package ai.beater.client.model;
 
+import ai.beater.client.model.GateDecision;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;

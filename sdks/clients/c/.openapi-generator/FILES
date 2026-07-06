@@ -97,6 +97,7 @@ docs/calibration_report.md
 docs/canonical_span.md
 docs/case_experiment_score.md
 docs/case_output_override_request.md
+docs/change_kind.md
 docs/connect_connector_request.md
 docs/connection_link.md
 docs/connection_status.md
@@ -168,6 +169,7 @@ docs/model_ref.md
 docs/money.md
 docs/native_ingest_request.md
 docs/online_sampling_policy.md
+docs/optimizer_strategy.md
 docs/otlp_ingest_outcome.md
 docs/overfit_response.md
 docs/page_run_summary.md
@@ -218,6 +220,7 @@ docs/span_io_value_one_of_1.md
 docs/span_io_value_one_of_2.md
 docs/span_io_value_one_of_3.md
 docs/span_status.md
+docs/split.md
 docs/statistical_test.md
 docs/submit_review_annotation_http_request.md
 docs/tenant_scope.md
@@ -291,6 +294,8 @@ model/case_experiment_score.c
 model/case_experiment_score.h
 model/case_output_override_request.c
 model/case_output_override_request.h
+model/change_kind.c
+model/change_kind.h
 model/connect_connector_request.c
 model/connect_connector_request.h
 model/connection_link.c
@@ -435,6 +440,8 @@ model/object.c
 model/object.h
 model/online_sampling_policy.c
 model/online_sampling_policy.h
+model/optimizer_strategy.c
+model/optimizer_strategy.h
 model/otlp_ingest_outcome.c
 model/otlp_ingest_outcome.h
 model/overfit_response.c
@@ -535,6 +542,8 @@ model/span_io_value_one_of_3.c
 model/span_io_value_one_of_3.h
 model/span_status.c
 model/span_status.h
+model/split.c
+model/split.h
 model/statistical_test.c
 model/statistical_test.h
 model/submit_review_annotation_http_request.c
@@ -593,6 +602,7 @@ unit-test/test_calibration_report.c
 unit-test/test_canonical_span.c
 unit-test/test_case_experiment_score.c
 unit-test/test_case_output_override_request.c
+unit-test/test_change_kind.c
 unit-test/test_connect_connector_request.c
 unit-test/test_connection_link.c
 unit-test/test_connection_status.c
@@ -664,6 +674,7 @@ unit-test/test_model_ref.c
 unit-test/test_money.c
 unit-test/test_native_ingest_request.c
 unit-test/test_online_sampling_policy.c
+unit-test/test_optimizer_strategy.c
 unit-test/test_otlp_ingest_outcome.c
 unit-test/test_overfit_response.c
 unit-test/test_page_run_summary.c
@@ -714,6 +725,7 @@ unit-test/test_span_io_value_one_of_1.c
 unit-test/test_span_io_value_one_of_2.c
 unit-test/test_span_io_value_one_of_3.c
 unit-test/test_span_status.c
+unit-test/test_split.c
 unit-test/test_statistical_test.c
 unit-test/test_submit_review_annotation_http_request.c
 unit-test/test_tenant_scope.c

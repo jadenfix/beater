@@ -62,6 +62,7 @@ include/beater-client/model/CalibrationReport.h
 include/beater-client/model/CanonicalSpan.h
 include/beater-client/model/CaseExperimentScore.h
 include/beater-client/model/CaseOutputOverrideRequest.h
+include/beater-client/model/ChangeKind.h
 include/beater-client/model/ConnectConnectorRequest.h
 include/beater-client/model/ConnectionLink.h
 include/beater-client/model/ConnectionStatus.h
@@ -133,6 +134,7 @@ include/beater-client/model/ModelRef.h
 include/beater-client/model/Money.h
 include/beater-client/model/NativeIngestRequest.h
 include/beater-client/model/OnlineSamplingPolicy.h
+include/beater-client/model/OptimizerStrategy.h
 include/beater-client/model/OtlpIngestOutcome.h
 include/beater-client/model/OverfitResponse.h
 include/beater-client/model/Page_RunSummary.h
@@ -183,6 +185,7 @@ include/beater-client/model/SpanIoValue_oneOf_1.h
 include/beater-client/model/SpanIoValue_oneOf_2.h
 include/beater-client/model/SpanIoValue_oneOf_3.h
 include/beater-client/model/SpanStatus.h
+include/beater-client/model/Split.h
 include/beater-client/model/StatisticalTest.h
 include/beater-client/model/SubmitReviewAnnotationHttpRequest.h
 include/beater-client/model/TenantScope.h
@@ -254,6 +257,7 @@ src/model/CalibrationReport.cpp
 src/model/CanonicalSpan.cpp
 src/model/CaseExperimentScore.cpp
 src/model/CaseOutputOverrideRequest.cpp
+src/model/ChangeKind.cpp
 src/model/ConnectConnectorRequest.cpp
 src/model/ConnectionLink.cpp
 src/model/ConnectionStatus.cpp
@@ -325,6 +329,7 @@ src/model/ModelRef.cpp
 src/model/Money.cpp
 src/model/NativeIngestRequest.cpp
 src/model/OnlineSamplingPolicy.cpp
+src/model/OptimizerStrategy.cpp
 src/model/OtlpIngestOutcome.cpp
 src/model/OverfitResponse.cpp
 src/model/Page_RunSummary.cpp
@@ -375,6 +380,7 @@ src/model/SpanIoValue_oneOf_1.cpp
 src/model/SpanIoValue_oneOf_2.cpp
 src/model/SpanIoValue_oneOf_3.cpp
 src/model/SpanStatus.cpp
+src/model/Split.cpp
 src/model/StatisticalTest.cpp
 src/model/SubmitReviewAnnotationHttpRequest.cpp
 src/model/TenantScope.cpp

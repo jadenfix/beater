@@ -26,7 +26,7 @@ type GateCaseScoreRequest struct {
 	// The candidate policy's score on the *same* case (paired with baseline).
 	CandidateScore float64 `json:"candidate_score"`
 	// The split this case belongs to: `train`, `val`, or `test`.
-	Split string `json:"split"`
+	Split Split `json:"split"`
 }
 
 type _GateCaseScoreRequest GateCaseScoreRequest
@@ -35,7 +35,7 @@ type _GateCaseScoreRequest GateCaseScoreRequest
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewGateCaseScoreRequest(baselineScore float64, candidateScore float64, split string) *GateCaseScoreRequest {
+func NewGateCaseScoreRequest(baselineScore float64, candidateScore float64, split Split) *GateCaseScoreRequest {
 	this := GateCaseScoreRequest{}
 	this.BaselineScore = baselineScore
 	this.CandidateScore = candidateScore
@@ -100,9 +100,9 @@ func (o *GateCaseScoreRequest) SetCandidateScore(v float64) {
 }
 
 // GetSplit returns the Split field value
-func (o *GateCaseScoreRequest) GetSplit() string {
+func (o *GateCaseScoreRequest) GetSplit() Split {
 	if o == nil {
-		var ret string
+		var ret Split
 		return ret
 	}
 
@@ -111,7 +111,7 @@ func (o *GateCaseScoreRequest) GetSplit() string {
 
 // GetSplitOk returns a tuple with the Split field value
 // and a boolean to check if the value has been set.
-func (o *GateCaseScoreRequest) GetSplitOk() (*string, bool) {
+func (o *GateCaseScoreRequest) GetSplitOk() (*Split, bool) {
 	if o == nil {
 		return nil, false
 	}
@@ -119,7 +119,7 @@ func (o *GateCaseScoreRequest) GetSplitOk() (*string, bool) {
 }
 
 // SetSplit sets field value
-func (o *GateCaseScoreRequest) SetSplit(v string) {
+func (o *GateCaseScoreRequest) SetSplit(v Split) {
 	o.Split = v
 }
 

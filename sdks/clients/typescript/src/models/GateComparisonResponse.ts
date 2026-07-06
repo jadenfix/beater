@@ -13,6 +13,14 @@
  */
 
 import { mapValues } from '../runtime';
+import type { GateDecision } from './GateDecision';
+import {
+    GateDecisionFromJSON,
+    GateDecisionFromJSONTyped,
+    GateDecisionToJSON,
+    GateDecisionToJSONTyped,
+} from './GateDecision';
+
 /**
  * The held-out Test-split gate comparison.
  * @export
@@ -45,10 +53,10 @@ export interface GateComparisonResponse {
     ciLow: number;
     /**
      * Gate decision: `pass`, `fail_regression`, or `inconclusive`.
-     * @type {string}
+     * @type {GateDecision}
      * @memberof GateComparisonResponse
      */
-    decision: string;
+    decision: GateDecision;
     /**
      * `candidate_mean − baseline_mean` on the Test split.
      * @type {number}
@@ -68,6 +76,8 @@ export interface GateComparisonResponse {
      */
     sampleSize: number;
 }
+
+
 
 /**
  * Check if a given object implements the GateComparisonResponse interface.
@@ -98,7 +108,7 @@ export function GateComparisonResponseFromJSONTyped(json: any, ignoreDiscriminat
         'candidateMean': json['candidate_mean'],
         'ciHigh': json['ci_high'],
         'ciLow': json['ci_low'],
-        'decision': json['decision'],
+        'decision': GateDecisionFromJSON(json['decision']),
         'delta': json['delta'],
         'pValue': json['p_value'],
         'sampleSize': json['sample_size'],
@@ -120,7 +130,7 @@ export function GateComparisonResponseToJSONTyped(value?: GateComparisonResponse
         'candidate_mean': value['candidateMean'],
         'ci_high': value['ciHigh'],
         'ci_low': value['ciLow'],
-        'decision': value['decision'],
+        'decision': GateDecisionToJSON(value['decision']),
         'delta': value['delta'],
         'p_value': value['pValue'],
         'sample_size': value['sampleSize'],

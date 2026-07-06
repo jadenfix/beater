@@ -58,6 +58,7 @@ docs/CalibrationsAPI.md
 docs/CanonicalSpan.md
 docs/CaseExperimentScore.md
 docs/CaseOutputOverrideRequest.md
+docs/ChangeKind.md
 docs/ConnectConnectorRequest.md
 docs/ConnectionLink.md
 docs/ConnectionStatus.md
@@ -138,6 +139,7 @@ docs/Money.md
 docs/NativeIngestRequest.md
 docs/OnlineAPI.md
 docs/OnlineSamplingPolicy.md
+docs/OptimizerStrategy.md
 docs/OtlpIngestOutcome.md
 docs/OverfitResponse.md
 docs/PageRunSummary.md
@@ -195,6 +197,7 @@ docs/SpanIoValueOneOf2.md
 docs/SpanIoValueOneOf3.md
 docs/SpanStatus.md
 docs/SpansAPI.md
+docs/Split.md
 docs/StatisticalTest.md
 docs/SubmitReviewAnnotationHttpRequest.md
 docs/TenantScope.md
@@ -239,6 +242,7 @@ model_calibration_report.go
 model_canonical_span.go
 model_case_experiment_score.go
 model_case_output_override_request.go
+model_change_kind.go
 model_connect_connector_request.go
 model_connection_link.go
 model_connection_status.go
@@ -310,6 +314,7 @@ model_model_ref.go
 model_money.go
 model_native_ingest_request.go
 model_online_sampling_policy.go
+model_optimizer_strategy.go
 model_otlp_ingest_outcome.go
 model_overfit_response.go
 model_page_run_summary.go
@@ -360,6 +365,7 @@ model_span_io_value_one_of_1.go
 model_span_io_value_one_of_2.go
 model_span_io_value_one_of_3.go
 model_span_status.go
+model_split.go
 model_statistical_test_.go
 model_submit_review_annotation_http_request.go
 model_tenant_scope.go

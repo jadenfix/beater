@@ -19,16 +19,18 @@ import json
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from typing import Any, ClassVar, Dict, List
+from beater_client.models.change_kind import ChangeKind
+from beater_client.models.optimizer_strategy import OptimizerStrategy
 from typing import Optional, Set
 from typing_extensions import Self
 
 class GateCandidateChangeRequest(BaseModel):
     """
-    The candidate change being gated. `kind` and `proposed_by` are the RSI optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+    The candidate change being gated.
     """ # noqa: E501
     description: StrictStr = Field(description="Human-readable description of the proposed change.")
-    kind: StrictStr = Field(description="The policy lever this change touches (e.g. `system_prompt`, `model_params`).")
-    proposed_by: StrictStr = Field(description="Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).")
+    kind: ChangeKind = Field(description="The policy lever this change touches (e.g. `system_prompt`, `model_params`).")
+    proposed_by: OptimizerStrategy = Field(description="Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).")
     rationale: StrictStr = Field(description="Why the proposer believes this change helps (carried for audit).")
     target: StrictStr = Field(description="The file / symbol / prompt the change targets.")
     __properties: ClassVar[List[str]] = ["description", "kind", "proposed_by", "rationale", "target"]

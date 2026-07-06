@@ -73,6 +73,7 @@ set(SRCS
     model/canonical_span.c
     model/case_experiment_score.c
     model/case_output_override_request.c
+    model/change_kind.c
     model/connect_connector_request.c
     model/connection_link.c
     model/connection_status.c
@@ -144,6 +145,7 @@ set(SRCS
     model/money.c
     model/native_ingest_request.c
     model/online_sampling_policy.c
+    model/optimizer_strategy.c
     model/otlp_ingest_outcome.c
     model/overfit_response.c
     model/page_run_summary.c
@@ -194,6 +196,7 @@ set(SRCS
     model/span_io_value_one_of_2.c
     model/span_io_value_one_of_3.c
     model/span_status.c
+    model/split.c
     model/statistical_test.c
     model/submit_review_annotation_http_request.c
     model/tenant_scope.c
@@ -267,6 +270,7 @@ set(HDRS
     model/canonical_span.h
     model/case_experiment_score.h
     model/case_output_override_request.h
+    model/change_kind.h
     model/connect_connector_request.h
     model/connection_link.h
     model/connection_status.h
@@ -338,6 +342,7 @@ set(HDRS
     model/money.h
     model/native_ingest_request.h
     model/online_sampling_policy.h
+    model/optimizer_strategy.h
     model/otlp_ingest_outcome.h
     model/overfit_response.h
     model/page_run_summary.h
@@ -388,6 +393,7 @@ set(HDRS
     model/span_io_value_one_of_2.h
     model/span_io_value_one_of_3.h
     model/span_status.h
+    model/split.h
     model/statistical_test.h
     model/submit_review_annotation_http_request.h
     model/tenant_scope.h

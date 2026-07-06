@@ -26,7 +26,7 @@ gate_comparison_response_t* instantiate_gate_comparison_response(int include_opt
       1.337,
       1.337,
       1.337,
-      "0",
+      beater_api_gate_comparison_response__pass,
       1.337,
       1.337,
       0
@@ -37,7 +37,7 @@ gate_comparison_response_t* instantiate_gate_comparison_response(int include_opt
       1.337,
       1.337,
       1.337,
-      "0",
+      beater_api_gate_comparison_response__pass,
       1.337,
       1.337,
       0

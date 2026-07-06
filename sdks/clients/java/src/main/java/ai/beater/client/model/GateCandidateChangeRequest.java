@@ -19,6 +19,8 @@ import java.util.StringJoiner;
 import java.util.Objects;
 import java.util.Map;
 import java.util.HashMap;
+import ai.beater.client.model.ChangeKind;
+import ai.beater.client.model.OptimizerStrategy;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -30,7 +32,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
 import ai.beater.client.ApiClient;
 /**
- * The candidate change being gated. &#x60;kind&#x60; and &#x60;proposed_by&#x60; are the RSI optimizer&#39;s snake_case enum tags (e.g. &#x60;system_prompt&#x60;, &#x60;llm_rewrite&#x60;).
+ * The candidate change being gated.
  */
 @JsonPropertyOrder({
   GateCandidateChangeRequest.JSON_PROPERTY_DESCRIPTION,
@@ -47,11 +49,11 @@ public class GateCandidateChangeRequest {
 
   public static final String JSON_PROPERTY_KIND = "kind";
   @javax.annotation.Nonnull
-  private String kind;
+  private ChangeKind kind;
 
   public static final String JSON_PROPERTY_PROPOSED_BY = "proposed_by";
   @javax.annotation.Nonnull
-  private String proposedBy;
+  private OptimizerStrategy proposedBy;
 
   public static final String JSON_PROPERTY_RATIONALE = "rationale";
   @javax.annotation.Nonnull
@@ -88,7 +90,7 @@ public class GateCandidateChangeRequest {
   }
 
 
-  public GateCandidateChangeRequest kind(@javax.annotation.Nonnull String kind) {
+  public GateCandidateChangeRequest kind(@javax.annotation.Nonnull ChangeKind kind) {
     this.kind = kind;
     return this;
   }
@@ -100,19 +102,19 @@ public class GateCandidateChangeRequest {
   @javax.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_KIND)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public String getKind() {
+  public ChangeKind getKind() {
     return kind;
   }
 
 
   @JsonProperty(JSON_PROPERTY_KIND)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setKind(@javax.annotation.Nonnull String kind) {
+  public void setKind(@javax.annotation.Nonnull ChangeKind kind) {
     this.kind = kind;
   }
 
 
-  public GateCandidateChangeRequest proposedBy(@javax.annotation.Nonnull String proposedBy) {
+  public GateCandidateChangeRequest proposedBy(@javax.annotation.Nonnull OptimizerStrategy proposedBy) {
     this.proposedBy = proposedBy;
     return this;
   }
@@ -124,14 +126,14 @@ public class GateCandidateChangeRequest {
   @javax.annotation.Nonnull
   @JsonProperty(JSON_PROPERTY_PROPOSED_BY)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public String getProposedBy() {
+  public OptimizerStrategy getProposedBy() {
     return proposedBy;
   }
 
 
   @JsonProperty(JSON_PROPERTY_PROPOSED_BY)
   @JsonInclude(value = JsonInclude.Include.ALWAYS)
-  public void setProposedBy(@javax.annotation.Nonnull String proposedBy) {
+  public void setProposedBy(@javax.annotation.Nonnull OptimizerStrategy proposedBy) {
     this.proposedBy = proposedBy;
   }
 

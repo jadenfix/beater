@@ -24,13 +24,13 @@ gate_case_score_request_t* instantiate_gate_case_score_request(int include_optio
     gate_case_score_request = gate_case_score_request_create(
       1.337,
       1.337,
-      "0"
+      beater_api_gate_case_score_request__train
     );
   } else {
     gate_case_score_request = gate_case_score_request_create(
       1.337,
       1.337,
-      "0"
+      beater_api_gate_case_score_request__train
     );
   }
 

@@ -13,9 +13,23 @@
  */
 
 import { mapValues } from '../runtime';
+import type { OptimizerStrategy } from './OptimizerStrategy';
+import {
+    OptimizerStrategyFromJSON,
+    OptimizerStrategyFromJSONTyped,
+    OptimizerStrategyToJSON,
+    OptimizerStrategyToJSONTyped,
+} from './OptimizerStrategy';
+import type { ChangeKind } from './ChangeKind';
+import {
+    ChangeKindFromJSON,
+    ChangeKindFromJSONTyped,
+    ChangeKindToJSON,
+    ChangeKindToJSONTyped,
+} from './ChangeKind';
+
 /**
- * The candidate change being gated. `kind` and `proposed_by` are the RSI
- * optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+ * The candidate change being gated.
  * @export
  * @interface GateCandidateChangeRequest
  */
@@ -28,16 +42,16 @@ export interface GateCandidateChangeRequest {
     description: string;
     /**
      * The policy lever this change touches (e.g. `system_prompt`, `model_params`).
-     * @type {string}
+     * @type {ChangeKind}
      * @memberof GateCandidateChangeRequest
      */
-    kind: string;
+    kind: ChangeKind;
     /**
      * Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).
-     * @type {string}
+     * @type {OptimizerStrategy}
      * @memberof GateCandidateChangeRequest
      */
-    proposedBy: string;
+    proposedBy: OptimizerStrategy;
     /**
      * Why the proposer believes this change helps (carried for audit).
      * @type {string}
@@ -51,6 +65,8 @@ export interface GateCandidateChangeRequest {
      */
     target: string;
 }
+
+
 
 /**
  * Check if a given object implements the GateCandidateChangeRequest interface.
@@ -75,8 +91,8 @@ export function GateCandidateChangeRequestFromJSONTyped(json: any, ignoreDiscrim
     return {
         
         'description': json['description'],
-        'kind': json['kind'],
-        'proposedBy': json['proposed_by'],
+        'kind': ChangeKindFromJSON(json['kind']),
+        'proposedBy': OptimizerStrategyFromJSON(json['proposed_by']),
         'rationale': json['rationale'],
         'target': json['target'],
     };
@@ -94,8 +110,8 @@ export function GateCandidateChangeRequestToJSONTyped(value?: GateCandidateChang
     return {
         
         'description': value['description'],
-        'kind': value['kind'],
-        'proposed_by': value['proposedBy'],
+        'kind': ChangeKindToJSON(value['kind']),
+        'proposed_by': OptimizerStrategyToJSON(value['proposedBy']),
         'rationale': value['rationale'],
         'target': value['target'],
     };

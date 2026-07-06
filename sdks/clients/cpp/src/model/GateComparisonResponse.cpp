@@ -28,7 +28,6 @@ GateComparisonResponse::GateComparisonResponse()
     m_Ci_highIsSet = false;
     m_Ci_low = 0.0;
     m_Ci_lowIsSet = false;
-    m_Decision = utility::conversions::to_string_t("");
     m_DecisionIsSet = false;
     m_Delta = 0.0;
     m_DeltaIsSet = false;
@@ -146,7 +145,7 @@ bool GateComparisonResponse::fromJson(const web::json::value& val)
         const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("decision")));
         if(!fieldValue.is_null())
         {
-            utility::string_t refVal_setDecision;
+            std::shared_ptr<GateDecision> refVal_setDecision;
             ok &= ModelBase::fromJson(fieldValue, refVal_setDecision);
             setDecision(refVal_setDecision);
             
@@ -264,7 +263,7 @@ bool GateComparisonResponse::fromMultiPart(std::shared_ptr<MultipartFormData> mu
     }
     if(multipart->hasContent(utility::conversions::to_string_t(U("decision"))))
     {
-        utility::string_t refVal_setDecision;
+        std::shared_ptr<GateDecision> refVal_setDecision;
         ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("decision"))), refVal_setDecision );
         setDecision(refVal_setDecision);
     }
@@ -370,13 +369,13 @@ void GateComparisonResponse::unsetCi_low()
 {
     m_Ci_lowIsSet = false;
 }
-utility::string_t GateComparisonResponse::getDecision() const
+std::shared_ptr<GateDecision> GateComparisonResponse::getDecision() const
 {
     return m_Decision;
 }
 
 
-void GateComparisonResponse::setDecision(const utility::string_t& value)
+void GateComparisonResponse::setDecision(const std::shared_ptr<GateDecision>& value)
 {
     m_Decision = value;
     m_DecisionIsSet = true;

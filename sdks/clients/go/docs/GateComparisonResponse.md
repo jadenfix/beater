@@ -4,20 +4,20 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**BaselineMean** | **float64** | Mean baseline score on the Test split. | 
-**CandidateMean** | **float64** | Mean candidate score on the Test split. | 
-**CiHigh** | **float64** | Upper bound of the delta confidence interval. | 
-**CiLow** | **float64** | Lower bound of the delta confidence interval. | 
-**Decision** | **string** | Gate decision: &#x60;pass&#x60;, &#x60;fail_regression&#x60;, or &#x60;inconclusive&#x60;. | 
-**Delta** | **float64** | &#x60;candidate_mean − baseline_mean&#x60; on the Test split. | 
-**PValue** | **float64** | Two-sided p-value of the paired test. | 
-**SampleSize** | **int32** | Number of paired Test cases compared. | 
+**BaselineMean** | **float64** | Mean baseline score on the Test split. |
+**CandidateMean** | **float64** | Mean candidate score on the Test split. |
+**CiHigh** | **float64** | Upper bound of the delta confidence interval. |
+**CiLow** | **float64** | Lower bound of the delta confidence interval. |
+**Decision** | [**GateDecision**](GateDecision.md) | Gate decision: &#x60;pass&#x60;, &#x60;fail_regression&#x60;, or &#x60;inconclusive&#x60;. |
+**Delta** | **float64** | &#x60;candidate_mean − baseline_mean&#x60; on the Test split. |
+**PValue** | **float64** | Two-sided p-value of the paired test. |
+**SampleSize** | **int32** | Number of paired Test cases compared. |
 
 ## Methods
 
 ### NewGateComparisonResponse
 
-`func NewGateComparisonResponse(baselineMean float64, candidateMean float64, ciHigh float64, ciLow float64, decision string, delta float64, pValue float64, sampleSize int32, ) *GateComparisonResponse`
+`func NewGateComparisonResponse(baselineMean float64, candidateMean float64, ciHigh float64, ciLow float64, decision GateDecision, delta float64, pValue float64, sampleSize int32, ) *GateComparisonResponse`
 
 NewGateComparisonResponse instantiates a new GateComparisonResponse object
 This constructor will assign default values to properties that have it defined,
@@ -114,20 +114,20 @@ SetCiLow sets CiLow field to given value.
 
 ### GetDecision
 
-`func (o *GateComparisonResponse) GetDecision() string`
+`func (o *GateComparisonResponse) GetDecision() GateDecision`
 
 GetDecision returns the Decision field if non-nil, zero value otherwise.
 
 ### GetDecisionOk
 
-`func (o *GateComparisonResponse) GetDecisionOk() (*string, bool)`
+`func (o *GateComparisonResponse) GetDecisionOk() (*GateDecision, bool)`
 
 GetDecisionOk returns a tuple with the Decision field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetDecision
 
-`func (o *GateComparisonResponse) SetDecision(v string)`
+`func (o *GateComparisonResponse) SetDecision(v GateDecision)`
 
 SetDecision sets Decision field to given value.
 
@@ -194,5 +194,3 @@ SetSampleSize sets SampleSize field to given value.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
-
-

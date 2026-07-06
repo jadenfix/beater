@@ -24,7 +24,6 @@ GateCaseScoreRequest::GateCaseScoreRequest()
     m_Baseline_scoreIsSet = false;
     m_Candidate_score = 0.0;
     m_Candidate_scoreIsSet = false;
-    m_Split = utility::conversions::to_string_t("");
     m_SplitIsSet = false;
 }
 
@@ -89,7 +88,7 @@ bool GateCaseScoreRequest::fromJson(const web::json::value& val)
         const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("split")));
         if(!fieldValue.is_null())
         {
-            utility::string_t refVal_setSplit;
+            std::shared_ptr<Split> refVal_setSplit;
             ok &= ModelBase::fromJson(fieldValue, refVal_setSplit);
             setSplit(refVal_setSplit);
             
@@ -142,7 +141,7 @@ bool GateCaseScoreRequest::fromMultiPart(std::shared_ptr<MultipartFormData> mult
     }
     if(multipart->hasContent(utility::conversions::to_string_t(U("split"))))
     {
-        utility::string_t refVal_setSplit;
+        std::shared_ptr<Split> refVal_setSplit;
         ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("split"))), refVal_setSplit );
         setSplit(refVal_setSplit);
     }
@@ -190,13 +189,13 @@ void GateCaseScoreRequest::unsetCandidate_score()
 {
     m_Candidate_scoreIsSet = false;
 }
-utility::string_t GateCaseScoreRequest::getSplit() const
+std::shared_ptr<Split> GateCaseScoreRequest::getSplit() const
 {
     return m_Split;
 }
 
 
-void GateCaseScoreRequest::setSplit(const utility::string_t& value)
+void GateCaseScoreRequest::setSplit(const std::shared_ptr<Split>& value)
 {
     m_Split = value;
     m_SplitIsSet = true;

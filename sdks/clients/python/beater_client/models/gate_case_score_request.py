@@ -17,8 +17,9 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
 from typing import Any, ClassVar, Dict, List, Union
+from beater_client.models.split import Split
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -28,7 +29,7 @@ class GateCaseScoreRequest(BaseModel):
     """ # noqa: E501
     baseline_score: Union[StrictFloat, StrictInt] = Field(description="The baseline policy's score on this case, in `[0, 1]` (higher is better).")
     candidate_score: Union[StrictFloat, StrictInt] = Field(description="The candidate policy's score on the *same* case (paired with baseline).")
-    split: StrictStr = Field(description="The split this case belongs to: `train`, `val`, or `test`.")
+    split: Split = Field(description="The split this case belongs to: `train`, `val`, or `test`.")
     __properties: ClassVar[List[str]] = ["baseline_score", "candidate_score", "split"]
 
     model_config = ConfigDict(

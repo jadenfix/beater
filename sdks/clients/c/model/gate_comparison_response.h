@@ -15,6 +15,7 @@
 
 typedef struct gate_comparison_response_t gate_comparison_response_t;
 
+#include "gate_decision.h"
 
 
 
@@ -23,7 +24,7 @@ typedef struct gate_comparison_response_t {
     double candidate_mean; //numeric
     double ci_high; //numeric
     double ci_low; //numeric
-    char *decision; // string
+    beater_api_gate_decision__e decision; //referenced enum
     double delta; //numeric
     double p_value; //numeric
     int sample_size; //numeric
@@ -36,7 +37,7 @@ __attribute__((deprecated)) gate_comparison_response_t *gate_comparison_response
     double candidate_mean,
     double ci_high,
     double ci_low,
-    char *decision,
+    beater_api_gate_decision__e decision,
     double delta,
     double p_value,
     int sample_size

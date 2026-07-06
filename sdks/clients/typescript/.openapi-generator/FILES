@@ -53,6 +53,7 @@ src/models/CalibrationReport.ts
 src/models/CanonicalSpan.ts
 src/models/CaseExperimentScore.ts
 src/models/CaseOutputOverrideRequest.ts
+src/models/ChangeKind.ts
 src/models/ConnectConnectorRequest.ts
 src/models/ConnectionLink.ts
 src/models/ConnectionStatus.ts
@@ -124,6 +125,7 @@ src/models/ModelRef.ts
 src/models/Money.ts
 src/models/NativeIngestRequest.ts
 src/models/OnlineSamplingPolicy.ts
+src/models/OptimizerStrategy.ts
 src/models/OtlpIngestOutcome.ts
 src/models/OverfitResponse.ts
 src/models/PageRunSummary.ts
@@ -174,6 +176,7 @@ src/models/SpanIoValueOneOf1.ts
 src/models/SpanIoValueOneOf2.ts
 src/models/SpanIoValueOneOf3.ts
 src/models/SpanStatus.ts
+src/models/Split.ts
 src/models/StatisticalTest.ts
 src/models/SubmitReviewAnnotationHttpRequest.ts
 src/models/TenantScope.ts

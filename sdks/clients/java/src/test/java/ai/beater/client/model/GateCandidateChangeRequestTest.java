@@ -13,6 +13,8 @@
 
 package ai.beater.client.model;
 
+import ai.beater.client.model.ChangeKind;
+import ai.beater.client.model.OptimizerStrategy;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonCreator;

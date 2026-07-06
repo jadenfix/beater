@@ -36,16 +36,16 @@ class TestGateCandidateChangeRequest(unittest.TestCase):
         if include_optional:
             return GateCandidateChangeRequest(
                 description = '',
-                kind = '',
-                proposed_by = '',
+                kind = 'system_prompt',
+                proposed_by = 'llm_rewrite',
                 rationale = '',
                 target = ''
             )
         else:
             return GateCandidateChangeRequest(
                 description = '',
-                kind = '',
-                proposed_by = '',
+                kind = 'system_prompt',
+                proposed_by = 'llm_rewrite',
                 rationale = '',
                 target = '',
         )

@@ -8,7 +8,7 @@
 static gate_case_score_request_t *gate_case_score_request_create_internal(
     double baseline_score,
     double candidate_score,
-    char *split
+    beater_api_split__e split
     ) {
     gate_case_score_request_t *gate_case_score_request_local_var = malloc(sizeof(gate_case_score_request_t));
     if (!gate_case_score_request_local_var) {
@@ -25,7 +25,7 @@ static gate_case_score_request_t *gate_case_score_request_create_internal(
 __attribute__((deprecated)) gate_case_score_request_t *gate_case_score_request_create(
     double baseline_score,
     double candidate_score,
-    char *split
+    beater_api_split__e split
     ) {
     return gate_case_score_request_create_internal (
         baseline_score,
@@ -43,10 +43,6 @@ void gate_case_score_request_free(gate_case_score_request_t *gate_case_score_req
         return ;
     }
     listEntry_t *listEntry;
-    if (gate_case_score_request->split) {
-        free(gate_case_score_request->split);
-        gate_case_score_request->split = NULL;
-    }
     free(gate_case_score_request);
 }
 
@@ -72,11 +68,16 @@ cJSON *gate_case_score_request_convertToJSON(gate_case_score_request_t *gate_cas
 
 
     // gate_case_score_request->split
-    if (!gate_case_score_request->split) {
+    if (beater_api_split__NULL == gate_case_score_request->split) {
         goto fail;
     }
-    if(cJSON_AddStringToObject(item, "split", gate_case_score_request->split) == NULL) {
-    goto fail; //String
+    cJSON *split_local_JSON = split_convertToJSON(gate_case_score_request->split);
+    if(split_local_JSON == NULL) {
+        goto fail; // custom
+    }
+    cJSON_AddItemToObject(item, "split", split_local_JSON);
+    if(item->child == NULL) {
+        goto fail;
     }
 
     return item;
@@ -90,6 +91,9 @@ fail:
 gate_case_score_request_t *gate_case_score_request_parseFromJSON(cJSON *gate_case_score_requestJSON){
 
     gate_case_score_request_t *gate_case_score_request_local_var = NULL;
+
+    // define the local variable for gate_case_score_request->split
+    beater_api_split__e split_local_nonprim = 0;
 
     // gate_case_score_request->baseline_score
     cJSON *baseline_score = cJSON_GetObjectItemCaseSensitive(gate_case_score_requestJSON, "baseline_score");
@@ -131,20 +135,20 @@ gate_case_score_request_t *gate_case_score_request_parseFromJSON(cJSON *gate_cas
     }
 
     
-    if(!cJSON_IsString(split))
-    {
-    goto end; //String
-    }
+    split_local_nonprim = split_parseFromJSON(split); //custom
 
 
     gate_case_score_request_local_var = gate_case_score_request_create_internal (
         baseline_score->valuedouble,
         candidate_score->valuedouble,
-        strdup(split->valuestring)
+        split_local_nonprim
         );
 
     return gate_case_score_request_local_var;
 end:
+    if (split_local_nonprim) {
+        split_local_nonprim = 0;
+    }
     return NULL;
 
 }

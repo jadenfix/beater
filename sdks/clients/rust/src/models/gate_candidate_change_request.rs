@@ -11,7 +11,7 @@
 use crate::models;
 use serde::{Deserialize, Serialize};
 
-/// GateCandidateChangeRequest : The candidate change being gated. `kind` and `proposed_by` are the RSI optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+/// GateCandidateChangeRequest : The candidate change being gated.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GateCandidateChangeRequest {
     /// Human-readable description of the proposed change.
@@ -19,10 +19,10 @@ pub struct GateCandidateChangeRequest {
     pub description: String,
     /// The policy lever this change touches (e.g. `system_prompt`, `model_params`).
     #[serde(rename = "kind")]
-    pub kind: String,
+    pub kind: models::ChangeKind,
     /// Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).
     #[serde(rename = "proposed_by")]
-    pub proposed_by: String,
+    pub proposed_by: models::OptimizerStrategy,
     /// Why the proposer believes this change helps (carried for audit).
     #[serde(rename = "rationale")]
     pub rationale: String,
@@ -32,8 +32,8 @@ pub struct GateCandidateChangeRequest {
 }
 
 impl GateCandidateChangeRequest {
-    /// The candidate change being gated. `kind` and `proposed_by` are the RSI optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
-    pub fn new(description: String, kind: String, proposed_by: String, rationale: String, target: String) -> GateCandidateChangeRequest {
+    /// The candidate change being gated.
+    pub fn new(description: String, kind: models::ChangeKind, proposed_by: models::OptimizerStrategy, rationale: String, target: String) -> GateCandidateChangeRequest {
         GateCandidateChangeRequest {
             description,
             kind,

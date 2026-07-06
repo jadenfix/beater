@@ -37,13 +37,13 @@ class TestGateCaseScoreRequest(unittest.TestCase):
             return GateCaseScoreRequest(
                 baseline_score = 1.337,
                 candidate_score = 1.337,
-                split = ''
+                split = 'train'
             )
         else:
             return GateCaseScoreRequest(
                 baseline_score = 1.337,
                 candidate_score = 1.337,
-                split = '',
+                split = 'train',
         )
         """
 

@@ -1,7 +1,7 @@
 /*
  * gate_candidate_change_request.h
  *
- * The candidate change being gated. &#x60;kind&#x60; and &#x60;proposed_by&#x60; are the RSI optimizer&#39;s snake_case enum tags (e.g. &#x60;system_prompt&#x60;, &#x60;llm_rewrite&#x60;).
+ * The candidate change being gated.
  */
 
 #ifndef _gate_candidate_change_request_H_
@@ -15,13 +15,15 @@
 
 typedef struct gate_candidate_change_request_t gate_candidate_change_request_t;
 
+#include "change_kind.h"
+#include "optimizer_strategy.h"
 
 
 
 typedef struct gate_candidate_change_request_t {
     char *description; // string
-    char *kind; // string
-    char *proposed_by; // string
+    beater_api_change_kind__e kind; //referenced enum
+    beater_api_optimizer_strategy__e proposed_by; //referenced enum
     char *rationale; // string
     char *target; // string
 
@@ -30,8 +32,8 @@ typedef struct gate_candidate_change_request_t {
 
 __attribute__((deprecated)) gate_candidate_change_request_t *gate_candidate_change_request_create(
     char *description,
-    char *kind,
-    char *proposed_by,
+    beater_api_change_kind__e kind,
+    beater_api_optimizer_strategy__e proposed_by,
     char *rationale,
     char *target
 );

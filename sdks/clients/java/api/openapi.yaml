@@ -7088,6 +7088,21 @@ components:
       required:
       - case_id
       - output
+    ChangeKind:
+      description: |-
+        The policy-π (§6.1) lever a [`CandidateChange`] targets, mirroring the planned
+        §21.1 `ChangeKind` taxonomy. Kept internal to this crate; intentionally not a
+        `/v1` contract type.
+      enum:
+      - system_prompt
+      - customer_prompt
+      - code
+      - tool_add
+      - tool_remove
+      - memory_config
+      - model_params
+      - data_label
+      type: string
     ConnectConnectorRequest:
       example:
         toolkit: toolkit
@@ -8288,12 +8303,10 @@ components:
       - other
       type: string
     GateCandidateChangeRequest:
-      description: |-
-        The candidate change being gated. `kind` and `proposed_by` are the RSI
-        optimizer's snake_case enum tags (e.g. `system_prompt`, `llm_rewrite`).
+      description: The candidate change being gated.
       example:
-        proposed_by: proposed_by
-        kind: kind
+        proposed_by: llm_rewrite
+        kind: system_prompt
         description: description
         rationale: rationale
         target: target
@@ -8302,12 +8315,9 @@ components:
           description: Human-readable description of the proposed change.
           type: string
         kind:
-          description: "The policy lever this change touches (e.g. `system_prompt`,\
-            \ `model_params`)."
-          type: string
+          $ref: '#/components/schemas/ChangeKind'
         proposed_by:
-          description: Which optimizer strategy emitted the candidate (e.g. `llm_rewrite`).
-          type: string
+          $ref: '#/components/schemas/OptimizerStrategy'
         rationale:
           description: Why the proposer believes this change helps (carried for audit).
           type: string
@@ -8330,18 +8340,18 @@ components:
         returns the accept/reject verdict — the proposer never decides acceptance.
       example:
         candidate:
-          proposed_by: proposed_by
-          kind: kind
+          proposed_by: llm_rewrite
+          kind: system_prompt
           description: description
           rationale: rationale
           target: target
         overfit_tolerance: 5.962133916683182
         scores:
         - baseline_score: 5.637376656633329
-          split: split
+          split: train
           candidate_score: 2.3021358869347655
         - baseline_score: 5.637376656633329
-          split: split
+          split: train
           candidate_score: 2.3021358869347655
         overfit_resamples: 0
         gate_policy:
@@ -8406,7 +8416,7 @@ components:
         gate:
           p_value: 2.3021358869347655
           baseline_mean: 0.8008281904610115
-          decision: decision
+          decision: pass
           sample_size: 0
           delta: 5.637376656633329
           ci_high: 1.4658129805029452
@@ -8431,7 +8441,7 @@ components:
         \ split."
       example:
         baseline_score: 5.637376656633329
-        split: split
+        split: train
         candidate_score: 2.3021358869347655
       properties:
         baseline_score:
@@ -8445,8 +8455,7 @@ components:
           format: double
           type: number
         split:
-          description: "The split this case belongs to: `train`, `val`, or `test`."
-          type: string
+          $ref: '#/components/schemas/Split'
       required:
       - baseline_score
       - candidate_score
@@ -8456,7 +8465,7 @@ components:
       example:
         p_value: 2.3021358869347655
         baseline_mean: 0.8008281904610115
-        decision: decision
+        decision: pass
         sample_size: 0
         delta: 5.637376656633329
         ci_high: 1.4658129805029452
@@ -8480,8 +8489,7 @@ components:
           format: double
           type: number
         decision:
-          description: "Gate decision: `pass`, `fail_regression`, or `inconclusive`."
-          type: string
+          $ref: '#/components/schemas/GateDecision'
         delta:
           description: '`candidate_mean − baseline_mean` on the Test split.'
           format: double
@@ -9162,6 +9170,32 @@ components:
       required:
       - keep_errors
       - sample_rate_per_mille
+    OptimizerStrategy:
+      description: |-
+        Pluggable optimizer strategies for the recursive self-improvement loop.
+
+        Each variant names a concrete prompt/agent optimizer family called for by
+        ARCHITECTURE §20.10 #7.6 ("named prompt/agent optimizer strategies, gated by
+        held-out statistics") and REQUIREMENTS R18.6. The names mirror the
+        reflective-proposal direction of §21.3 and the deferred population search of
+        §21.6c.
+
+        **Gating invariant — the differentiator vs. un-gated optimizers.** A strategy
+        only *proposes* [`CandidateChange`]s; it never *accepts* one. Every candidate
+        from every strategy MUST flow through the existing held-out **Test** gate plus
+        the `beater-stats` confidence interval already implemented here
+        (`run_deterministic_experiment` / `run_judge_experiment` / `run_agent_experiment`
+        → [`compare_paired_scores`] → [`GateDecision`], §21.3) and the planned §21.4
+        anti-overfitting guardrail before it can be accepted. Proposal is not
+        acceptance: the strategy emits candidates, the gate decides.
+      enum:
+      - llm_rewrite
+      - few_shot_bayesian
+      - mipro
+      - evolutionary
+      - gepa
+      - param_search
+      type: string
     OtlpIngestOutcome:
       example:
         accepted_spans: 0
@@ -10471,6 +10505,20 @@ components:
       - ok
       - error
       - unset
+      type: string
+    Split:
+      description: |-
+        Which split of the optimization substrate a [`CaseScore`] belongs to.
+
+        The RSI optimizer searches candidates against `Train`/`Val` and decides
+        acceptance only on the held-out `Test` split (§21.4). The split assignment is
+        the *caller's* responsibility — it owns the dataset and its train/val/test
+        partition — so [`run_optimization_round`] never reshuffles or peeks at the
+        split substrate; it merely routes each [`CaseScore`] to the gate by its tag.
+      enum:
+      - train
+      - val
+      - test
       type: string
     StatisticalTest:
       description: |-

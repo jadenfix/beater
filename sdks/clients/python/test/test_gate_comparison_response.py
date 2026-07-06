@@ -39,7 +39,7 @@ class TestGateComparisonResponse(unittest.TestCase):
                 candidate_mean = 1.337,
                 ci_high = 1.337,
                 ci_low = 1.337,
-                decision = '',
+                decision = 'pass',
                 delta = 1.337,
                 p_value = 1.337,
                 sample_size = 0
@@ -50,7 +50,7 @@ class TestGateComparisonResponse(unittest.TestCase):
                 candidate_mean = 1.337,
                 ci_high = 1.337,
                 ci_low = 1.337,
-                decision = '',
+                decision = 'pass',
                 delta = 1.337,
                 p_value = 1.337,
                 sample_size = 0,

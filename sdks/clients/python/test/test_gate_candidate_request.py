@@ -36,15 +36,15 @@ class TestGateCandidateRequest(unittest.TestCase):
         if include_optional:
             return GateCandidateRequest(
                 candidate = beater_client.models.gate_candidate_change_request.GateCandidateChangeRequest(
-                    description = '', 
-                    kind = '', 
-                    proposed_by = '', 
-                    rationale = '', 
+                    description = '',
+                    kind = 'system_prompt',
+                    proposed_by = 'llm_rewrite',
+                    rationale = '',
                     target = '', ),
                 gate_policy = beater_client.models.gate_policy.GatePolicy(
-                    alpha = 1.337, 
-                    comparison_count = 0, 
-                    max_regression = 1.337, 
+                    alpha = 1.337,
+                    comparison_count = 0,
+                    max_regression = 1.337,
                     min_sample_size = 0, ),
                 overfit_confidence = 1.337,
                 overfit_resamples = 0,
@@ -52,24 +52,24 @@ class TestGateCandidateRequest(unittest.TestCase):
                 overfit_tolerance = 1.337,
                 scores = [
                     beater_client.models.gate_case_score_request.GateCaseScoreRequest(
-                        baseline_score = 1.337, 
-                        candidate_score = 1.337, 
-                        split = '', )
+                        baseline_score = 1.337,
+                        candidate_score = 1.337,
+                        split = 'train', )
                     ]
             )
         else:
             return GateCandidateRequest(
                 candidate = beater_client.models.gate_candidate_change_request.GateCandidateChangeRequest(
-                    description = '', 
-                    kind = '', 
-                    proposed_by = '', 
-                    rationale = '', 
+                    description = '',
+                    kind = 'system_prompt',
+                    proposed_by = 'llm_rewrite',
+                    rationale = '',
                     target = '', ),
                 scores = [
                     beater_client.models.gate_case_score_request.GateCaseScoreRequest(
-                        baseline_score = 1.337, 
-                        candidate_score = 1.337, 
-                        split = '', )
+                        baseline_score = 1.337,
+                        candidate_score = 1.337,
+                        split = 'train', )
                     ],
         )
         """

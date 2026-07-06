@@ -28,7 +28,7 @@ pub struct GateComparisonResponse {
     pub ci_low: f64,
     /// Gate decision: `pass`, `fail_regression`, or `inconclusive`.
     #[serde(rename = "decision")]
-    pub decision: String,
+    pub decision: models::GateDecision,
     /// `candidate_mean − baseline_mean` on the Test split.
     #[serde(rename = "delta")]
     pub delta: f64,
@@ -42,7 +42,7 @@ pub struct GateComparisonResponse {
 
 impl GateComparisonResponse {
     /// The held-out Test-split gate comparison.
-    pub fn new(baseline_mean: f64, candidate_mean: f64, ci_high: f64, ci_low: f64, decision: String, delta: f64, p_value: f64, sample_size: i32) -> GateComparisonResponse {
+    pub fn new(baseline_mean: f64, candidate_mean: f64, ci_high: f64, ci_low: f64, decision: models::GateDecision, delta: f64, p_value: f64, sample_size: i32) -> GateComparisonResponse {
         GateComparisonResponse {
             baseline_mean,
             candidate_mean,

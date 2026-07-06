@@ -4,15 +4,15 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**BaselineScore** | **float64** | The baseline policy&#39;s score on this case, in &#x60;[0, 1]&#x60; (higher is better). | 
-**CandidateScore** | **float64** | The candidate policy&#39;s score on the *same* case (paired with baseline). | 
-**Split** | **string** | The split this case belongs to: &#x60;train&#x60;, &#x60;val&#x60;, or &#x60;test&#x60;. | 
+**BaselineScore** | **float64** | The baseline policy&#39;s score on this case, in &#x60;[0, 1]&#x60; (higher is better). |
+**CandidateScore** | **float64** | The candidate policy&#39;s score on the *same* case (paired with baseline). |
+**Split** | [**Split**](Split.md) | The split this case belongs to: &#x60;train&#x60;, &#x60;val&#x60;, or &#x60;test&#x60;. |
 
 ## Methods
 
 ### NewGateCaseScoreRequest
 
-`func NewGateCaseScoreRequest(baselineScore float64, candidateScore float64, split string, ) *GateCaseScoreRequest`
+`func NewGateCaseScoreRequest(baselineScore float64, candidateScore float64, split Split, ) *GateCaseScoreRequest`
 
 NewGateCaseScoreRequest instantiates a new GateCaseScoreRequest object
 This constructor will assign default values to properties that have it defined,
@@ -69,25 +69,23 @@ SetCandidateScore sets CandidateScore field to given value.
 
 ### GetSplit
 
-`func (o *GateCaseScoreRequest) GetSplit() string`
+`func (o *GateCaseScoreRequest) GetSplit() Split`
 
 GetSplit returns the Split field if non-nil, zero value otherwise.
 
 ### GetSplitOk
 
-`func (o *GateCaseScoreRequest) GetSplitOk() (*string, bool)`
+`func (o *GateCaseScoreRequest) GetSplitOk() (*Split, bool)`
 
 GetSplitOk returns a tuple with the Split field if it's non-nil, zero value otherwise
 and a boolean to check if the value has been set.
 
 ### SetSplit
 
-`func (o *GateCaseScoreRequest) SetSplit(v string)`
+`func (o *GateCaseScoreRequest) SetSplit(v Split)`
 
 SetSplit sets Split field to given value.
 
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
-
-
