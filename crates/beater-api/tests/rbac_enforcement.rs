@@ -46,14 +46,11 @@ fn environment_id() -> EnvironmentId {
 }
 
 /// An RBAC-enforcing app: auth required (#127) *and* RBAC required (§20.7 #5.2).
-async fn rbac_app() -> (
-    Router,
-    Arc<SqliteApiKeyStore>,
-    Arc<InMemoryMetadataStore>,
-) {
+async fn rbac_app() -> (Router, Arc<SqliteApiKeyStore>, Arc<InMemoryMetadataStore>) {
     let tempdir = tempfile::tempdir().unwrap_or_else(|err| panic!("{err}"));
     let artifacts = Arc::new(
-        FsArtifactStore::new(tempdir.path().join("artifacts")).unwrap_or_else(|err| panic!("{err}")),
+        FsArtifactStore::new(tempdir.path().join("artifacts"))
+            .unwrap_or_else(|err| panic!("{err}")),
     );
     let traces = Arc::new(SqliteTraceStore::in_memory().unwrap_or_else(|err| panic!("{err}")));
     let bus = Arc::new(InMemoryBus::new(16));
