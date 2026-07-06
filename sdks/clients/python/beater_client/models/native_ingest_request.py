@@ -18,8 +18,8 @@ import re  # noqa: F401
 import json
 
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List, Optional, Union
 from typing_extensions import Annotated
 from beater_client.models.auth_context import AuthContext
 from beater_client.models.model_ref import ModelRef
@@ -47,6 +47,7 @@ class NativeIngestRequest(BaseModel):
     output: Optional[Any] = None
     parent_span_id: Optional[StrictStr] = None
     redaction_class: RedactionClass
+    sampling_weight: Optional[Union[StrictFloat, StrictInt]] = None
     scope: TenantScope
     seq: Annotated[int, Field(strict=True, ge=0)]
     span_id: StrictStr
@@ -54,7 +55,7 @@ class NativeIngestRequest(BaseModel):
     status: SpanStatus
     tokens: Optional[TokenCounts] = None
     trace_id: StrictStr
-    __properties: ClassVar[List[str]] = ["attributes", "auth_context", "cost", "end_time", "idempotency_key", "input", "kind", "model", "name", "output", "parent_span_id", "redaction_class", "scope", "seq", "span_id", "start_time", "status", "tokens", "trace_id"]
+    __properties: ClassVar[List[str]] = ["attributes", "auth_context", "cost", "end_time", "idempotency_key", "input", "kind", "model", "name", "output", "parent_span_id", "redaction_class", "sampling_weight", "scope", "seq", "span_id", "start_time", "status", "tokens", "trace_id"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -140,6 +141,11 @@ class NativeIngestRequest(BaseModel):
         if self.output is None and "output" in self.model_fields_set:
             _dict['output'] = None
 
+        # set to None if sampling_weight (nullable) is None
+        # and model_fields_set contains the field
+        if self.sampling_weight is None and "sampling_weight" in self.model_fields_set:
+            _dict['sampling_weight'] = None
+
         # set to None if start_time (nullable) is None
         # and model_fields_set contains the field
         if self.start_time is None and "start_time" in self.model_fields_set:
@@ -174,6 +180,7 @@ class NativeIngestRequest(BaseModel):
             "output": obj.get("output"),
             "parent_span_id": obj.get("parent_span_id"),
             "redaction_class": obj.get("redaction_class"),
+            "sampling_weight": obj.get("sampling_weight"),
             "scope": TenantScope.from_dict(obj["scope"]) if obj.get("scope") is not None else None,
             "seq": obj.get("seq"),
             "span_id": obj.get("span_id"),

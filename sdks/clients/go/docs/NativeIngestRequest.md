@@ -4,25 +4,26 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**Attributes** | **map[string]interface{}** |  | 
-**AuthContext** | Pointer to [**NullableAuthContext**](AuthContext.md) |  | [optional] 
-**Cost** | Pointer to [**NullableMoney**](Money.md) |  | [optional] 
-**EndTime** | Pointer to **NullableTime** |  | [optional] 
-**IdempotencyKey** | Pointer to **string** |  | [optional] 
-**Input** | Pointer to **interface{}** |  | [optional] 
-**Kind** | **string** | Canonical agent span kind such as agent.run or llm.call | 
-**Model** | Pointer to [**NullableModelRef**](ModelRef.md) |  | [optional] 
-**Name** | **string** |  | 
-**Output** | Pointer to **interface{}** |  | [optional] 
-**ParentSpanId** | Pointer to **string** |  | [optional] 
-**RedactionClass** | [**RedactionClass**](RedactionClass.md) |  | 
-**Scope** | [**TenantScope**](TenantScope.md) |  | 
-**Seq** | **int64** |  | 
-**SpanId** | **string** |  | 
-**StartTime** | Pointer to **NullableTime** |  | [optional] 
-**Status** | [**SpanStatus**](SpanStatus.md) |  | 
-**Tokens** | Pointer to [**NullableTokenCounts**](TokenCounts.md) |  | [optional] 
-**TraceId** | **string** |  | 
+**Attributes** | **map[string]interface{}** |  |
+**AuthContext** | Pointer to [**NullableAuthContext**](AuthContext.md) |  | [optional]
+**Cost** | Pointer to [**NullableMoney**](Money.md) |  | [optional]
+**EndTime** | Pointer to **NullableTime** |  | [optional]
+**IdempotencyKey** | Pointer to **string** |  | [optional]
+**Input** | Pointer to **interface{}** |  | [optional]
+**Kind** | **string** | Canonical agent span kind such as agent.run or llm.call |
+**Model** | Pointer to [**NullableModelRef**](ModelRef.md) |  | [optional]
+**Name** | **string** |  |
+**Output** | Pointer to **interface{}** |  | [optional]
+**ParentSpanId** | Pointer to **string** |  | [optional]
+**RedactionClass** | [**RedactionClass**](RedactionClass.md) |  |
+**SamplingWeight** | Pointer to **NullableFloat64** |  | [optional]
+**Scope** | [**TenantScope**](TenantScope.md) |  |
+**Seq** | **int64** |  |
+**SpanId** | **string** |  |
+**StartTime** | Pointer to **NullableTime** |  | [optional]
+**Status** | [**SpanStatus**](SpanStatus.md) |  |
+**Tokens** | Pointer to [**NullableTokenCounts**](TokenCounts.md) |  | [optional]
+**TraceId** | **string** |  |
 
 ## Methods
 
@@ -383,6 +384,41 @@ and a boolean to check if the value has been set.
 SetRedactionClass sets RedactionClass field to given value.
 
 
+### GetSamplingWeight
+
+`func (o *NativeIngestRequest) GetSamplingWeight() float64`
+
+GetSamplingWeight returns the SamplingWeight field if non-nil, zero value otherwise.
+
+### GetSamplingWeightOk
+
+`func (o *NativeIngestRequest) GetSamplingWeightOk() (*float64, bool)`
+
+GetSamplingWeightOk returns a tuple with the SamplingWeight field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetSamplingWeight
+
+`func (o *NativeIngestRequest) SetSamplingWeight(v float64)`
+
+SetSamplingWeight sets SamplingWeight field to given value.
+
+### HasSamplingWeight
+
+`func (o *NativeIngestRequest) HasSamplingWeight() bool`
+
+HasSamplingWeight returns a boolean if a field has been set.
+
+### SetSamplingWeightNil
+
+`func (o *NativeIngestRequest) SetSamplingWeightNil(b bool)`
+
+ SetSamplingWeightNil sets the value for SamplingWeight to be an explicit nil
+
+### UnsetSamplingWeight
+`func (o *NativeIngestRequest) UnsetSamplingWeight()`
+
+UnsetSamplingWeight ensures that no value is present for SamplingWeight, not even an explicit nil
 ### GetScope
 
 `func (o *NativeIngestRequest) GetScope() TenantScope`
@@ -555,5 +591,3 @@ SetTraceId sets TraceId field to given value.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
-
-

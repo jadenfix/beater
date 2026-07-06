@@ -17,6 +17,7 @@
 run_summary_t* instantiate_run_summary(int include_optional);
 
 #include "test_money.c"
+#include "test_rollup_estimate.c"
 
 
 run_summary_t* instantiate_run_summary(int include_optional) {
@@ -35,6 +36,8 @@ run_summary_t* instantiate_run_summary(int include_optional) {
       "0",
        // false, not to have infinite recursion
       instantiate_money(0),
+       // false, not to have infinite recursion
+      instantiate_rollup_estimate(0),
       "0"
     );
   } else {
@@ -49,6 +52,7 @@ run_summary_t* instantiate_run_summary(int include_optional) {
       "2013-10-20T19:20:30+01:00",
       beater_api_run_summary__ok,
       "0",
+      NULL,
       NULL,
       "0"
     );

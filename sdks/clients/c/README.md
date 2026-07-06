@@ -244,6 +244,8 @@ Category | Method | HTTP request | Description
  - [review_verdict_t](docs/review_verdict.md)
  - [revoked_api_key_t](docs/revoked_api_key.md)
  - [revoked_provider_secret_t](docs/revoked_provider_secret.md)
+ - [rollup_estimate_t](docs/rollup_estimate.md)
+ - [rollup_weighting_t](docs/rollup_weighting.md)
  - [run_calibration_http_request_t](docs/run_calibration_http_request.md)
  - [run_deterministic_eval_request_t](docs/run_deterministic_eval_request.md)
  - [run_experiment_request_t](docs/run_experiment_request.md)

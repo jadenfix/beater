@@ -140,6 +140,8 @@ docs/ReviewVerdict.md
 docs/ReviewsApi.md
 docs/RevokedApiKey.md
 docs/RevokedProviderSecret.md
+docs/RollupEstimate.md
+docs/RollupWeighting.md
 docs/RunCalibrationHttpRequest.md
 docs/RunDeterministicEvalRequest.md
 docs/RunExperimentRequest.md
@@ -340,6 +342,8 @@ src/main/java/ai/beater/client/model/ReviewTaskState.java
 src/main/java/ai/beater/client/model/ReviewVerdict.java
 src/main/java/ai/beater/client/model/RevokedApiKey.java
 src/main/java/ai/beater/client/model/RevokedProviderSecret.java
+src/main/java/ai/beater/client/model/RollupEstimate.java
+src/main/java/ai/beater/client/model/RollupWeighting.java
 src/main/java/ai/beater/client/model/RunCalibrationHttpRequest.java
 src/main/java/ai/beater/client/model/RunDeterministicEvalRequest.java
 src/main/java/ai/beater/client/model/RunExperimentRequest.java
@@ -516,6 +520,8 @@ src/test/java/ai/beater/client/model/ReviewTaskTest.java
 src/test/java/ai/beater/client/model/ReviewVerdictTest.java
 src/test/java/ai/beater/client/model/RevokedApiKeyTest.java
 src/test/java/ai/beater/client/model/RevokedProviderSecretTest.java
+src/test/java/ai/beater/client/model/RollupEstimateTest.java
+src/test/java/ai/beater/client/model/RollupWeightingTest.java
 src/test/java/ai/beater/client/model/RunCalibrationHttpRequestTest.java
 src/test/java/ai/beater/client/model/RunDeterministicEvalRequestTest.java
 src/test/java/ai/beater/client/model/RunExperimentRequestTest.java

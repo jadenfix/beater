@@ -33,8 +33,12 @@ pub struct RunSummary {
     pub status: models::SpanStatus,
     #[serde(rename = "tenant_id")]
     pub tenant_id: String,
+    /// Legacy raw sum of kept span costs. For tail-sampled populations, prefer `total_cost_estimate_micros`, which carries the weighting label.
     #[serde(rename = "total_cost", default, with = "::serde_with::rust::double_option", skip_serializing_if = "Option::is_none")]
     pub total_cost: Option<Option<Box<models::Money>>>,
+    /// Population cost estimate over costed spans, in USD micros, with the weighting label required to distinguish inverse-probability weighted roll-ups from biased unweighted fallbacks.
+    #[serde(rename = "total_cost_estimate_micros", default, with = "::serde_with::rust::double_option", skip_serializing_if = "Option::is_none")]
+    pub total_cost_estimate_micros: Option<Option<Box<models::RollupEstimate>>>,
     #[serde(rename = "trace_id")]
     pub trace_id: String,
 }
@@ -53,6 +57,7 @@ impl RunSummary {
             status,
             tenant_id,
             total_cost: None,
+            total_cost_estimate_micros: None,
             trace_id,
         }
     }

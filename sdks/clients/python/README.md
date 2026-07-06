@@ -270,6 +270,8 @@ Class | Method | HTTP request | Description
  - [ReviewVerdict](docs/ReviewVerdict.md)
  - [RevokedApiKey](docs/RevokedApiKey.md)
  - [RevokedProviderSecret](docs/RevokedProviderSecret.md)
+ - [RollupEstimate](docs/RollupEstimate.md)
+ - [RollupWeighting](docs/RollupWeighting.md)
  - [RunCalibrationHttpRequest](docs/RunCalibrationHttpRequest.md)
  - [RunDeterministicEvalRequest](docs/RunDeterministicEvalRequest.md)
  - [RunExperimentRequest](docs/RunExperimentRequest.md)

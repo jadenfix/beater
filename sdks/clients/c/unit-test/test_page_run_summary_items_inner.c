@@ -17,6 +17,7 @@
 page_run_summary_items_inner_t* instantiate_page_run_summary_items_inner(int include_optional);
 
 #include "test_money.c"
+#include "test_rollup_estimate.c"
 
 
 page_run_summary_items_inner_t* instantiate_page_run_summary_items_inner(int include_optional) {
@@ -35,6 +36,8 @@ page_run_summary_items_inner_t* instantiate_page_run_summary_items_inner(int inc
       "0",
        // false, not to have infinite recursion
       instantiate_money(0),
+       // false, not to have infinite recursion
+      instantiate_rollup_estimate(0),
       "0"
     );
   } else {
@@ -49,6 +52,7 @@ page_run_summary_items_inner_t* instantiate_page_run_summary_items_inner(int inc
       "2013-10-20T19:20:30+01:00",
       beater_api_page_run_summary_items_inner__ok,
       "0",
+      NULL,
       NULL,
       "0"
     );

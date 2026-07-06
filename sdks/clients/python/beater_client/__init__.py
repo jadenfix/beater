@@ -169,6 +169,8 @@ from beater_client.models.review_task_state import ReviewTaskState
 from beater_client.models.review_verdict import ReviewVerdict
 from beater_client.models.revoked_api_key import RevokedApiKey
 from beater_client.models.revoked_provider_secret import RevokedProviderSecret
+from beater_client.models.rollup_estimate import RollupEstimate
+from beater_client.models.rollup_weighting import RollupWeighting
 from beater_client.models.run_calibration_http_request import RunCalibrationHttpRequest
 from beater_client.models.run_deterministic_eval_request import RunDeterministicEvalRequest
 from beater_client.models.run_experiment_request import RunExperimentRequest

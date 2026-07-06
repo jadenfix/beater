@@ -144,6 +144,8 @@ src/models/ReviewTaskState.ts
 src/models/ReviewVerdict.ts
 src/models/RevokedApiKey.ts
 src/models/RevokedProviderSecret.ts
+src/models/RollupEstimate.ts
+src/models/RollupWeighting.ts
 src/models/RunCalibrationHttpRequest.ts
 src/models/RunDeterministicEvalRequest.ts
 src/models/RunExperimentRequest.ts

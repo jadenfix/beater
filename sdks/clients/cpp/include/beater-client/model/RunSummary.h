@@ -25,6 +25,7 @@
 #include "beater-client/model/ModelRef.h"
 #include "beater-client/model/SpanStatus.h"
 #include <cpprest/details/basic_types.h>
+#include "beater-client/model/RollupEstimate.h"
 #include <vector>
 #include "beater-client/model/Money.h"
 
@@ -35,6 +36,7 @@ namespace model {
 
 class ModelRef;
 class Money;
+class RollupEstimate;
 
 
 class  RunSummary
@@ -110,10 +112,21 @@ public:
     void unsetTenant_id();
     void setTenantId(const utility::string_t& value);
 
+    /// <summary>
+    /// Legacy raw sum of kept span costs. For tail-sampled populations, prefer &#x60;total_cost_estimate_micros&#x60;, which carries the weighting label.
+    /// </summary>
     std::shared_ptr<Money> getTotalCost() const;
     bool totalCostIsSet() const;
     void unsetTotal_cost();
     void setTotalCost(const std::shared_ptr<Money>& value);
+
+    /// <summary>
+    /// Population cost estimate over costed spans, in USD micros, with the weighting label required to distinguish inverse-probability weighted roll-ups from biased unweighted fallbacks.
+    /// </summary>
+    std::shared_ptr<RollupEstimate> getTotalCostEstimateMicros() const;
+    bool totalCostEstimateMicrosIsSet() const;
+    void unsetTotal_cost_estimate_micros();
+    void setTotalCostEstimateMicros(const std::shared_ptr<RollupEstimate>& value);
 
     utility::string_t getTraceId() const;
     bool traceIdIsSet() const;
@@ -154,6 +167,9 @@ protected:
 
     std::shared_ptr<Money> m_Total_cost;
     bool m_Total_costIsSet;
+
+    std::shared_ptr<RollupEstimate> m_Total_cost_estimate_micros;
+    bool m_Total_cost_estimate_microsIsSet;
 
     utility::string_t m_Trace_id;
     bool m_Trace_idIsSet;

@@ -37,25 +37,28 @@ class TestPageRunSummary(unittest.TestCase):
             return PageRunSummary(
                 items = [
                     beater_client.models.page_run_summary_items_inner.Page_RunSummary_items_inner(
-                        duration_ms = 56, 
-                        ended_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
-                        first_span_name = '', 
+                        duration_ms = 56,
+                        ended_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'),
+                        first_span_name = '',
                         models = [
                             beater_client.models.model_ref.ModelRef(
-                                name = '', 
+                                name = '',
                                 provider = '', )
-                            ], 
-                        project_id = '', 
+                            ],
+                        project_id = '',
                         release_ids = [
                             ''
-                            ], 
-                        span_count = 0, 
-                        started_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
-                        status = 'ok', 
-                        tenant_id = '', 
+                            ],
+                        span_count = 0,
+                        started_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'),
+                        status = 'ok',
+                        tenant_id = '',
                         total_cost = beater_client.models.money.Money(
-                            amount_micros = 56, 
-                            currency = 'USD', ), 
+                            amount_micros = 56,
+                            currency = 'USD', ),
+                        total_cost_estimate_micros = beater_client.models.rollup_estimate.RollupEstimate(
+                            value = 1.337,
+                            weighting = 'horvitz_thompson', ),
                         trace_id = '', )
                     ],
                 next_cursor = ''
@@ -64,25 +67,28 @@ class TestPageRunSummary(unittest.TestCase):
             return PageRunSummary(
                 items = [
                     beater_client.models.page_run_summary_items_inner.Page_RunSummary_items_inner(
-                        duration_ms = 56, 
-                        ended_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
-                        first_span_name = '', 
+                        duration_ms = 56,
+                        ended_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'),
+                        first_span_name = '',
                         models = [
                             beater_client.models.model_ref.ModelRef(
-                                name = '', 
+                                name = '',
                                 provider = '', )
-                            ], 
-                        project_id = '', 
+                            ],
+                        project_id = '',
                         release_ids = [
                             ''
-                            ], 
-                        span_count = 0, 
-                        started_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
-                        status = 'ok', 
-                        tenant_id = '', 
+                            ],
+                        span_count = 0,
+                        started_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'),
+                        status = 'ok',
+                        tenant_id = '',
                         total_cost = beater_client.models.money.Money(
-                            amount_micros = 56, 
-                            currency = 'USD', ), 
+                            amount_micros = 56,
+                            currency = 'USD', ),
+                        total_cost_estimate_micros = beater_client.models.rollup_estimate.RollupEstimate(
+                            value = 1.337,
+                            weighting = 'horvitz_thompson', ),
                         trace_id = '', )
                     ],
         )

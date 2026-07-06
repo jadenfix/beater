@@ -20,6 +20,13 @@ import {
     MoneyToJSON,
     MoneyToJSONTyped,
 } from './Money';
+import type { RollupEstimate } from './RollupEstimate';
+import {
+    RollupEstimateFromJSON,
+    RollupEstimateFromJSONTyped,
+    RollupEstimateToJSON,
+    RollupEstimateToJSONTyped,
+} from './RollupEstimate';
 import type { ModelRef } from './ModelRef';
 import {
     ModelRefFromJSON,
@@ -102,11 +109,20 @@ export interface RunSummary {
      */
     tenantId: string;
     /**
-     * 
+     * Legacy raw sum of kept span costs. For tail-sampled populations, prefer
+     * `total_cost_estimate_micros`, which carries the weighting label.
      * @type {Money}
      * @memberof RunSummary
      */
     totalCost?: Money | null;
+    /**
+     * Population cost estimate over costed spans, in USD micros, with the
+     * weighting label required to distinguish inverse-probability weighted
+     * roll-ups from biased unweighted fallbacks.
+     * @type {RollupEstimate}
+     * @memberof RunSummary
+     */
+    totalCostEstimateMicros?: RollupEstimate | null;
     /**
      * 
      * @type {string}
@@ -154,6 +170,7 @@ export function RunSummaryFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'status': SpanStatusFromJSON(json['status']),
         'tenantId': json['tenant_id'],
         'totalCost': json['total_cost'] == null ? undefined : MoneyFromJSON(json['total_cost']),
+        'totalCostEstimateMicros': json['total_cost_estimate_micros'] == null ? undefined : RollupEstimateFromJSON(json['total_cost_estimate_micros']),
         'traceId': json['trace_id'],
     };
 }
@@ -180,6 +197,7 @@ export function RunSummaryToJSONTyped(value?: RunSummary | null, ignoreDiscrimin
         'status': SpanStatusToJSON(value['status']),
         'tenant_id': value['tenantId'],
         'total_cost': MoneyToJSON(value['totalCost']),
+        'total_cost_estimate_micros': RollupEstimateToJSON(value['totalCostEstimateMicros']),
         'trace_id': value['traceId'],
     };
 }

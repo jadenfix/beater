@@ -32,7 +32,10 @@ type RunSummary struct {
 	StartedAt time.Time `json:"started_at"`
 	Status SpanStatus `json:"status"`
 	TenantId string `json:"tenant_id"`
+	// Legacy raw sum of kept span costs. For tail-sampled populations, prefer `total_cost_estimate_micros`, which carries the weighting label.
 	TotalCost NullableMoney `json:"total_cost,omitempty"`
+	// Population cost estimate over costed spans, in USD micros, with the weighting label required to distinguish inverse-probability weighted roll-ups from biased unweighted fallbacks.
+	TotalCostEstimateMicros NullableRollupEstimate `json:"total_cost_estimate_micros,omitempty"`
 	TraceId string `json:"trace_id"`
 }
 
@@ -382,6 +385,48 @@ func (o *RunSummary) UnsetTotalCost() {
 	o.TotalCost.Unset()
 }
 
+// GetTotalCostEstimateMicros returns the TotalCostEstimateMicros field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *RunSummary) GetTotalCostEstimateMicros() RollupEstimate {
+	if o == nil || IsNil(o.TotalCostEstimateMicros.Get()) {
+		var ret RollupEstimate
+		return ret
+	}
+	return *o.TotalCostEstimateMicros.Get()
+}
+
+// GetTotalCostEstimateMicrosOk returns a tuple with the TotalCostEstimateMicros field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *RunSummary) GetTotalCostEstimateMicrosOk() (*RollupEstimate, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.TotalCostEstimateMicros.Get(), o.TotalCostEstimateMicros.IsSet()
+}
+
+// HasTotalCostEstimateMicros returns a boolean if a field has been set.
+func (o *RunSummary) HasTotalCostEstimateMicros() bool {
+	if o != nil && o.TotalCostEstimateMicros.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetTotalCostEstimateMicros gets a reference to the given NullableRollupEstimate and assigns it to the TotalCostEstimateMicros field.
+func (o *RunSummary) SetTotalCostEstimateMicros(v RollupEstimate) {
+	o.TotalCostEstimateMicros.Set(&v)
+}
+// SetTotalCostEstimateMicrosNil sets the value for TotalCostEstimateMicros to be an explicit nil
+func (o *RunSummary) SetTotalCostEstimateMicrosNil() {
+	o.TotalCostEstimateMicros.Set(nil)
+}
+
+// UnsetTotalCostEstimateMicros ensures that no value is present for TotalCostEstimateMicros, not even an explicit nil
+func (o *RunSummary) UnsetTotalCostEstimateMicros() {
+	o.TotalCostEstimateMicros.Unset()
+}
+
 // GetTraceId returns the TraceId field value
 func (o *RunSummary) GetTraceId() string {
 	if o == nil {
@@ -432,6 +477,9 @@ func (o RunSummary) ToMap() (map[string]interface{}, error) {
 	toSerialize["tenant_id"] = o.TenantId
 	if o.TotalCost.IsSet() {
 		toSerialize["total_cost"] = o.TotalCost.Get()
+	}
+	if o.TotalCostEstimateMicros.IsSet() {
+		toSerialize["total_cost_estimate_micros"] = o.TotalCostEstimateMicros.Get()
 	}
 	toSerialize["trace_id"] = o.TraceId
 	return toSerialize, nil

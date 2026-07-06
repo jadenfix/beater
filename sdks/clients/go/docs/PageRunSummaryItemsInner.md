@@ -4,18 +4,19 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
-**DurationMs** | Pointer to **NullableInt64** |  | [optional] 
-**EndedAt** | Pointer to **NullableTime** |  | [optional] 
-**FirstSpanName** | **string** |  | 
-**Models** | [**[]ModelRef**](ModelRef.md) |  | 
-**ProjectId** | **string** |  | 
-**ReleaseIds** | **[]string** |  | 
-**SpanCount** | **int32** |  | 
-**StartedAt** | **time.Time** |  | 
-**Status** | [**SpanStatus**](SpanStatus.md) |  | 
-**TenantId** | **string** |  | 
-**TotalCost** | Pointer to [**NullableMoney**](Money.md) |  | [optional] 
-**TraceId** | **string** |  | 
+**DurationMs** | Pointer to **NullableInt64** |  | [optional]
+**EndedAt** | Pointer to **NullableTime** |  | [optional]
+**FirstSpanName** | **string** |  |
+**Models** | [**[]ModelRef**](ModelRef.md) |  |
+**ProjectId** | **string** |  |
+**ReleaseIds** | **[]string** |  |
+**SpanCount** | **int32** |  |
+**StartedAt** | **time.Time** |  |
+**Status** | [**SpanStatus**](SpanStatus.md) |  |
+**TenantId** | **string** |  |
+**TotalCost** | Pointer to [**NullableMoney**](Money.md) | Legacy raw sum of kept span costs. For tail-sampled populations, prefer &#x60;total_cost_estimate_micros&#x60;, which carries the weighting label. | [optional]
+**TotalCostEstimateMicros** | Pointer to [**NullableRollupEstimate**](RollupEstimate.md) | Population cost estimate over costed spans, in USD micros, with the weighting label required to distinguish inverse-probability weighted roll-ups from biased unweighted fallbacks. | [optional]
+**TraceId** | **string** |  |
 
 ## Methods
 
@@ -301,6 +302,41 @@ HasTotalCost returns a boolean if a field has been set.
 `func (o *PageRunSummaryItemsInner) UnsetTotalCost()`
 
 UnsetTotalCost ensures that no value is present for TotalCost, not even an explicit nil
+### GetTotalCostEstimateMicros
+
+`func (o *PageRunSummaryItemsInner) GetTotalCostEstimateMicros() RollupEstimate`
+
+GetTotalCostEstimateMicros returns the TotalCostEstimateMicros field if non-nil, zero value otherwise.
+
+### GetTotalCostEstimateMicrosOk
+
+`func (o *PageRunSummaryItemsInner) GetTotalCostEstimateMicrosOk() (*RollupEstimate, bool)`
+
+GetTotalCostEstimateMicrosOk returns a tuple with the TotalCostEstimateMicros field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetTotalCostEstimateMicros
+
+`func (o *PageRunSummaryItemsInner) SetTotalCostEstimateMicros(v RollupEstimate)`
+
+SetTotalCostEstimateMicros sets TotalCostEstimateMicros field to given value.
+
+### HasTotalCostEstimateMicros
+
+`func (o *PageRunSummaryItemsInner) HasTotalCostEstimateMicros() bool`
+
+HasTotalCostEstimateMicros returns a boolean if a field has been set.
+
+### SetTotalCostEstimateMicrosNil
+
+`func (o *PageRunSummaryItemsInner) SetTotalCostEstimateMicrosNil(b bool)`
+
+ SetTotalCostEstimateMicrosNil sets the value for TotalCostEstimateMicros to be an explicit nil
+
+### UnsetTotalCostEstimateMicros
+`func (o *PageRunSummaryItemsInner) UnsetTotalCostEstimateMicros()`
+
+UnsetTotalCostEstimateMicros ensures that no value is present for TotalCostEstimateMicros, not even an explicit nil
 ### GetTraceId
 
 `func (o *PageRunSummaryItemsInner) GetTraceId() string`
@@ -323,5 +359,3 @@ SetTraceId sets TraceId field to given value.
 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
-
-

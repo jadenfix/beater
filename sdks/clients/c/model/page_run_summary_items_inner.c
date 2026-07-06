@@ -17,6 +17,7 @@ static page_run_summary_items_inner_t *page_run_summary_items_inner_create_inter
     beater_api_span_status__e status,
     char *tenant_id,
     money_t *total_cost,
+    rollup_estimate_t *total_cost_estimate_micros,
     char *trace_id
     ) {
     page_run_summary_items_inner_t *page_run_summary_items_inner_local_var = malloc(sizeof(page_run_summary_items_inner_t));
@@ -34,6 +35,7 @@ static page_run_summary_items_inner_t *page_run_summary_items_inner_create_inter
     page_run_summary_items_inner_local_var->status = status;
     page_run_summary_items_inner_local_var->tenant_id = tenant_id;
     page_run_summary_items_inner_local_var->total_cost = total_cost;
+    page_run_summary_items_inner_local_var->total_cost_estimate_micros = total_cost_estimate_micros;
     page_run_summary_items_inner_local_var->trace_id = trace_id;
 
     page_run_summary_items_inner_local_var->_library_owned = 1;
@@ -52,6 +54,7 @@ __attribute__((deprecated)) page_run_summary_items_inner_t *page_run_summary_ite
     beater_api_span_status__e status,
     char *tenant_id,
     money_t *total_cost,
+    rollup_estimate_t *total_cost_estimate_micros,
     char *trace_id
     ) {
     return page_run_summary_items_inner_create_internal (
@@ -66,6 +69,7 @@ __attribute__((deprecated)) page_run_summary_items_inner_t *page_run_summary_ite
         status,
         tenant_id,
         total_cost,
+        total_cost_estimate_micros,
         trace_id
         );
 }
@@ -116,6 +120,10 @@ void page_run_summary_items_inner_free(page_run_summary_items_inner_t *page_run_
     if (page_run_summary_items_inner->total_cost) {
         money_free(page_run_summary_items_inner->total_cost);
         page_run_summary_items_inner->total_cost = NULL;
+    }
+    if (page_run_summary_items_inner->total_cost_estimate_micros) {
+        rollup_estimate_free(page_run_summary_items_inner->total_cost_estimate_micros);
+        page_run_summary_items_inner->total_cost_estimate_micros = NULL;
     }
     if (page_run_summary_items_inner->trace_id) {
         free(page_run_summary_items_inner->trace_id);
@@ -254,6 +262,19 @@ cJSON *page_run_summary_items_inner_convertToJSON(page_run_summary_items_inner_t
     }
 
 
+    // page_run_summary_items_inner->total_cost_estimate_micros
+    if(page_run_summary_items_inner->total_cost_estimate_micros) {
+    cJSON *total_cost_estimate_micros_local_JSON = rollup_estimate_convertToJSON(page_run_summary_items_inner->total_cost_estimate_micros);
+    if(total_cost_estimate_micros_local_JSON == NULL) {
+    goto fail; //model
+    }
+    cJSON_AddItemToObject(item, "total_cost_estimate_micros", total_cost_estimate_micros_local_JSON);
+    if(item->child == NULL) {
+    goto fail;
+    }
+    }
+
+
     // page_run_summary_items_inner->trace_id
     if (!page_run_summary_items_inner->trace_id) {
         goto fail;
@@ -286,12 +307,15 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
     // define the local variable for page_run_summary_items_inner->total_cost
     money_t *total_cost_local_nonprim = NULL;
 
+    // define the local variable for page_run_summary_items_inner->total_cost_estimate_micros
+    rollup_estimate_t *total_cost_estimate_micros_local_nonprim = NULL;
+
     // page_run_summary_items_inner->duration_ms
     cJSON *duration_ms = cJSON_GetObjectItemCaseSensitive(page_run_summary_items_innerJSON, "duration_ms");
     if (cJSON_IsNull(duration_ms)) {
         duration_ms = NULL;
     }
-    if (duration_ms) { 
+    if (duration_ms) {
     if(!cJSON_IsNumber(duration_ms))
     {
     goto end; //Numeric
@@ -303,7 +327,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
     if (cJSON_IsNull(ended_at)) {
         ended_at = NULL;
     }
-    if (ended_at) { 
+    if (ended_at) {
     if(!cJSON_IsString(ended_at) && !cJSON_IsNull(ended_at))
     {
     goto end; //DateTime
@@ -319,7 +343,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(first_span_name))
     {
     goto end; //String
@@ -334,7 +358,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     cJSON *models_local_nonprimitive = NULL;
     if(!cJSON_IsArray(models)){
         goto end; //nonprimitive container
@@ -361,7 +385,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(project_id))
     {
     goto end; //String
@@ -376,7 +400,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     cJSON *release_ids_local = NULL;
     if(!cJSON_IsArray(release_ids)) {
         goto end;//primitive container
@@ -401,7 +425,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     if(!cJSON_IsNumber(span_count))
     {
     goto end; //Numeric
@@ -416,7 +440,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(started_at) && !cJSON_IsNull(started_at))
     {
     goto end; //DateTime
@@ -431,7 +455,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     status_local_nonprim = span_status_parseFromJSON(status); //custom
 
     // page_run_summary_items_inner->tenant_id
@@ -443,7 +467,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(tenant_id))
     {
     goto end; //String
@@ -454,8 +478,17 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
     if (cJSON_IsNull(total_cost)) {
         total_cost = NULL;
     }
-    if (total_cost) { 
+    if (total_cost) {
     total_cost_local_nonprim = money_parseFromJSON(total_cost); //nonprimitive
+    }
+
+    // page_run_summary_items_inner->total_cost_estimate_micros
+    cJSON *total_cost_estimate_micros = cJSON_GetObjectItemCaseSensitive(page_run_summary_items_innerJSON, "total_cost_estimate_micros");
+    if (cJSON_IsNull(total_cost_estimate_micros)) {
+        total_cost_estimate_micros = NULL;
+    }
+    if (total_cost_estimate_micros) {
+    total_cost_estimate_micros_local_nonprim = rollup_estimate_parseFromJSON(total_cost_estimate_micros); //nonprimitive
     }
 
     // page_run_summary_items_inner->trace_id
@@ -467,7 +500,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(trace_id))
     {
     goto end; //String
@@ -486,6 +519,7 @@ page_run_summary_items_inner_t *page_run_summary_items_inner_parseFromJSON(cJSON
         status_local_nonprim,
         strdup(tenant_id->valuestring),
         total_cost ? total_cost_local_nonprim : NULL,
+        total_cost_estimate_micros ? total_cost_estimate_micros_local_nonprim : NULL,
         strdup(trace_id->valuestring)
         );
 
@@ -515,6 +549,10 @@ end:
     if (total_cost_local_nonprim) {
         money_free(total_cost_local_nonprim);
         total_cost_local_nonprim = NULL;
+    }
+    if (total_cost_estimate_micros_local_nonprim) {
+        rollup_estimate_free(total_cost_estimate_micros_local_nonprim);
+        total_cost_estimate_micros_local_nonprim = NULL;
     }
     return NULL;
 

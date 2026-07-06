@@ -18,6 +18,7 @@ static native_ingest_request_t *native_ingest_request_create_internal(
     any_type_t *output,
     char *parent_span_id,
     beater_api_redaction_class__e redaction_class,
+    double sampling_weight,
     tenant_scope_t *scope,
     long seq,
     char *span_id,
@@ -42,6 +43,7 @@ static native_ingest_request_t *native_ingest_request_create_internal(
     native_ingest_request_local_var->output = output;
     native_ingest_request_local_var->parent_span_id = parent_span_id;
     native_ingest_request_local_var->redaction_class = redaction_class;
+    native_ingest_request_local_var->sampling_weight = sampling_weight;
     native_ingest_request_local_var->scope = scope;
     native_ingest_request_local_var->seq = seq;
     native_ingest_request_local_var->span_id = span_id;
@@ -67,6 +69,7 @@ __attribute__((deprecated)) native_ingest_request_t *native_ingest_request_creat
     any_type_t *output,
     char *parent_span_id,
     beater_api_redaction_class__e redaction_class,
+    double sampling_weight,
     tenant_scope_t *scope,
     long seq,
     char *span_id,
@@ -88,6 +91,7 @@ __attribute__((deprecated)) native_ingest_request_t *native_ingest_request_creat
         output,
         parent_span_id,
         redaction_class,
+        sampling_weight,
         scope,
         seq,
         span_id,
@@ -321,6 +325,14 @@ cJSON *native_ingest_request_convertToJSON(native_ingest_request_t *native_inges
     }
 
 
+    // native_ingest_request->sampling_weight
+    if(native_ingest_request->sampling_weight) {
+    if(cJSON_AddNumberToObject(item, "sampling_weight", native_ingest_request->sampling_weight) == NULL) {
+    goto fail; //Numeric
+    }
+    }
+
+
     // native_ingest_request->scope
     if (!native_ingest_request->scope) {
         goto fail;
@@ -447,7 +459,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     cJSON *attributes_local_map = NULL;
     if(!cJSON_IsObject(attributes) && !cJSON_IsNull(attributes))
     {
@@ -469,7 +481,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(auth_context)) {
         auth_context = NULL;
     }
-    if (auth_context) { 
+    if (auth_context) {
     auth_context_local_nonprim = auth_context_parseFromJSON(auth_context); //nonprimitive
     }
 
@@ -478,7 +490,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(cost)) {
         cost = NULL;
     }
-    if (cost) { 
+    if (cost) {
     cost_local_nonprim = money_parseFromJSON(cost); //nonprimitive
     }
 
@@ -487,7 +499,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(end_time)) {
         end_time = NULL;
     }
-    if (end_time) { 
+    if (end_time) {
     if(!cJSON_IsString(end_time) && !cJSON_IsNull(end_time))
     {
     goto end; //DateTime
@@ -499,7 +511,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(idempotency_key)) {
         idempotency_key = NULL;
     }
-    if (idempotency_key) { 
+    if (idempotency_key) {
     if(!cJSON_IsString(idempotency_key) && !cJSON_IsNull(idempotency_key))
     {
     goto end; //String
@@ -511,7 +523,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(input)) {
         input = NULL;
     }
-    if (input) { 
+    if (input) {
     input_local_nonprim = _parseFromJSON(input); //custom
     }
 
@@ -524,7 +536,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(kind))
     {
     goto end; //String
@@ -535,7 +547,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(model)) {
         model = NULL;
     }
-    if (model) { 
+    if (model) {
     model_local_nonprim = model_ref_parseFromJSON(model); //nonprimitive
     }
 
@@ -548,7 +560,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(name))
     {
     goto end; //String
@@ -559,7 +571,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(output)) {
         output = NULL;
     }
-    if (output) { 
+    if (output) {
     output_local_nonprim = _parseFromJSON(output); //custom
     }
 
@@ -568,7 +580,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(parent_span_id)) {
         parent_span_id = NULL;
     }
-    if (parent_span_id) { 
+    if (parent_span_id) {
     if(!cJSON_IsString(parent_span_id) && !cJSON_IsNull(parent_span_id))
     {
     goto end; //String
@@ -584,8 +596,20 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     redaction_class_local_nonprim = redaction_class_parseFromJSON(redaction_class); //custom
+
+    // native_ingest_request->sampling_weight
+    cJSON *sampling_weight = cJSON_GetObjectItemCaseSensitive(native_ingest_requestJSON, "sampling_weight");
+    if (cJSON_IsNull(sampling_weight)) {
+        sampling_weight = NULL;
+    }
+    if (sampling_weight) {
+    if(!cJSON_IsNumber(sampling_weight))
+    {
+    goto end; //Numeric
+    }
+    }
 
     // native_ingest_request->scope
     cJSON *scope = cJSON_GetObjectItemCaseSensitive(native_ingest_requestJSON, "scope");
@@ -596,7 +620,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     scope_local_nonprim = tenant_scope_parseFromJSON(scope); //nonprimitive
 
     // native_ingest_request->seq
@@ -608,7 +632,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     if(!cJSON_IsNumber(seq))
     {
     goto end; //Numeric
@@ -623,7 +647,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(span_id))
     {
     goto end; //String
@@ -634,7 +658,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(start_time)) {
         start_time = NULL;
     }
-    if (start_time) { 
+    if (start_time) {
     if(!cJSON_IsString(start_time) && !cJSON_IsNull(start_time))
     {
     goto end; //DateTime
@@ -650,7 +674,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     status_local_nonprim = span_status_parseFromJSON(status); //custom
 
     // native_ingest_request->tokens
@@ -658,7 +682,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
     if (cJSON_IsNull(tokens)) {
         tokens = NULL;
     }
-    if (tokens) { 
+    if (tokens) {
     tokens_local_nonprim = token_counts_parseFromJSON(tokens); //nonprimitive
     }
 
@@ -671,7 +695,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(trace_id))
     {
     goto end; //String
@@ -691,6 +715,7 @@ native_ingest_request_t *native_ingest_request_parseFromJSON(cJSON *native_inges
         output ? output_local_nonprim : NULL,
         parent_span_id && !cJSON_IsNull(parent_span_id) ? strdup(parent_span_id->valuestring) : NULL,
         redaction_class_local_nonprim,
+        sampling_weight ? sampling_weight->valuedouble : 0,
         scope_local_nonprim,
         seq->valuedouble,
         strdup(span_id->valuestring),

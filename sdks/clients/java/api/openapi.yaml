@@ -8765,6 +8765,7 @@ components:
           - scopes
           api_key_id: api_key_id
         end_time: 2000-01-23T04:56:07.000+00:00
+        sampling_weight: 0.8008281904610115
         redaction_class: public
         output: ""
         input: ""
@@ -8813,6 +8814,10 @@ components:
           type: string
         redaction_class:
           $ref: '#/components/schemas/RedactionClass'
+        sampling_weight:
+          format: double
+          nullable: true
+          type: number
         scope:
           $ref: '#/components/schemas/TenantScope'
         seq:
@@ -8898,8 +8903,7 @@ components:
       example:
         next_cursor: next_cursor
         items:
-        - duration_ms: 0
-          tenant_id: tenant_id
+        - tenant_id: tenant_id
           models:
           - provider: provider
             name: name
@@ -8909,17 +8913,20 @@ components:
           total_cost:
             currency: USD
             amount_micros: 1
+          span_count: 0
+          duration_ms: 0
           project_id: project_id
           started_at: 2000-01-23T04:56:07.000+00:00
-          span_count: 0
           first_span_name: first_span_name
           release_ids:
           - release_ids
           - release_ids
+          total_cost_estimate_micros:
+            value: 1.4658129805029452
+            weighting: horvitz_thompson
           ended_at: 2000-01-23T04:56:07.000+00:00
           status: ok
-        - duration_ms: 0
-          tenant_id: tenant_id
+        - tenant_id: tenant_id
           models:
           - provider: provider
             name: name
@@ -8929,13 +8936,17 @@ components:
           total_cost:
             currency: USD
             amount_micros: 1
+          span_count: 0
+          duration_ms: 0
           project_id: project_id
           started_at: 2000-01-23T04:56:07.000+00:00
-          span_count: 0
           first_span_name: first_span_name
           release_ids:
           - release_ids
           - release_ids
+          total_cost_estimate_micros:
+            value: 1.4658129805029452
+            weighting: horvitz_thompson
           ended_at: 2000-01-23T04:56:07.000+00:00
           status: ok
       properties:
@@ -9556,6 +9567,33 @@ components:
       - active
       - provider_secret_id
       - rotated_at
+    RollupEstimate:
+      description: |-
+        A population-mean roll-up paired with the honesty label saying whether it is
+        inverse-probability weighted or a biased unweighted average (§1 #9). The label
+        travels with the value so a caller can never silently render a tail-sampled
+        average as if it were unbiased.
+      example:
+        value: 1.4658129805029452
+        weighting: horvitz_thompson
+      properties:
+        value:
+          format: double
+          type: number
+        weighting:
+          $ref: '#/components/schemas/RollupWeighting'
+      required:
+      - value
+      - weighting
+    RollupWeighting:
+      description: |-
+        Whether a roll-up estimate honestly accounts for tail-sampling bias (§1 #9,
+        #146). A tail-sampled population is deliberately non-representative, so an
+        unweighted mean is a biased estimator of the population it was drawn from.
+      enum:
+      - horvitz_thompson
+      - biased_unweighted
+      type: string
     RunCalibrationHttpRequest:
       example:
         evaluator_version_id: evaluator_version_id
@@ -9826,6 +9864,8 @@ components:
           type: string
         total_cost:
           $ref: '#/components/schemas/Money'
+        total_cost_estimate_micros:
+          $ref: '#/components/schemas/RollupEstimate'
         trace_id:
           type: string
       required:
@@ -10780,7 +10820,6 @@ components:
       - type
     Page_RunSummary_items_inner:
       example:
-        duration_ms: 0
         tenant_id: tenant_id
         models:
         - provider: provider
@@ -10791,13 +10830,17 @@ components:
         total_cost:
           currency: USD
           amount_micros: 1
+        span_count: 0
+        duration_ms: 0
         project_id: project_id
         started_at: 2000-01-23T04:56:07.000+00:00
-        span_count: 0
         first_span_name: first_span_name
         release_ids:
         - release_ids
         - release_ids
+        total_cost_estimate_micros:
+          value: 1.4658129805029452
+          weighting: horvitz_thompson
         ended_at: 2000-01-23T04:56:07.000+00:00
         status: ok
       properties:
@@ -10833,6 +10876,8 @@ components:
           type: string
         total_cost:
           $ref: '#/components/schemas/Money'
+        total_cost_estimate_micros:
+          $ref: '#/components/schemas/RollupEstimate'
         trace_id:
           type: string
       required:

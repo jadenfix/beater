@@ -117,6 +117,8 @@ export * from './ReviewTaskState';
 export * from './ReviewVerdict';
 export * from './RevokedApiKey';
 export * from './RevokedProviderSecret';
+export * from './RollupEstimate';
+export * from './RollupWeighting';
 export * from './RunCalibrationHttpRequest';
 export * from './RunDeterministicEvalRequest';
 export * from './RunExperimentRequest';

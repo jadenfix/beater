@@ -16,6 +16,7 @@ Name | Type | Description | Notes
 **output** | Option<[**serde_json::Value**](.md)> |  | [optional]
 **parent_span_id** | Option<**String**> |  | [optional]
 **redaction_class** | [**models::RedactionClass**](RedactionClass.md) |  | 
+**sampling_weight** | Option<**f64**> |  | [optional]
 **scope** | [**models::TenantScope**](TenantScope.md) |  | 
 **seq** | **i64** |  | 
 **span_id** | **String** |  | 

@@ -131,6 +131,11 @@ public:
     void unsetRedaction_class();
     void setRedactionClass(const std::shared_ptr<RedactionClass>& value);
 
+    double getSamplingWeight() const;
+    bool samplingWeightIsSet() const;
+    void unsetSampling_weight();
+    void setSamplingWeight(double value);
+
     std::shared_ptr<TenantScope> getScope() const;
     bool scopeIsSet() const;
     void unsetScope();
@@ -203,6 +208,9 @@ protected:
 
     std::shared_ptr<RedactionClass> m_Redaction_class;
     bool m_Redaction_classIsSet;
+
+    double m_Sampling_weight;
+    bool m_Sampling_weightIsSet;
 
     std::shared_ptr<TenantScope> m_Scope;
     bool m_ScopeIsSet;

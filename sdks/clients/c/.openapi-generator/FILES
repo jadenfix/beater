@@ -186,6 +186,8 @@ docs/review_task_state.md
 docs/review_verdict.md
 docs/revoked_api_key.md
 docs/revoked_provider_secret.md
+docs/rollup_estimate.md
+docs/rollup_weighting.md
 docs/run_calibration_http_request.md
 docs/run_deterministic_eval_request.md
 docs/run_experiment_request.md
@@ -468,6 +470,10 @@ model/revoked_api_key.c
 model/revoked_api_key.h
 model/revoked_provider_secret.c
 model/revoked_provider_secret.h
+model/rollup_estimate.c
+model/rollup_estimate.h
+model/rollup_weighting.c
+model/rollup_weighting.h
 model/run_calibration_http_request.c
 model/run_calibration_http_request.h
 model/run_deterministic_eval_request.c
@@ -664,6 +670,8 @@ unit-test/test_review_task_state.c
 unit-test/test_review_verdict.c
 unit-test/test_revoked_api_key.c
 unit-test/test_revoked_provider_secret.c
+unit-test/test_rollup_estimate.c
+unit-test/test_rollup_weighting.c
 unit-test/test_run_calibration_http_request.c
 unit-test/test_run_deterministic_eval_request.c
 unit-test/test_run_experiment_request.c

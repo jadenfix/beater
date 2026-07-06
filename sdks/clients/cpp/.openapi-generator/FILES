@@ -153,6 +153,8 @@ include/beater-client/model/ReviewTaskState.h
 include/beater-client/model/ReviewVerdict.h
 include/beater-client/model/RevokedApiKey.h
 include/beater-client/model/RevokedProviderSecret.h
+include/beater-client/model/RollupEstimate.h
+include/beater-client/model/RollupWeighting.h
 include/beater-client/model/RunCalibrationHttpRequest.h
 include/beater-client/model/RunDeterministicEvalRequest.h
 include/beater-client/model/RunExperimentRequest.h
@@ -338,6 +340,8 @@ src/model/ReviewTaskState.cpp
 src/model/ReviewVerdict.cpp
 src/model/RevokedApiKey.cpp
 src/model/RevokedProviderSecret.cpp
+src/model/RollupEstimate.cpp
+src/model/RollupWeighting.cpp
 src/model/RunCalibrationHttpRequest.cpp
 src/model/RunDeterministicEvalRequest.cpp
 src/model/RunExperimentRequest.cpp

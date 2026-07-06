@@ -38,6 +38,8 @@ pub struct NativeIngestRequest {
     pub parent_span_id: Option<String>,
     #[serde(rename = "redaction_class")]
     pub redaction_class: models::RedactionClass,
+    #[serde(rename = "sampling_weight", default, with = "::serde_with::rust::double_option", skip_serializing_if = "Option::is_none")]
+    pub sampling_weight: Option<Option<f64>>,
     #[serde(rename = "scope")]
     pub scope: Box<models::TenantScope>,
     #[serde(rename = "seq")]
@@ -69,6 +71,7 @@ impl NativeIngestRequest {
             output: None,
             parent_span_id: None,
             redaction_class,
+            sampling_weight: None,
             scope: Box::new(scope),
             seq,
             span_id,

@@ -71,13 +71,65 @@ for lang in "${LANGS[@]}"; do
     fi
   fi
 
-  # The Java generator emits a trailing space in this regenerated enum header.
-  # Normalize the touched file so `regen --check` and `git diff --check` agree.
-  if [[ "$lang" == "java" ]]; then
-    java_audit_action="$out/src/main/java/ai/beater/client/model/AuditAction.java"
-    if [[ -f "$java_audit_action" ]]; then
-      perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "$java_audit_action"
-    fi
+  # Some generators emit trailing spaces in changed model/docs templates.
+  # Normalize only known touched files so `regen --check` and `git diff --check`
+  # agree without masking unrelated generator churn.
+  whitespace_files=()
+  case "$lang" in
+    c)
+      whitespace_files=(
+        "$out/docs/native_ingest_request.md"
+        "$out/docs/page_run_summary_items_inner.md"
+        "$out/docs/run_summary.md"
+        "$out/model/native_ingest_request.c"
+        "$out/model/page_run_summary_items_inner.c"
+        "$out/model/run_summary.c"
+      )
+      ;;
+    cpp)
+      whitespace_files=(
+        "$out/src/model/NativeIngestRequest.cpp"
+        "$out/src/model/Page_RunSummary_items_inner.cpp"
+        "$out/src/model/RunSummary.cpp"
+      )
+      ;;
+    go)
+      whitespace_files=(
+        "$out/docs/NativeIngestRequest.md"
+        "$out/docs/PageRunSummaryItemsInner.md"
+        "$out/docs/RunSummary.md"
+      )
+      ;;
+    java)
+      whitespace_files=(
+        "$out/src/main/java/ai/beater/client/model/AuditAction.java"
+        "$out/src/main/java/ai/beater/client/model/NativeIngestRequest.java"
+        "$out/src/main/java/ai/beater/client/model/PageRunSummaryItemsInner.java"
+        "$out/src/main/java/ai/beater/client/model/RunSummary.java"
+      )
+      ;;
+    python)
+      whitespace_files=(
+        "$out/docs/NativeIngestRequest.md"
+        "$out/docs/PageRunSummaryItemsInner.md"
+        "$out/docs/RunSummary.md"
+        "$out/test/test_page_run_summary.py"
+        "$out/test/test_page_run_summary_items_inner.py"
+        "$out/test/test_run_summary.py"
+      )
+      ;;
+    typescript)
+      whitespace_files=(
+        "$out/src/models/NativeIngestRequest.ts"
+      )
+      ;;
+  esac
+  if (( ${#whitespace_files[@]} > 0 )); then
+    for generated_file in "${whitespace_files[@]}"; do
+      if [[ -f "$generated_file" ]]; then
+        perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "$generated_file"
+      fi
+    done
   fi
 done
 

@@ -19,6 +19,7 @@
 |**output** | **Object** |  |  [optional] |
 |**parentSpanId** | **String** |  |  [optional] |
 |**redactionClass** | **RedactionClass** |  |  |
+|**samplingWeight** | **Double** |  |  [optional] |
 |**scope** | [**TenantScope**](TenantScope.md) |  |  |
 |**seq** | **Long** |  |  |
 |**spanId** | **String** |  |  |

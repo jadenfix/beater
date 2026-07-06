@@ -35,6 +35,7 @@ type NativeIngestRequest struct {
 	Output interface{} `json:"output,omitempty"`
 	ParentSpanId *string `json:"parent_span_id,omitempty"`
 	RedactionClass RedactionClass `json:"redaction_class"`
+	SamplingWeight NullableFloat64 `json:"sampling_weight,omitempty"`
 	Scope TenantScope `json:"scope"`
 	Seq int64 `json:"seq"`
 	SpanId string `json:"span_id"`
@@ -466,6 +467,48 @@ func (o *NativeIngestRequest) SetRedactionClass(v RedactionClass) {
 	o.RedactionClass = v
 }
 
+// GetSamplingWeight returns the SamplingWeight field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *NativeIngestRequest) GetSamplingWeight() float64 {
+	if o == nil || IsNil(o.SamplingWeight.Get()) {
+		var ret float64
+		return ret
+	}
+	return *o.SamplingWeight.Get()
+}
+
+// GetSamplingWeightOk returns a tuple with the SamplingWeight field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *NativeIngestRequest) GetSamplingWeightOk() (*float64, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.SamplingWeight.Get(), o.SamplingWeight.IsSet()
+}
+
+// HasSamplingWeight returns a boolean if a field has been set.
+func (o *NativeIngestRequest) HasSamplingWeight() bool {
+	if o != nil && o.SamplingWeight.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetSamplingWeight gets a reference to the given NullableFloat64 and assigns it to the SamplingWeight field.
+func (o *NativeIngestRequest) SetSamplingWeight(v float64) {
+	o.SamplingWeight.Set(&v)
+}
+// SetSamplingWeightNil sets the value for SamplingWeight to be an explicit nil
+func (o *NativeIngestRequest) SetSamplingWeightNil() {
+	o.SamplingWeight.Set(nil)
+}
+
+// UnsetSamplingWeight ensures that no value is present for SamplingWeight, not even an explicit nil
+func (o *NativeIngestRequest) UnsetSamplingWeight() {
+	o.SamplingWeight.Unset()
+}
+
 // GetScope returns the Scope field value
 func (o *NativeIngestRequest) GetScope() TenantScope {
 	if o == nil {
@@ -708,6 +751,9 @@ func (o NativeIngestRequest) ToMap() (map[string]interface{}, error) {
 		toSerialize["parent_span_id"] = o.ParentSpanId
 	}
 	toSerialize["redaction_class"] = o.RedactionClass
+	if o.SamplingWeight.IsSet() {
+		toSerialize["sampling_weight"] = o.SamplingWeight.Get()
+	}
 	toSerialize["scope"] = o.Scope
 	toSerialize["seq"] = o.Seq
 	toSerialize["span_id"] = o.SpanId

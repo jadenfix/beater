@@ -57,6 +57,7 @@ class TestNativeIngestRequest(unittest.TestCase):
                 output = None,
                 parent_span_id = '',
                 redaction_class = 'public',
+                sampling_weight = 1.337,
                 scope = beater_client.models.tenant_scope.TenantScope(
                     environment_id = '', 
                     project_id = '', 

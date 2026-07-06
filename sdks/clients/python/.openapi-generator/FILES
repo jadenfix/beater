@@ -150,6 +150,8 @@ beater_client/models/review_task_state.py
 beater_client/models/review_verdict.py
 beater_client/models/revoked_api_key.py
 beater_client/models/revoked_provider_secret.py
+beater_client/models/rollup_estimate.py
+beater_client/models/rollup_weighting.py
 beater_client/models/run_calibration_http_request.py
 beater_client/models/run_deterministic_eval_request.py
 beater_client/models/run_experiment_request.py
@@ -323,6 +325,8 @@ docs/ReviewVerdict.md
 docs/ReviewsApi.md
 docs/RevokedApiKey.md
 docs/RevokedProviderSecret.md
+docs/RollupEstimate.md
+docs/RollupWeighting.md
 docs/RunCalibrationHttpRequest.md
 docs/RunDeterministicEvalRequest.md
 docs/RunExperimentRequest.md
@@ -506,6 +510,8 @@ test/test_review_verdict.py
 test/test_reviews_api.py
 test/test_revoked_api_key.py
 test/test_revoked_provider_secret.py
+test/test_rollup_estimate.py
+test/test_rollup_weighting.py
 test/test_run_calibration_http_request.py
 test/test_run_deterministic_eval_request.py
 test/test_run_experiment_request.py

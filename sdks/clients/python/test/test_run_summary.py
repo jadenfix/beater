@@ -40,7 +40,7 @@ class TestRunSummary(unittest.TestCase):
                 first_span_name = '',
                 models = [
                     beater_client.models.model_ref.ModelRef(
-                        name = '', 
+                        name = '',
                         provider = '', )
                     ],
                 project_id = '',
@@ -52,8 +52,11 @@ class TestRunSummary(unittest.TestCase):
                 status = 'ok',
                 tenant_id = '',
                 total_cost = beater_client.models.money.Money(
-                    amount_micros = 56, 
+                    amount_micros = 56,
                     currency = 'USD', ),
+                total_cost_estimate_micros = beater_client.models.rollup_estimate.RollupEstimate(
+                    value = 1.337,
+                    weighting = 'horvitz_thompson', ),
                 trace_id = ''
             )
         else:
@@ -61,7 +64,7 @@ class TestRunSummary(unittest.TestCase):
                 first_span_name = '',
                 models = [
                     beater_client.models.model_ref.ModelRef(
-                        name = '', 
+                        name = '',
                         provider = '', )
                     ],
                 project_id = '',

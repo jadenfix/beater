@@ -165,6 +165,8 @@ set(SRCS
     model/review_verdict.c
     model/revoked_api_key.c
     model/revoked_provider_secret.c
+    model/rollup_estimate.c
+    model/rollup_weighting.c
     model/run_calibration_http_request.c
     model/run_deterministic_eval_request.c
     model/run_experiment_request.c
@@ -352,6 +354,8 @@ set(HDRS
     model/review_verdict.h
     model/revoked_api_key.h
     model/revoked_provider_secret.h
+    model/rollup_estimate.h
+    model/rollup_weighting.h
     model/run_calibration_http_request.h
     model/run_deterministic_eval_request.h
     model/run_experiment_request.h

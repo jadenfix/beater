@@ -15,6 +15,7 @@ package ai.beater.client.model;
 
 import ai.beater.client.model.ModelRef;
 import ai.beater.client.model.Money;
+import ai.beater.client.model.RollupEstimate;
 import ai.beater.client.model.SpanStatus;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -133,6 +134,14 @@ class RunSummaryTest {
     @Test
     void totalCostTest() {
         // TODO: test totalCost
+    }
+
+    /**
+     * Test the property 'totalCostEstimateMicros'
+     */
+    @Test
+    void totalCostEstimateMicrosTest() {
+        // TODO: test totalCostEstimateMicros
     }
 
     /**

@@ -38,6 +38,7 @@ RunSummary::RunSummary()
     m_Tenant_id = utility::conversions::to_string_t("");
     m_Tenant_idIsSet = false;
     m_Total_costIsSet = false;
+    m_Total_cost_estimate_microsIsSet = false;
     m_Trace_id = utility::conversions::to_string_t("");
     m_Trace_idIsSet = false;
 }
@@ -55,63 +56,68 @@ web::json::value RunSummary::toJson() const
 {
     web::json::value val = web::json::value::object();
     if(m_Duration_msIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("duration_ms"))] = ModelBase::toJson(m_Duration_ms);
     }
     if(m_Ended_atIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("ended_at"))] = ModelBase::toJson(m_Ended_at);
     }
     if(m_First_span_nameIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("first_span_name"))] = ModelBase::toJson(m_First_span_name);
     }
     if(m_ModelsIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("models"))] = ModelBase::toJson(m_Models);
     }
     if(m_Project_idIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("project_id"))] = ModelBase::toJson(m_Project_id);
     }
     if(m_Release_idsIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("release_ids"))] = ModelBase::toJson(m_Release_ids);
     }
     if(m_Span_countIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("span_count"))] = ModelBase::toJson(m_Span_count);
     }
     if(m_Started_atIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("started_at"))] = ModelBase::toJson(m_Started_at);
     }
     if(m_StatusIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("status"))] = ModelBase::toJson(m_Status);
     }
     if(m_Tenant_idIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("tenant_id"))] = ModelBase::toJson(m_Tenant_id);
     }
     if(m_Total_costIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("total_cost"))] = ModelBase::toJson(m_Total_cost);
     }
+    if(m_Total_cost_estimate_microsIsSet)
+    {
+
+        val[utility::conversions::to_string_t(U("total_cost_estimate_micros"))] = ModelBase::toJson(m_Total_cost_estimate_micros);
+    }
     if(m_Trace_idIsSet)
-    {   
-        
+    {
+
         val[utility::conversions::to_string_t(U("trace_id"))] = ModelBase::toJson(m_Trace_id);
     }
 
@@ -129,7 +135,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             int64_t refVal_setDurationMs;
             ok &= ModelBase::fromJson(fieldValue, refVal_setDurationMs);
             setDurationMs(refVal_setDurationMs);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("ended_at"))))
@@ -140,7 +146,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             utility::datetime refVal_setEndedAt;
             ok &= ModelBase::fromJson(fieldValue, refVal_setEndedAt);
             setEndedAt(refVal_setEndedAt);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("first_span_name"))))
@@ -151,7 +157,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             utility::string_t refVal_setFirstSpanName;
             ok &= ModelBase::fromJson(fieldValue, refVal_setFirstSpanName);
             setFirstSpanName(refVal_setFirstSpanName);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("models"))))
@@ -162,7 +168,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             std::vector<std::shared_ptr<ModelRef>> refVal_setModels;
             ok &= ModelBase::fromJson(fieldValue, refVal_setModels);
             setModels(refVal_setModels);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("project_id"))))
@@ -173,7 +179,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             utility::string_t refVal_setProjectId;
             ok &= ModelBase::fromJson(fieldValue, refVal_setProjectId);
             setProjectId(refVal_setProjectId);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("release_ids"))))
@@ -184,7 +190,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             std::vector<utility::string_t> refVal_setReleaseIds;
             ok &= ModelBase::fromJson(fieldValue, refVal_setReleaseIds);
             setReleaseIds(refVal_setReleaseIds);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("span_count"))))
@@ -195,7 +201,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             int32_t refVal_setSpanCount;
             ok &= ModelBase::fromJson(fieldValue, refVal_setSpanCount);
             setSpanCount(refVal_setSpanCount);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("started_at"))))
@@ -206,7 +212,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             utility::datetime refVal_setStartedAt;
             ok &= ModelBase::fromJson(fieldValue, refVal_setStartedAt);
             setStartedAt(refVal_setStartedAt);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("status"))))
@@ -217,7 +223,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             std::shared_ptr<SpanStatus> refVal_setStatus;
             ok &= ModelBase::fromJson(fieldValue, refVal_setStatus);
             setStatus(refVal_setStatus);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("tenant_id"))))
@@ -228,7 +234,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             utility::string_t refVal_setTenantId;
             ok &= ModelBase::fromJson(fieldValue, refVal_setTenantId);
             setTenantId(refVal_setTenantId);
-            
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("total_cost"))))
@@ -239,7 +245,18 @@ bool RunSummary::fromJson(const web::json::value& val)
             std::shared_ptr<Money> refVal_setTotalCost;
             ok &= ModelBase::fromJson(fieldValue, refVal_setTotalCost);
             setTotalCost(refVal_setTotalCost);
-            
+
+        }
+    }
+    if(val.has_field(utility::conversions::to_string_t(U("total_cost_estimate_micros"))))
+    {
+        const web::json::value& fieldValue = val.at(utility::conversions::to_string_t(U("total_cost_estimate_micros")));
+        if(!fieldValue.is_null())
+        {
+            std::shared_ptr<RollupEstimate> refVal_setTotalCostEstimateMicros;
+            ok &= ModelBase::fromJson(fieldValue, refVal_setTotalCostEstimateMicros);
+            setTotalCostEstimateMicros(refVal_setTotalCostEstimateMicros);
+
         }
     }
     if(val.has_field(utility::conversions::to_string_t(U("trace_id"))))
@@ -250,7 +267,7 @@ bool RunSummary::fromJson(const web::json::value& val)
             utility::string_t refVal_setTraceId;
             ok &= ModelBase::fromJson(fieldValue, refVal_setTraceId);
             setTraceId(refVal_setTraceId);
-            
+
         }
     }
     return ok;
@@ -306,6 +323,10 @@ void RunSummary::toMultipart(std::shared_ptr<MultipartFormData> multipart, const
     if(m_Total_costIsSet)
     {
         multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("total_cost")), m_Total_cost));
+    }
+    if(m_Total_cost_estimate_microsIsSet)
+    {
+        multipart->add(ModelBase::toHttpContent(namePrefix + utility::conversions::to_string_t(U("total_cost_estimate_micros")), m_Total_cost_estimate_micros));
     }
     if(m_Trace_idIsSet)
     {
@@ -387,6 +408,12 @@ bool RunSummary::fromMultiPart(std::shared_ptr<MultipartFormData> multipart, con
         std::shared_ptr<Money> refVal_setTotalCost;
         ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("total_cost"))), refVal_setTotalCost );
         setTotalCost(refVal_setTotalCost);
+    }
+    if(multipart->hasContent(utility::conversions::to_string_t(U("total_cost_estimate_micros"))))
+    {
+        std::shared_ptr<RollupEstimate> refVal_setTotalCostEstimateMicros;
+        ok &= ModelBase::fromHttpContent(multipart->getContent(utility::conversions::to_string_t(U("total_cost_estimate_micros"))), refVal_setTotalCostEstimateMicros );
+        setTotalCostEstimateMicros(refVal_setTotalCostEstimateMicros);
     }
     if(multipart->hasContent(utility::conversions::to_string_t(U("trace_id"))))
     {
@@ -627,6 +654,27 @@ void RunSummary::unsetTotal_cost()
 {
     m_Total_costIsSet = false;
 }
+std::shared_ptr<RollupEstimate> RunSummary::getTotalCostEstimateMicros() const
+{
+    return m_Total_cost_estimate_micros;
+}
+
+
+void RunSummary::setTotalCostEstimateMicros(const std::shared_ptr<RollupEstimate>& value)
+{
+    m_Total_cost_estimate_micros = value;
+    m_Total_cost_estimate_microsIsSet = true;
+}
+
+bool RunSummary::totalCostEstimateMicrosIsSet() const
+{
+    return m_Total_cost_estimate_microsIsSet;
+}
+
+void RunSummary::unsetTotal_cost_estimate_micros()
+{
+    m_Total_cost_estimate_microsIsSet = false;
+}
 utility::string_t RunSummary::getTraceId() const
 {
     return m_Trace_id;
@@ -653,5 +701,3 @@ void RunSummary::unsetTrace_id()
 }
 }
 }
-
-

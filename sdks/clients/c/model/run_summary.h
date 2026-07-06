@@ -17,6 +17,7 @@ typedef struct run_summary_t run_summary_t;
 
 #include "model_ref.h"
 #include "money.h"
+#include "rollup_estimate.h"
 #include "span_status.h"
 
 
@@ -33,6 +34,7 @@ typedef struct run_summary_t {
     beater_api_span_status__e status; //referenced enum
     char *tenant_id; // string
     struct money_t *total_cost; //model
+    struct rollup_estimate_t *total_cost_estimate_micros; //model
     char *trace_id; // string
 
     int _library_owned; // Is the library responsible for freeing this object?
@@ -50,6 +52,7 @@ __attribute__((deprecated)) run_summary_t *run_summary_create(
     beater_api_span_status__e status,
     char *tenant_id,
     money_t *total_cost,
+    rollup_estimate_t *total_cost_estimate_micros,
     char *trace_id
 );
 

@@ -39,6 +39,7 @@ typedef struct native_ingest_request_t {
     any_type_t *output; // custom
     char *parent_span_id; // string
     beater_api_redaction_class__e redaction_class; //referenced enum
+    double sampling_weight; //numeric
     struct tenant_scope_t *scope; //model
     long seq; //numeric
     char *span_id; // string
@@ -63,6 +64,7 @@ __attribute__((deprecated)) native_ingest_request_t *native_ingest_request_creat
     any_type_t *output,
     char *parent_span_id,
     beater_api_redaction_class__e redaction_class,
+    double sampling_weight,
     tenant_scope_t *scope,
     long seq,
     char *span_id,

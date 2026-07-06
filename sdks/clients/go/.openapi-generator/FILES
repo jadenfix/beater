@@ -161,6 +161,8 @@ docs/ReviewVerdict.md
 docs/ReviewsAPI.md
 docs/RevokedApiKey.md
 docs/RevokedProviderSecret.md
+docs/RollupEstimate.md
+docs/RollupWeighting.md
 docs/RunCalibrationHttpRequest.md
 docs/RunDeterministicEvalRequest.md
 docs/RunExperimentRequest.md
@@ -323,6 +325,8 @@ model_review_task_state.go
 model_review_verdict.go
 model_revoked_api_key.go
 model_revoked_provider_secret.go
+model_rollup_estimate.go
+model_rollup_weighting.go
 model_run_calibration_http_request.go
 model_run_deterministic_eval_request.go
 model_run_experiment_request.go

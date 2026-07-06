@@ -23,6 +23,7 @@ from typing import Any, ClassVar, Dict, List, Optional
 from typing_extensions import Annotated
 from beater_client.models.model_ref import ModelRef
 from beater_client.models.money import Money
+from beater_client.models.rollup_estimate import RollupEstimate
 from beater_client.models.span_status import SpanStatus
 from typing import Optional, Set
 from typing_extensions import Self
@@ -41,9 +42,10 @@ class PageRunSummaryItemsInner(BaseModel):
     started_at: datetime
     status: SpanStatus
     tenant_id: StrictStr
-    total_cost: Optional[Money] = None
+    total_cost: Optional[Money] = Field(default=None, description="Legacy raw sum of kept span costs. For tail-sampled populations, prefer `total_cost_estimate_micros`, which carries the weighting label.")
+    total_cost_estimate_micros: Optional[RollupEstimate] = Field(default=None, description="Population cost estimate over costed spans, in USD micros, with the weighting label required to distinguish inverse-probability weighted roll-ups from biased unweighted fallbacks.")
     trace_id: StrictStr
-    __properties: ClassVar[List[str]] = ["duration_ms", "ended_at", "first_span_name", "models", "project_id", "release_ids", "span_count", "started_at", "status", "tenant_id", "total_cost", "trace_id"]
+    __properties: ClassVar[List[str]] = ["duration_ms", "ended_at", "first_span_name", "models", "project_id", "release_ids", "span_count", "started_at", "status", "tenant_id", "total_cost", "total_cost_estimate_micros", "trace_id"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -94,6 +96,9 @@ class PageRunSummaryItemsInner(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of total_cost
         if self.total_cost:
             _dict['total_cost'] = self.total_cost.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of total_cost_estimate_micros
+        if self.total_cost_estimate_micros:
+            _dict['total_cost_estimate_micros'] = self.total_cost_estimate_micros.to_dict()
         # set to None if duration_ms (nullable) is None
         # and model_fields_set contains the field
         if self.duration_ms is None and "duration_ms" in self.model_fields_set:
@@ -108,6 +113,11 @@ class PageRunSummaryItemsInner(BaseModel):
         # and model_fields_set contains the field
         if self.total_cost is None and "total_cost" in self.model_fields_set:
             _dict['total_cost'] = None
+
+        # set to None if total_cost_estimate_micros (nullable) is None
+        # and model_fields_set contains the field
+        if self.total_cost_estimate_micros is None and "total_cost_estimate_micros" in self.model_fields_set:
+            _dict['total_cost_estimate_micros'] = None
 
         return _dict
 
@@ -132,6 +142,7 @@ class PageRunSummaryItemsInner(BaseModel):
             "status": obj.get("status"),
             "tenant_id": obj.get("tenant_id"),
             "total_cost": Money.from_dict(obj["total_cost"]) if obj.get("total_cost") is not None else None,
+            "total_cost_estimate_micros": RollupEstimate.from_dict(obj["total_cost_estimate_micros"]) if obj.get("total_cost_estimate_micros") is not None else None,
             "trace_id": obj.get("trace_id")
         })
         return _obj
