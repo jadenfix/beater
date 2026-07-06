@@ -1307,8 +1307,8 @@ mod tests {
             cost_span(100, Some(10.0)),
             cost_span(1000, Some(1.0)),
         ];
-        let estimate = weighted_mean_span_cost_micros(&spans)
-            .unwrap_or_else(|| panic!("estimate defined"));
+        let estimate =
+            weighted_mean_span_cost_micros(&spans).unwrap_or_else(|| panic!("estimate defined"));
         assert_eq!(estimate.weighting, RollupWeighting::HorvitzThompson);
         assert!(!estimate.is_biased());
         assert!((estimate.value - 3000.0 / 21.0).abs() < 1e-9);
@@ -1319,12 +1319,9 @@ mod tests {
     #[test]
     fn unweighted_rollup_is_flagged_biased() {
         // Any span missing a sampling_weight makes the whole roll-up un-debiasable.
-        let spans = vec![
-            cost_span(100, Some(10.0)),
-            cost_span(1000, None),
-        ];
-        let estimate = weighted_mean_span_cost_micros(&spans)
-            .unwrap_or_else(|| panic!("estimate defined"));
+        let spans = vec![cost_span(100, Some(10.0)), cost_span(1000, None)];
+        let estimate =
+            weighted_mean_span_cost_micros(&spans).unwrap_or_else(|| panic!("estimate defined"));
         assert_eq!(estimate.weighting, RollupWeighting::BiasedUnweighted);
         assert!(estimate.is_biased());
         // Plain unweighted mean: (100 + 1000) / 2 = 550.
@@ -1382,8 +1379,7 @@ mod tests {
         let weighted = fixture_span(Some(10.0));
         let json = serde_json::to_string(&weighted).unwrap_or_else(|err| panic!("{err}"));
         assert!(json.contains("sampling_weight"));
-        let back: CanonicalSpan =
-            serde_json::from_str(&json).unwrap_or_else(|err| panic!("{err}"));
+        let back: CanonicalSpan = serde_json::from_str(&json).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(back.sampling_weight, Some(10.0));
         assert_eq!(back, weighted);
 
@@ -1393,8 +1389,7 @@ mod tests {
         assert!(!json.contains("sampling_weight"));
 
         // An old payload that predates the field parses, defaulting to None.
-        let back: CanonicalSpan =
-            serde_json::from_str(&json).unwrap_or_else(|err| panic!("{err}"));
+        let back: CanonicalSpan = serde_json::from_str(&json).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(back.sampling_weight, None);
         assert_eq!(back, unweighted);
     }
