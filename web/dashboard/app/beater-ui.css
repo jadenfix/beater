@@ -452,6 +452,12 @@
   color: var(--green);
 }
 
+.tag-warn {
+  background: var(--warn-soft);
+  border-color: var(--warn-line);
+  color: #7a5310;
+}
+
 .tag-danger {
   background: var(--danger-soft);
   border-color: var(--danger-line);
@@ -897,6 +903,7 @@
 }
 
 .connect-primary,
+.connect-readiness,
 .connect-checklist {
   grid-column: 1 / -1;
 }
@@ -1019,6 +1026,68 @@
   color: var(--accent-ink);
   font-size: 11px;
   padding: 4px 6px;
+}
+
+.readiness-list {
+  gap: 10px;
+}
+
+.readiness-row {
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 11px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 12px;
+}
+
+.readiness-row h3 {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.readiness-row p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 3px;
+}
+
+.readiness-icon {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.readiness-icon svg {
+  height: 15px;
+  width: 15px;
+}
+
+.readiness-row[data-status="ok"] .readiness-icon {
+  background: var(--success-soft);
+  border-color: var(--success-line);
+  color: var(--green);
+}
+
+.readiness-row[data-status="warn"] .readiness-icon {
+  background: var(--warn-soft);
+  border-color: var(--warn-line);
+  color: #7a5310;
+}
+
+.readiness-row[data-status="error"] .readiness-icon {
+  background: var(--danger-soft);
+  border-color: var(--danger-line);
+  color: var(--danger);
 }
 
 .connect-checklist {

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Bot,
   Braces,
   CheckCircle2,
@@ -9,6 +10,7 @@ import {
   Link2,
   LockKeyhole,
   MonitorCog,
+  RefreshCw,
   ShieldCheck,
   TerminalSquare,
 } from "lucide-react";
@@ -20,6 +22,15 @@ type ClientTarget = {
   name: string;
   icon: typeof Bot;
   note: string;
+};
+
+type ReadinessStatus = "checking" | "ok" | "warn" | "error";
+
+type ReadinessCheck = {
+  id: string;
+  label: string;
+  detail: string;
+  status: ReadinessStatus;
 };
 
 const CLIENTS: ClientTarget[] = [
@@ -46,6 +57,27 @@ const CLIENTS: ClientTarget[] = [
     name: "OpenAI API / Agents",
     icon: TerminalSquare,
     note: "Attach Beater as a hosted MCP tool with server_url and per-call approvals.",
+  },
+];
+
+const INITIAL_READINESS_CHECKS: ReadinessCheck[] = [
+  {
+    id: "resource",
+    label: "Protected resource metadata",
+    detail: "Waiting to verify hosted resource discovery.",
+    status: "checking",
+  },
+  {
+    id: "authorization",
+    label: "Authorization server metadata",
+    detail: "Waiting to verify login, token, and registration endpoints.",
+    status: "checking",
+  },
+  {
+    id: "challenge",
+    label: "MCP OAuth challenge",
+    detail: "Waiting to verify unauthenticated /mcp discovery.",
+    status: "checking",
   },
 ];
 
@@ -137,12 +169,186 @@ function apiKeyFallback(origin: string) {
   ].join("\n");
 }
 
+function readinessLabel(status: ReadinessStatus) {
+  if (status === "ok") return "Ready";
+  if (status === "error") return "Needs attention";
+  if (status === "warn") return "Needs backend";
+  return "Checking";
+}
+
+function readinessTagClass(status: ReadinessStatus) {
+  if (status === "ok") return "tag-success";
+  if (status === "error") return "tag-danger";
+  if (status === "warn") return "tag-warn";
+  return "tag-accent";
+}
+
+function checkRank(status: ReadinessStatus) {
+  if (status === "error") return 3;
+  if (status === "warn") return 2;
+  if (status === "checking") return 1;
+  return 0;
+}
+
+function overallStatus(results: ReadinessCheck[]): ReadinessStatus {
+  return results.reduce<ReadinessStatus>(
+    (current, check) => (checkRank(check.status) > checkRank(current) ? check.status : current),
+    "ok",
+  );
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+async function fetchJsonObject(url: string): Promise<{
+  ok: boolean;
+  status: number;
+  data: Record<string, unknown> | null;
+}> {
+  const response = await fetch(url, {
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { accept: "application/json" },
+  });
+  let data: Record<string, unknown> | null = null;
+  try {
+    const parsed: unknown = await response.json();
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      data = parsed as Record<string, unknown>;
+    }
+  } catch {
+    data = null;
+  }
+  return { ok: response.ok, status: response.status, data };
+}
+
+function backendReachabilityDetail(status: number) {
+  if (status === 502) return "Dashboard route is live, but the OAuth/MCP backend is unreachable.";
+  return `Endpoint returned HTTP ${status}.`;
+}
+
+function metadataUrl(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function hostedEndpointOk(value: unknown, expected: string): boolean {
+  return metadataUrl(value) === expected;
+}
+
+function expectedResourceMetadataUrl(baseOrigin: string) {
+  return `${baseOrigin}/.well-known/oauth-protected-resource`;
+}
+
 export function ConnectClient({ signedIn }: { signedIn: boolean }) {
   const [origin, setOrigin] = useState("https://app.palette.dev");
+  const [readiness, setReadiness] = useState<ReadinessCheck[]>(INITIAL_READINESS_CHECKS);
+  const [readinessStatus, setReadinessStatus] = useState<ReadinessStatus>("checking");
+  const [checkingReadiness, setCheckingReadiness] = useState(false);
+
+  const runReadiness = useCallback(async (baseOrigin: string) => {
+    const protectedResourceUrl = `${baseOrigin}/.well-known/oauth-protected-resource`;
+    const authServerUrl = `${baseOrigin}/.well-known/oauth-authorization-server`;
+    const mcpUrl = `${baseOrigin}/mcp`;
+
+    setCheckingReadiness(true);
+    setReadiness(INITIAL_READINESS_CHECKS);
+    setReadinessStatus("checking");
+
+    const results: ReadinessCheck[] = [];
+    try {
+      const resource = await fetchJsonObject(protectedResourceUrl);
+      const authorizationServers = stringArray(resource.data?.authorization_servers);
+      const resourceName = typeof resource.data?.resource === "string" ? resource.data.resource : "";
+      const resourceOk =
+        resource.ok && resourceName === baseOrigin && authorizationServers.includes(baseOrigin);
+      results.push({
+        id: "resource",
+        label: "Protected resource metadata",
+        status: resourceOk ? "ok" : resource.status === 502 ? "warn" : "error",
+        detail: resourceOk
+          ? "Advertises this hosted dashboard origin and its authorization server."
+          : !resource.ok
+            ? backendReachabilityDetail(resource.status)
+            : "Metadata loaded, but resource or authorization_servers does not match this origin.",
+      });
+    } catch {
+      results.push({
+        id: "resource",
+        label: "Protected resource metadata",
+        status: "error",
+        detail: "Could not reach protected resource metadata from this browser.",
+      });
+    }
+
+    try {
+      const auth = await fetchJsonObject(authServerUrl);
+      const scopes = stringArray(auth.data?.scopes_supported);
+      const hasEndpoints =
+        hostedEndpointOk(auth.data?.issuer, baseOrigin) &&
+        hostedEndpointOk(auth.data?.authorization_endpoint, `${baseOrigin}/oauth/authorize`) &&
+        hostedEndpointOk(auth.data?.token_endpoint, `${baseOrigin}/oauth/token`) &&
+        hostedEndpointOk(auth.data?.registration_endpoint, `${baseOrigin}/oauth/register`);
+      const authOk = auth.ok && hasEndpoints && scopes.includes("mcp:invoke");
+      results.push({
+        id: "authorization",
+        label: "Authorization server metadata",
+        status: authOk ? "ok" : auth.status === 502 ? "warn" : "error",
+        detail: authOk
+          ? "Exposes authorize, token, dynamic registration, and mcp:invoke scope."
+          : !auth.ok
+            ? backendReachabilityDetail(auth.status)
+            : "Metadata loaded, but hosted OAuth endpoints or mcp:invoke scope are missing.",
+      });
+    } catch {
+      results.push({
+        id: "authorization",
+        label: "Authorization server metadata",
+        status: "error",
+        detail: "Could not reach authorization server metadata from this browser.",
+      });
+    }
+
+    try {
+      const challengeResponse = await fetch(mcpUrl, {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { accept: "application/json, text/event-stream" },
+      });
+      const challenge = challengeResponse.headers.get("www-authenticate") ?? "";
+      const expectedResourceMetadata = expectedResourceMetadataUrl(baseOrigin);
+      const hasOAuthChallenge =
+        challengeResponse.status === 401 &&
+        /bearer/i.test(challenge) &&
+        /resource_metadata/i.test(challenge) &&
+        challenge.includes(`resource_metadata="${expectedResourceMetadata}"`);
+      results.push({
+        id: "challenge",
+        label: "MCP OAuth challenge",
+        status: hasOAuthChallenge ? "ok" : challengeResponse.status === 502 ? "warn" : "error",
+        detail: hasOAuthChallenge
+          ? "/mcp returns a 401 Bearer challenge with resource_metadata for client login."
+          : backendReachabilityDetail(challengeResponse.status),
+      });
+    } catch {
+      results.push({
+        id: "challenge",
+        label: "MCP OAuth challenge",
+        status: "error",
+        detail: "Could not reach /mcp from this browser.",
+      });
+    }
+
+    setReadiness(results);
+    setReadinessStatus(overallStatus(results));
+    setCheckingReadiness(false);
+  }, []);
 
   useEffect(() => {
-    setOrigin(currentOrigin());
-  }, []);
+    const nextOrigin = currentOrigin();
+    setOrigin(nextOrigin);
+    void runReadiness(nextOrigin);
+  }, [runReadiness]);
 
   const mcpUrl = `${origin}/mcp`;
   const protectedResourceUrl = `${origin}/.well-known/oauth-protected-resource`;
@@ -166,8 +372,15 @@ export function ConnectClient({ signedIn }: { signedIn: boolean }) {
             <h2 id="connect-title">Hosted MCP endpoint</h2>
             <p>OAuth is the default path. API keys remain available when a client cannot launch OAuth.</p>
           </div>
-          <span className="tag tag-success">
-            <CheckCircle2 aria-hidden="true" width={13} height={13} /> OAuth ready
+          <span className={`tag ${readinessTagClass(readinessStatus)}`}>
+            {readinessStatus === "ok" ? (
+              <CheckCircle2 aria-hidden="true" width={13} height={13} />
+            ) : readinessStatus === "checking" ? (
+              <RefreshCw aria-hidden="true" width={13} height={13} />
+            ) : (
+              <AlertTriangle aria-hidden="true" width={13} height={13} />
+            )}
+            {readinessLabel(readinessStatus)}
           </span>
         </div>
         <div className="panel-body">
@@ -192,6 +405,48 @@ export function ConnectClient({ signedIn }: { signedIn: boolean }) {
               token on protected tool calls.
             </span>
           </div>
+        </div>
+      </section>
+
+      <section className="panel connect-readiness" aria-labelledby="readiness-title">
+        <div className="panel-head">
+          <div className="panel-titles">
+            <h2 id="readiness-title">Live OAuth check</h2>
+            <p>Run from this browser against the same hosted URLs that MCP clients discover.</p>
+          </div>
+          <button
+            className="btn btn-sm"
+            type="button"
+            onClick={() => void runReadiness(origin)}
+            disabled={checkingReadiness}
+          >
+            <RefreshCw aria-hidden="true" />
+            Run check
+          </button>
+        </div>
+        <div className="panel-body readiness-list">
+          {readiness.map((check) => (
+            <div className="readiness-row" data-status={check.status} key={check.id}>
+              <div className="readiness-icon" aria-hidden="true">
+                {check.status === "ok" ? (
+                  <CheckCircle2 />
+                ) : check.status === "checking" ? (
+                  <RefreshCw />
+                ) : (
+                  <AlertTriangle />
+                )}
+              </div>
+              <div>
+                <h3>{check.label}</h3>
+                <p>{check.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="panel-foot">
+          <span>
+            A warning usually means the dashboard is deployed but beaterd or its OAuth proxy is not reachable.
+          </span>
         </div>
       </section>
 

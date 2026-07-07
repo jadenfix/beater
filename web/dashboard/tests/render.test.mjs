@@ -1238,6 +1238,18 @@ test("connect page gives hosted MCP clients OAuth-first setup and scoped fallbac
   assert.match(client, /\/mcp/);
   assert.match(client, /oauth-protected-resource/);
   assert.match(client, /oauth-authorization-server/);
+  assert.match(client, /Live OAuth check/);
+  assert.match(client, /Run check/);
+  assert.match(client, /fetchJsonObject\(protectedResourceUrl\)/);
+  assert.match(client, /fetchJsonObject\(authServerUrl\)/);
+  assert.match(client, /fetch\(mcpUrl/);
+  assert.match(client, /www-authenticate/);
+  assert.match(client, /resource_metadata/);
+  assert.match(client, /expectedResourceMetadataUrl/);
+  assert.match(client, /hostedEndpointOk\(auth\.data\?\.authorization_endpoint/);
+  assert.match(client, /hostedEndpointOk\(auth\.data\?\.token_endpoint/);
+  assert.match(client, /hostedEndpointOk\(auth\.data\?\.registration_endpoint/);
+  assert.match(client, /registration_endpoint/);
   assert.match(client, /Claude \/ Claude Code/);
   assert.match(client, /Cursor/);
   assert.match(client, /ChatGPT/);
