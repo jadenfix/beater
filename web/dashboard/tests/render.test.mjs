@@ -167,7 +167,23 @@ test("OAuth return_to resumes through dashboard-origin proxy", () => {
     "/oauth/authorize?client_id=cursor&state=abc#frag",
   );
   assert.equal(
+    safeOAuthReturnPath("/connect", "https://app.palette.dev"),
+    "/connect",
+  );
+  assert.equal(
+    safeOAuthReturnPath("/settings/api-keys?created=1", "https://app.palette.dev"),
+    "/settings/api-keys?created=1",
+  );
+  assert.equal(
     safeOAuthReturnPath("https://evil.example.com/dashboard?next=/oauth/authorize", "https://app.palette.dev"),
+    "/",
+  );
+  assert.equal(
+    safeOAuthReturnPath("//evil.example.com/connect", "https://app.palette.dev"),
+    "/",
+  );
+  assert.equal(
+    safeOAuthReturnPath("/search?return_to=/connect", "https://app.palette.dev"),
     "/",
   );
 });
@@ -1205,6 +1221,48 @@ test("in-app docs runtime surfaces are generated from the openapi contract", () 
   assert.match(quickstartsPage, /tools\/list/);
   assert.match(quickstartsPage, /CLI/);
   assert.match(quickstartsPage, /Control-plane clients \(7 languages\)/);
+});
+
+test("connect page gives hosted MCP clients OAuth-first setup and scoped fallback", () => {
+  const page = readFileSync(join(root, "app/connect/page.tsx"), "utf8");
+  const client = readFileSync(join(root, "app/connect/ConnectClient.tsx"), "utf8");
+  const nav = readFileSync(join(root, "components/AppNav.tsx"), "utf8");
+
+  assert.match(page, /Connect MCP clients/);
+  assert.match(page, /Claude, Claude Code, Cursor, ChatGPT, Codex/);
+  assert.match(page, /OAuth-first login/);
+  assert.match(page, /getSession/);
+  assert.match(page, /AppNav/);
+
+  assert.match(client, /Remote MCP URL/);
+  assert.match(client, /\/mcp/);
+  assert.match(client, /oauth-protected-resource/);
+  assert.match(client, /oauth-authorization-server/);
+  assert.match(client, /Claude \/ Claude Code/);
+  assert.match(client, /Cursor/);
+  assert.match(client, /ChatGPT/);
+  assert.match(client, /OpenAI API \/ Agents/);
+  assert.match(client, /server_url/);
+  assert.match(client, /require_approval/);
+  assert.match(client, /Codex compatibility depends on the surface/);
+  assert.match(client, /Delegated permissions/);
+  assert.match(client, /mcp:invoke/);
+  assert.match(client, /trace:read/);
+  assert.match(client, /dataset:write/);
+  assert.match(client, /eval:run/);
+  assert.match(client, /admin/);
+  assert.match(client, /API-key fallback/);
+  assert.match(client, /BEATER_API_KEY="bt_\.\.\."/);
+  assert.doesNotMatch(client, /BEATER_API_KEY="bao_\.\.\."/);
+  assert.match(client, /tools\/call/);
+  assert.match(client, /listTraces/);
+  assert.match(client, /x-beater-project-id/);
+  assert.match(client, /x-beater-environment-id/);
+  assert.match(client, /CopyField/);
+  assert.match(client, /CopyButton/);
+
+  assert.match(nav, /href: "\/connect"/);
+  assert.match(nav, /PlugZap/);
 });
 
 test("browser proof covers all canonical span kinds and can record a demo", () => {

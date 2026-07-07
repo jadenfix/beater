@@ -65,7 +65,14 @@ export function safeOAuthReturnPath(value: string | null, origin: string): strin
   if (!value) return "/";
   try {
     const target = new URL(value, origin);
-    if (!target.pathname.startsWith("/oauth/") && target.pathname !== "/") return "/";
+    const oauthProxyPath = target.pathname.startsWith("/oauth/");
+    const sameOriginSetupPath =
+      target.origin === origin &&
+      (target.pathname === "/" ||
+        target.pathname === "/connect" ||
+        target.pathname === "/settings/api-keys");
+    const allowed = oauthProxyPath || sameOriginSetupPath;
+    if (!allowed) return "/";
     return `${target.pathname}${target.search}${target.hash}`;
   } catch {
     return "/";
