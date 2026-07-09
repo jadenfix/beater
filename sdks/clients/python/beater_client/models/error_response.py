@@ -28,7 +28,8 @@ class ErrorResponse(BaseModel):
     """ # noqa: E501
     error: StrictStr = Field(description="Stable machine-readable error code.")
     message: StrictStr = Field(description="Human-readable error message.")
-    __properties: ClassVar[List[str]] = ["error", "message"]
+    status: StrictStr = Field(description="Deprecated compatibility alias for older `/v1` clients.")
+    __properties: ClassVar[List[str]] = ["error", "message", "status"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -82,7 +83,8 @@ class ErrorResponse(BaseModel):
 
         _obj = cls.model_validate({
             "error": obj.get("error"),
-            "message": obj.get("message")
+            "message": obj.get("message"),
+            "status": obj.get("status")
         })
         return _obj
 

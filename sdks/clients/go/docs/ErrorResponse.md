@@ -6,12 +6,13 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **Error** | **string** | Stable machine-readable error code. |
 **Message** | **string** | Human-readable error message. |
+**Status** | **string** | Deprecated compatibility alias for older &#x60;/v1&#x60; clients. |
 
 ## Methods
 
 ### NewErrorResponse
 
-`func NewErrorResponse(error_ string, message string, ) *ErrorResponse`
+`func NewErrorResponse(error_ string, message string, status string, ) *ErrorResponse`
 
 NewErrorResponse instantiates a new ErrorResponse object
 This constructor will assign default values to properties that have it defined,
@@ -64,6 +65,26 @@ and a boolean to check if the value has been set.
 `func (o *ErrorResponse) SetMessage(v string)`
 
 SetMessage sets Message field to given value.
+
+
+### GetStatus
+
+`func (o *ErrorResponse) GetStatus() string`
+
+GetStatus returns the Status field if non-nil, zero value otherwise.
+
+### GetStatusOk
+
+`func (o *ErrorResponse) GetStatusOk() (*string, bool)`
+
+GetStatusOk returns a tuple with the Status field if it's non-nil, zero value otherwise
+and a boolean to check if the value has been set.
+
+### SetStatus
+
+`func (o *ErrorResponse) SetStatus(v string)`
+
+SetStatus sets Status field to given value.
 
 
 

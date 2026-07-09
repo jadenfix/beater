@@ -31,6 +31,12 @@ export interface ErrorResponse {
      * @memberof ErrorResponse
      */
     message: string;
+    /**
+     * Deprecated compatibility alias for older `/v1` clients.
+     * @type {string}
+     * @memberof ErrorResponse
+     */
+    status: string;
 }
 
 /**
@@ -39,6 +45,7 @@ export interface ErrorResponse {
 export function instanceOfErrorResponse(value: object): value is ErrorResponse {
     if (!('error' in value) || value['error'] === undefined) return false;
     if (!('message' in value) || value['message'] === undefined) return false;
+    if (!('status' in value) || value['status'] === undefined) return false;
     return true;
 }
 
@@ -54,6 +61,7 @@ export function ErrorResponseFromJSONTyped(json: any, ignoreDiscriminator: boole
         
         'error': json['error'],
         'message': json['message'],
+        'status': json['status'],
     };
 }
 
@@ -70,6 +78,7 @@ export function ErrorResponseToJSONTyped(value?: ErrorResponse | null, ignoreDis
         
         'error': value['error'],
         'message': value['message'],
+        'status': value['status'],
     };
 }
 

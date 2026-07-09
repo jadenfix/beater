@@ -38,7 +38,10 @@ While the API is at `/v1`:
   optional request fields, and new response fields are backward compatible and
   may ship under `/v1`. Clients must tolerate unknown response fields.
 - **Error shape is stable.** All error responses use the shared `ErrorResponse`
-  body. New error codes may be added; existing codes keep their meaning.
+  body. `error` is the stable snake_case machine code and `message` is the
+  human-readable detail. `/v1` also retains the deprecated `status` reason
+  phrase as an additive compatibility field. New error codes may be added;
+  existing codes keep their meaning.
 
 ## Versioning model
 

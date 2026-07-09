@@ -318,7 +318,7 @@ function apiErrorDetail(body: string): string {
     if (typeof parsed === "string") return truncateApiError(parsed);
     if (parsed && typeof parsed === "object") {
       const record = parsed as Record<string, unknown>;
-      for (const key of ["error", "message", "detail", "title"]) {
+      for (const key of ["message", "error", "detail", "title"]) {
         const value = record[key];
         if (typeof value === "string" && value.trim()) {
           return truncateApiError(value);

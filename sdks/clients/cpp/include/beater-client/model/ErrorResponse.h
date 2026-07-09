@@ -72,6 +72,14 @@ public:
     void unsetMessage();
     void setMessage(const utility::string_t& value);
 
+    /// <summary>
+    /// Deprecated compatibility alias for older &#x60;/v1&#x60; clients.
+    /// </summary>
+    utility::string_t getStatus() const;
+    bool statusIsSet() const;
+    void unsetStatus();
+    void setStatus(const utility::string_t& value);
+
 
 protected:
     utility::string_t m_Error;
@@ -79,6 +87,9 @@ protected:
 
     utility::string_t m_Message;
     bool m_MessageIsSet;
+
+    utility::string_t m_Status;
+    bool m_StatusIsSet;
 
 };
 

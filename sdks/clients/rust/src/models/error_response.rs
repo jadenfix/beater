@@ -20,14 +20,18 @@ pub struct ErrorResponse {
     /// Human-readable error message.
     #[serde(rename = "message")]
     pub message: String,
+    /// Deprecated compatibility alias for older `/v1` clients.
+    #[serde(rename = "status")]
+    pub status: String,
 }
 
 impl ErrorResponse {
     /// Error envelope returned by every fallible endpoint.
-    pub fn new(error: String, message: String) -> ErrorResponse {
+    pub fn new(error: String, message: String, status: String) -> ErrorResponse {
         ErrorResponse {
             error,
             message,
+            status,
         }
     }
 }

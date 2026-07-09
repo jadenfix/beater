@@ -21,13 +21,15 @@ typedef struct error_response_t error_response_t;
 typedef struct error_response_t {
     char *error; // string
     char *message; // string
+    char *status; // string
 
     int _library_owned; // Is the library responsible for freeing this object?
 } error_response_t;
 
 __attribute__((deprecated)) error_response_t *error_response_create(
     char *error,
-    char *message
+    char *message,
+    char *status
 );
 
 void error_response_free(error_response_t *error_response);

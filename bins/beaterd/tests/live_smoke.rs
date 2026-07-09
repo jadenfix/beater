@@ -211,7 +211,8 @@ async fn beaterd_quota_is_shared_across_two_replicas_and_resets_on_window() -> a
         .ok_or_else(|| anyhow::anyhow!("missing x-ratelimit-reset"))?
         .parse::<i64>()?;
     let error = second.json::<serde_json::Value>().await?;
-    assert_eq!(error["error"], "Too Many Requests");
+    assert_eq!(error["error"], "too_many_requests");
+    assert_eq!(error["status"], "Too Many Requests");
     assert!(
         error["message"]
             .as_str()
@@ -457,7 +458,8 @@ async fn beaterd_storage_failure_accounts_every_event_without_silent_drop() -> a
         reqwest::StatusCode::INTERNAL_SERVER_ERROR
     );
     let explicit_error = explicit_response.json::<serde_json::Value>().await?;
-    assert_eq!(explicit_error["error"], "Internal Server Error");
+    assert_eq!(explicit_error["error"], "internal_server_error");
+    assert_eq!(explicit_error["status"], "Internal Server Error");
     assert!(
         explicit_error["message"]
             .as_str()

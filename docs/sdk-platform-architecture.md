@@ -27,8 +27,10 @@ and `oasdiff` blocks breaking changes. Drift is a merge-blocker, not a hope.
   operationIds -> method names. Uniqueness avoids single-package collisions
   (Go/C/Java) so names are consistent across all 7 languages without per-language
   hacks.
-- **Uniform error model.** Every non-2xx is one `ApiErrorBody { error, status }`
-  -> one typed error per SDK.
+- **Uniform error model.** Every non-2xx is one
+  `ErrorResponse { error, message, status }` -> one typed error per SDK.
+  `error` is the stable snake_case machine code; `status` is retained only as a
+  deprecated `/v1` compatibility reason phrase.
 - **Typed everything.** No bare `object`/`any` responses; every response is a
   named schema. Discriminated unions use an internal `type` tag (e.g.
   `EvaluatorKind`) so they generate cleanly in strict languages.

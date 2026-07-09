@@ -1379,6 +1379,8 @@ export interface components {
             error: string;
             /** @description Human-readable error message. */
             message: string;
+            /** @description Deprecated compatibility alias for older `/v1` clients. */
+            status: string;
         };
         EvalReproducibility: {
             agent_release_id: components["schemas"]["AgentReleaseId"];

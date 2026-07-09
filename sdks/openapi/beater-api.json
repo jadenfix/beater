@@ -10057,7 +10057,8 @@
         "description": "Error envelope returned by every fallible endpoint.",
         "required": [
           "error",
-          "message"
+          "message",
+          "status"
         ],
         "properties": {
           "error": {
@@ -10067,6 +10068,10 @@
           "message": {
             "type": "string",
             "description": "Human-readable error message."
+          },
+          "status": {
+            "type": "string",
+            "description": "Deprecated compatibility alias for older `/v1` clients."
           }
         }
       },

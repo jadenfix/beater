@@ -756,7 +756,11 @@ test("dashboard search loader returns an empty result on API failure", async () 
 test("dashboard API errors stay concise and user-facing", () => {
   const { formatApiError } = loadDashboardApiModule();
   assert.equal(
-    formatApiError(404, "Not Found", '{"error":"trace abc not found","status":404}'),
+    formatApiError(
+      404,
+      "Not Found",
+      '{"error":"not_found","message":"trace abc not found","status":"Not Found"}'
+    ),
     "API 404 Not Found: trace abc not found"
   );
   assert.equal(

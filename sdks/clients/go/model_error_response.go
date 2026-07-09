@@ -25,6 +25,8 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 	// Human-readable error message.
 	Message string `json:"message"`
+	// Deprecated compatibility alias for older `/v1` clients.
+	Status string `json:"status"`
 }
 
 type _ErrorResponse ErrorResponse
@@ -33,10 +35,11 @@ type _ErrorResponse ErrorResponse
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewErrorResponse(error_ string, message string) *ErrorResponse {
+func NewErrorResponse(error_ string, message string, status string) *ErrorResponse {
 	this := ErrorResponse{}
 	this.Error = error_
 	this.Message = message
+	this.Status = status
 	return &this
 }
 
@@ -96,6 +99,30 @@ func (o *ErrorResponse) SetMessage(v string) {
 	o.Message = v
 }
 
+// GetStatus returns the Status field value
+func (o *ErrorResponse) GetStatus() string {
+	if o == nil {
+		var ret string
+		return ret
+	}
+
+	return o.Status
+}
+
+// GetStatusOk returns a tuple with the Status field value
+// and a boolean to check if the value has been set.
+func (o *ErrorResponse) GetStatusOk() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return &o.Status, true
+}
+
+// SetStatus sets field value
+func (o *ErrorResponse) SetStatus(v string) {
+	o.Status = v
+}
+
 func (o ErrorResponse) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -108,6 +135,7 @@ func (o ErrorResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["error"] = o.Error
 	toSerialize["message"] = o.Message
+	toSerialize["status"] = o.Status
 	return toSerialize, nil
 }
 
@@ -118,6 +146,7 @@ func (o *ErrorResponse) UnmarshalJSON(data []byte) (err error) {
 	requiredProperties := []string{
 		"error",
 		"message",
+		"status",
 	}
 
 	allProperties := make(map[string]interface{})

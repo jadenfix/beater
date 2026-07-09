@@ -155,12 +155,14 @@ for lang in "${LANGS[@]}"; do
     c)
       normalize_generated_text_files "$out" \
         README.md \
+        model/error_response.c \
         api/IngestAPI.c \
         api/IngestAPI.h \
         docs/IngestAPI.md
       ;;
     cpp)
       normalize_generated_text_files "$out" \
+        src/model/ErrorResponse.cpp \
         include/beater-client/api/IngestApi.h
       ;;
     go)

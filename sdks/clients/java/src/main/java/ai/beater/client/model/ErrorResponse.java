@@ -34,7 +34,8 @@ import ai.beater.client.ApiClient;
  */
 @JsonPropertyOrder({
   ErrorResponse.JSON_PROPERTY_ERROR,
-  ErrorResponse.JSON_PROPERTY_MESSAGE
+  ErrorResponse.JSON_PROPERTY_MESSAGE,
+  ErrorResponse.JSON_PROPERTY_STATUS
 })
 @javax.annotation.Generated(value = "org.openapitools.codegen.languages.JavaClientCodegen", comments = "Generator version: 7.11.0")
 public class ErrorResponse {
@@ -45,6 +46,10 @@ public class ErrorResponse {
   public static final String JSON_PROPERTY_MESSAGE = "message";
   @javax.annotation.Nonnull
   private String message;
+
+  public static final String JSON_PROPERTY_STATUS = "status";
+  @javax.annotation.Nonnull
+  private String status;
 
   public ErrorResponse() { 
   }
@@ -97,6 +102,30 @@ public class ErrorResponse {
   }
 
 
+  public ErrorResponse status(@javax.annotation.Nonnull String status) {
+    this.status = status;
+    return this;
+  }
+
+  /**
+   * Deprecated compatibility alias for older &#x60;/v1&#x60; clients.
+   * @return status
+   */
+  @javax.annotation.Nonnull
+  @JsonProperty(JSON_PROPERTY_STATUS)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public String getStatus() {
+    return status;
+  }
+
+
+  @JsonProperty(JSON_PROPERTY_STATUS)
+  @JsonInclude(value = JsonInclude.Include.ALWAYS)
+  public void setStatus(@javax.annotation.Nonnull String status) {
+    this.status = status;
+  }
+
+
   /**
    * Return true if this ErrorResponse object is equal to o.
    */
@@ -110,12 +139,13 @@ public class ErrorResponse {
     }
     ErrorResponse errorResponse = (ErrorResponse) o;
     return Objects.equals(this.error, errorResponse.error) &&
-        Objects.equals(this.message, errorResponse.message);
+        Objects.equals(this.message, errorResponse.message) &&
+        Objects.equals(this.status, errorResponse.status);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(error, message);
+    return Objects.hash(error, message, status);
   }
 
   @Override
@@ -124,6 +154,7 @@ public class ErrorResponse {
     sb.append("class ErrorResponse {\n");
     sb.append("    error: ").append(toIndentedString(error)).append("\n");
     sb.append("    message: ").append(toIndentedString(message)).append("\n");
+    sb.append("    status: ").append(toIndentedString(status)).append("\n");
     sb.append("}");
     return sb.toString();
   }
@@ -179,6 +210,11 @@ public class ErrorResponse {
     // add `message` to the URL query string
     if (getMessage() != null) {
       joiner.add(String.format("%smessage%s=%s", prefix, suffix, URLEncoder.encode(ApiClient.valueToString(getMessage()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
+    }
+
+    // add `status` to the URL query string
+    if (getStatus() != null) {
+      joiner.add(String.format("%sstatus%s=%s", prefix, suffix, URLEncoder.encode(ApiClient.valueToString(getStatus()), StandardCharsets.UTF_8).replaceAll("\\+", "%20")));
     }
 
     return joiner.toString();

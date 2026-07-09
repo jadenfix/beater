@@ -4030,6 +4030,8 @@ struct ErrorResponse {
     error: String,
     /// Human-readable error message.
     message: String,
+    /// Deprecated compatibility alias for older `/v1` clients.
+    status: String,
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
@@ -5259,9 +5261,12 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.status;
         let message = self.message;
+        let reason = status.canonical_reason().unwrap_or("Error");
+        let error = reason.to_ascii_lowercase().replace(' ', "_");
         let body = Json(serde_json::json!({
-            "error": status.canonical_reason().unwrap_or("error"),
-            "message": message
+            "error": error,
+            "message": message,
+            "status": reason
         }));
         let mut response = (status, body).into_response();
         for (name, value) in self.headers {
@@ -5985,7 +5990,8 @@ mod tests {
             .unwrap_or_else(|err| panic!("{err}"));
         let error: serde_json::Value =
             serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
-        assert_eq!(error["error"], serde_json::json!("Bad Request"));
+        assert_eq!(error["error"], serde_json::json!("bad_request"));
+        assert_eq!(error["status"], serde_json::json!("Bad Request"));
         assert!(
             error["message"]
                 .as_str()
@@ -6022,7 +6028,8 @@ mod tests {
             .unwrap_or_else(|err| panic!("{err}"));
         let error: serde_json::Value =
             serde_json::from_slice(&body).unwrap_or_else(|err| panic!("{err}"));
-        assert_eq!(error["error"], serde_json::json!("Bad Request"));
+        assert_eq!(error["error"], serde_json::json!("bad_request"));
+        assert_eq!(error["status"], serde_json::json!("Bad Request"));
         assert!(
             error["message"]
                 .as_str()

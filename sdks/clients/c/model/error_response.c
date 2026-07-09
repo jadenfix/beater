@@ -7,7 +7,8 @@
 
 static error_response_t *error_response_create_internal(
     char *error,
-    char *message
+    char *message,
+    char *status
     ) {
     error_response_t *error_response_local_var = malloc(sizeof(error_response_t));
     if (!error_response_local_var) {
@@ -15,6 +16,7 @@ static error_response_t *error_response_create_internal(
     }
     error_response_local_var->error = error;
     error_response_local_var->message = message;
+    error_response_local_var->status = status;
 
     error_response_local_var->_library_owned = 1;
     return error_response_local_var;
@@ -22,11 +24,13 @@ static error_response_t *error_response_create_internal(
 
 __attribute__((deprecated)) error_response_t *error_response_create(
     char *error,
-    char *message
+    char *message,
+    char *status
     ) {
     return error_response_create_internal (
         error,
-        message
+        message,
+        status
         );
 }
 
@@ -46,6 +50,10 @@ void error_response_free(error_response_t *error_response) {
     if (error_response->message) {
         free(error_response->message);
         error_response->message = NULL;
+    }
+    if (error_response->status) {
+        free(error_response->status);
+        error_response->status = NULL;
     }
     free(error_response);
 }
@@ -70,6 +78,15 @@ cJSON *error_response_convertToJSON(error_response_t *error_response) {
     goto fail; //String
     }
 
+
+    // error_response->status
+    if (!error_response->status) {
+        goto fail;
+    }
+    if(cJSON_AddStringToObject(item, "status", error_response->status) == NULL) {
+    goto fail; //String
+    }
+
     return item;
 fail:
     if (item) {
@@ -91,7 +108,7 @@ error_response_t *error_response_parseFromJSON(cJSON *error_responseJSON){
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(error))
     {
     goto end; //String
@@ -106,8 +123,23 @@ error_response_t *error_response_parseFromJSON(cJSON *error_responseJSON){
         goto end;
     }
 
-    
+
     if(!cJSON_IsString(message))
+    {
+    goto end; //String
+    }
+
+    // error_response->status
+    cJSON *status = cJSON_GetObjectItemCaseSensitive(error_responseJSON, "status");
+    if (cJSON_IsNull(status)) {
+        status = NULL;
+    }
+    if (!status) {
+        goto end;
+    }
+
+
+    if(!cJSON_IsString(status))
     {
     goto end; //String
     }
@@ -115,7 +147,8 @@ error_response_t *error_response_parseFromJSON(cJSON *error_responseJSON){
 
     error_response_local_var = error_response_create_internal (
         strdup(error->valuestring),
-        strdup(message->valuestring)
+        strdup(message->valuestring),
+        strdup(status->valuestring)
         );
 
     return error_response_local_var;
