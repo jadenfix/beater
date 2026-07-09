@@ -5,9 +5,9 @@
 //! scope guard on the API-key revoke route (PR #251): an out-of-scope revoke
 //! still returns `404` for a caller that passes RBAC.
 
-use axum::body::Body;
 use axum::Router;
-use beater_api::{router, ApiState};
+use axum::body::Body;
+use beater_api::{ApiState, router};
 use beater_auth::{ApiKeyStore, CreateApiKeyRequest, SqliteApiKeyStore};
 use beater_bus::InMemoryBus;
 use beater_core::{
