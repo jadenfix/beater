@@ -4903,6 +4903,28 @@ impl AuthDecision {
     }
 }
 
+#[derive(Clone, Copy)]
+struct RouteAuthTarget<'a> {
+    tenant_id: &'a TenantId,
+    project_id: &'a ProjectId,
+    environment_id: &'a EnvironmentId,
+    required_scope: ApiScope,
+}
+
+fn route_auth_target<'a>(
+    tenant_id: &'a TenantId,
+    project_id: &'a ProjectId,
+    environment_id: &'a EnvironmentId,
+    required_scope: ApiScope,
+) -> RouteAuthTarget<'a> {
+    RouteAuthTarget {
+        tenant_id,
+        project_id,
+        environment_id,
+        required_scope,
+    }
+}
+
 async fn authorize_project_route(
     state: &ApiState,
     headers: &HeaderMap,
@@ -5190,10 +5212,7 @@ async fn authorize(
         return authorize_central_claims(
             state,
             claims,
-            tenant_id,
-            project_id,
-            environment_id,
-            required_scope,
+            route_auth_target(tenant_id, project_id, environment_id, required_scope),
         )
         .await;
     }
@@ -5209,10 +5228,7 @@ async fn authorize(
             oauth.as_ref(),
             secret,
             state.oauth_resource(),
-            tenant_id,
-            project_id,
-            environment_id,
-            required_scope,
+            route_auth_target(tenant_id, project_id, environment_id, required_scope),
         )
         .await;
     }
@@ -5268,30 +5284,20 @@ async fn authorize_oauth(
     oauth: &dyn OAuthStore,
     secret: &str,
     expected_resource: Option<&str>,
-    tenant_id: &TenantId,
-    project_id: &ProjectId,
-    environment_id: &EnvironmentId,
-    required_scope: ApiScope,
+    target: RouteAuthTarget<'_>,
 ) -> Result<AuthDecision, ApiError> {
     let claims = oauth
         .validate_access_token(secret, Utc::now())
         .await
         .map_err(|_| ApiError::unauthorized("invalid or expired access token".to_string()))?;
     let principal_id = claims.user_id.as_str().to_string();
-    let decision = authorize_oauth_claims(
-        claims,
-        expected_resource,
-        tenant_id,
-        project_id,
-        environment_id,
-        required_scope,
-    )?;
+    let decision = authorize_oauth_claims(claims, expected_resource, target)?;
     enforce_rbac(
         state,
-        tenant_id,
-        project_id,
+        target.tenant_id,
+        target.project_id,
         principal_id.as_str(),
-        required_scope,
+        target.required_scope,
     )
     .await?;
     Ok(decision)
@@ -5300,19 +5306,16 @@ async fn authorize_oauth(
 fn authorize_oauth_claims(
     claims: AccessTokenClaims,
     expected_resource: Option<&str>,
-    tenant_id: &TenantId,
-    project_id: &ProjectId,
-    environment_id: &EnvironmentId,
-    required_scope: ApiScope,
+    target: RouteAuthTarget<'_>,
 ) -> Result<AuthDecision, ApiError> {
     if expected_resource.is_none_or(|resource| claims.resource != resource) {
         return Err(ApiError::unauthorized(
             "access token audience does not match this resource".to_string(),
         ));
     }
-    if &claims.tenant_scope.tenant_id != tenant_id
-        || &claims.tenant_scope.project_id != project_id
-        || &claims.tenant_scope.environment_id != environment_id
+    if &claims.tenant_scope.tenant_id != target.tenant_id
+        || &claims.tenant_scope.project_id != target.project_id
+        || &claims.tenant_scope.environment_id != target.environment_id
     {
         return Err(ApiError::forbidden(
             "access token is not scoped to this tenant/project/environment".to_string(),
@@ -5323,11 +5326,11 @@ fn authorize_oauth_claims(
             "access token is missing scope mcp:invoke".to_string(),
         ));
     }
-    let has_scope = claims.scope.contains(required_scope.as_str());
+    let has_scope = claims.scope.contains(target.required_scope.as_str());
     if !has_scope {
         return Err(ApiError::forbidden(format!(
             "access token is missing scope {}",
-            required_scope.as_str()
+            target.required_scope.as_str()
         )));
     }
     Ok(AuthDecision {
@@ -5343,10 +5346,7 @@ fn authorize_oauth_claims(
 async fn authorize_central_claims(
     state: &ApiState,
     claims: IntrospectedTokenClaims,
-    tenant_id: &TenantId,
-    project_id: &ProjectId,
-    environment_id: &EnvironmentId,
-    required_scope: ApiScope,
+    target: RouteAuthTarget<'_>,
 ) -> Result<AuthDecision, ApiError> {
     if claims.audience != CENTRAL_TOKEN_AUDIENCE {
         return Err(ApiError::unauthorized(
@@ -5358,9 +5358,9 @@ async fn authorize_central_claims(
             "invalid or expired access token".to_string(),
         ));
     }
-    if &claims.tenant_scope.tenant_id != tenant_id
-        || &claims.tenant_scope.project_id != project_id
-        || &claims.tenant_scope.environment_id != environment_id
+    if &claims.tenant_scope.tenant_id != target.tenant_id
+        || &claims.tenant_scope.project_id != target.project_id
+        || &claims.tenant_scope.environment_id != target.environment_id
     {
         return Err(ApiError::forbidden(
             "access token is not scoped to this tenant/project/environment".to_string(),
@@ -5371,19 +5371,19 @@ async fn authorize_central_claims(
             "access token is missing scope mcp:invoke".to_string(),
         ));
     }
-    let has_scope = claims.scope.contains(required_scope.as_str());
+    let has_scope = claims.scope.contains(target.required_scope.as_str());
     if !has_scope {
         return Err(ApiError::forbidden(format!(
             "access token is missing scope {}",
-            required_scope.as_str()
+            target.required_scope.as_str()
         )));
     }
     enforce_rbac(
         state,
-        tenant_id,
-        project_id,
+        target.tenant_id,
+        target.project_id,
         central_rbac_principal(&claims),
-        required_scope,
+        target.required_scope,
     )
     .await?;
     Ok(AuthDecision {
@@ -6244,10 +6244,7 @@ mod tests {
             &store,
             &issued.access_token,
             Some(resource),
-            &tenant,
-            &project,
-            &environment,
-            ApiScope::TraceRead,
+            route_auth_target(&tenant, &project, &environment, ApiScope::TraceRead),
         )
         .await
         .unwrap_or_else(|err| panic!("expected authorized: {err:?}"));
@@ -6274,10 +6271,7 @@ mod tests {
                 &store,
                 &no_mcp.access_token,
                 Some(resource),
-                &tenant,
-                &project,
-                &environment,
-                ApiScope::TraceRead,
+                route_auth_target(&tenant, &project, &environment, ApiScope::TraceRead),
             )
             .await
             .is_err(),
@@ -6303,10 +6297,7 @@ mod tests {
                 &store,
                 &admin_without_mcp.access_token,
                 Some(resource),
-                &tenant,
-                &project,
-                &environment,
-                ApiScope::TraceWrite,
+                route_auth_target(&tenant, &project, &environment, ApiScope::TraceWrite),
             )
             .await
             .is_err(),
@@ -6332,10 +6323,7 @@ mod tests {
                 &store,
                 &admin_with_mcp.access_token,
                 Some(resource),
-                &tenant,
-                &project,
-                &environment,
-                ApiScope::TraceWrite,
+                route_auth_target(&tenant, &project, &environment, ApiScope::TraceWrite),
             )
             .await
             .is_err(),
@@ -6360,10 +6348,7 @@ mod tests {
             &store,
             &trace_write_with_mcp.access_token,
             Some(resource),
-            &tenant,
-            &project,
-            &environment,
-            ApiScope::TraceWrite,
+            route_auth_target(&tenant, &project, &environment, ApiScope::TraceWrite),
         )
         .await
         .unwrap_or_else(|err| panic!("mcp+trace:write should satisfy operation scope: {err:?}"));
@@ -6376,10 +6361,7 @@ mod tests {
                 &store,
                 &issued.access_token,
                 Some(resource),
-                &other,
-                &project,
-                &environment,
-                ApiScope::TraceRead,
+                route_auth_target(&other, &project, &environment, ApiScope::TraceRead),
             )
             .await
             .is_err()
@@ -6392,10 +6374,7 @@ mod tests {
                 &store,
                 &issued.access_token,
                 Some(resource),
-                &tenant,
-                &project,
-                &environment,
-                ApiScope::TraceWrite,
+                route_auth_target(&tenant, &project, &environment, ApiScope::TraceWrite),
             )
             .await
             .is_err()
@@ -6408,10 +6387,7 @@ mod tests {
                 &store,
                 &issued.access_token,
                 Some("https://other.example.com"),
-                &tenant,
-                &project,
-                &environment,
-                ApiScope::TraceRead,
+                route_auth_target(&tenant, &project, &environment, ApiScope::TraceRead),
             )
             .await
             .is_err()
@@ -6424,10 +6400,7 @@ mod tests {
                 &store,
                 "bao_nope_nope",
                 Some(resource),
-                &tenant,
-                &project,
-                &environment,
-                ApiScope::TraceRead,
+                route_auth_target(&tenant, &project, &environment, ApiScope::TraceRead),
             )
             .await
             .is_err()
