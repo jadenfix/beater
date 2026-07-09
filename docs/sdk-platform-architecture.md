@@ -22,7 +22,7 @@ and `oasdiff` blocks breaking changes. Drift is a merge-blocker, not a hope.
 ## Modern API design conventions (enforced)
 
 - **Resource-tagged, action-named.** Every operation has a resource `tag`
-  (`datasets`, `traces`, ...) and a globally-unique camelCase `operationId`
+  (`datasets`, `traces`, ...) and a globally unique dotted/kebab `operationId`
   (`datasets.create-dataset`, `traces.list-traces`, `evals.run-judge-eval`). Tags -> SDK API classes;
   operationIds -> method names. Uniqueness avoids single-package collisions
   (Go/C/Java) so names are consistent across all 7 languages without per-language
