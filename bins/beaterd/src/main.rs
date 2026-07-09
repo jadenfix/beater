@@ -523,7 +523,7 @@ async fn main() -> anyhow::Result<()> {
             None
         };
     if let Some(api_keys) = api_key_store.clone() {
-        state = state.require_auth(api_keys);
+        state = state.require_auth(api_keys).require_rbac();
     }
     // Serve the MCP endpoint (`/mcp`) alongside the HTTP API, sharing the same
     // `ApiState` and auth. The MCP tool catalog is derived from the OpenAPI spec
